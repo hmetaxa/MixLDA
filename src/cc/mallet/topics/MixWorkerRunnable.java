@@ -70,7 +70,7 @@ public class MixWorkerRunnable implements Runnable {
     protected double[][] p_b; // b for beta prir for modalities correlation
     protected boolean fastSampling = false; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
-    double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    //double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
 
     public MixWorkerRunnable(int numTopics,
@@ -164,9 +164,9 @@ public class MixWorkerRunnable implements Runnable {
         return pDistr_Mean;
     }
 
-    public double[][][] getPDistr_Var() {
-        return pDistr_Var;
-    }
+//    public double[][][] getPDistr_Var() {
+//        return pDistr_Var;
+//    }
 
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[size];
@@ -316,7 +316,7 @@ public class MixWorkerRunnable implements Runnable {
                 System.out.println("already running!");
                 return;
             }
-            this.pDistr_Var = new double[numModalities][numModalities][data.size()];
+            //this.pDistr_Var = new double[numModalities][numModalities][data.size()];
             this.pDistr_Mean = new double[numModalities][numModalities][data.size()];
 
 
