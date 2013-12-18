@@ -23,14 +23,15 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class MixWorkerRunnable implements Runnable {
 
-//    public class MassValue {
-//
-//        public double topicTermMass;
-//        public double topicBetaMass;
-//        public double smoothingOnlyMass;
-//        //public int nonZeroTopics;
-//        //public double few;//frequency exclusivity weight we have an array for that
-//    }
+    public class MassValue {
+
+        public double topicTermMass;
+        public double topicBetaMass;
+        public double smoothingOnlyMass;
+        //public int nonZeroTopics;
+        //public double few;//frequency exclusivity weight we have an array for that
+    }
+    
     boolean isFinished = true;
     boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
@@ -54,8 +55,8 @@ public class MixWorkerRunnable implements Runnable {
     //homer 
     protected double[] smoothingOnlyMass;// = 0.0;
     protected double[][] smoothOnlyCachedCoefficients;
-    protected int[][][] typeTopicCounts; // indexed by <feature index, topic index>
-    protected int[][] tokensPerTopic; // indexed by <topic index>
+    protected int[][][] typeTopicCounts; // indexed by <modality index, feature index, topic index>
+    protected int[][] tokensPerTopic; // indexed by <modality index, topic index>
     // for dirichlet estimation
     protected int[] docLengthCounts; // histogram of document sizes
     protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -67,6 +68,7 @@ public class MixWorkerRunnable implements Runnable {
     protected double[] skewWeight;// = 1;
     protected double[][] p_a; // a for beta prior for modalities correlation
     protected double[][] p_b; // b for beta prir for modalities correlation
+    protected boolean fastSampling = false; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
@@ -190,6 +192,10 @@ public class MixWorkerRunnable implements Runnable {
 
     public void resetSkewWeight(double[] skewWeight) {
         this.skewWeight = skewWeight;
+    }
+
+    public void resetFastSampling(boolean fastSampling) {
+        this.fastSampling = fastSampling;
     }
 
     /**
@@ -398,6 +404,8 @@ public class MixWorkerRunnable implements Runnable {
                         continue;
                     }
                     localTopicCounts[i][oneDocTopics[i][position]]++;
+                    
+                    
                 }
             }
         }
@@ -943,7 +951,9 @@ public class MixWorkerRunnable implements Runnable {
         int type, oldTopic, newTopic;
         double[] topicBetaMass = new double[numModalities];
 
-        gnu.trove.TObjectIntHashMap<Long> topicPerPrvTopic = new gnu.trove.TObjectIntHashMap<Long>();
+        //gnu.trove.TObjectIntHashMap<Long> topicPerPrvTopic = new gnu.trove.TObjectIntHashMap<Long>();
+        
+        //gnu.trove.TObjectIntHashMap<MassValue> similarGroups = new gnu.trove.TObjectIntHashMap<Integer>();
 
 
 
@@ -991,7 +1001,7 @@ public class MixWorkerRunnable implements Runnable {
 
                 if (tokenSequenceCurMod != null) {
 
-                    long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+                    //long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
 
                     type = tokenSequenceCurMod.getIndexAtPosition(position);
 
@@ -1013,10 +1023,13 @@ public class MixWorkerRunnable implements Runnable {
                             );
 
 
-                    if (topicPerPrvTopic.contains(tmpPreviousTopics) && tmpPreviousTopics > 0 && beta[m] != 0.01) {
-                        newTopic = topicPerPrvTopic.get(tmpPreviousTopics);
-                        //System.out.println("common topic sequence found");
-                    } else {
+//                    if (topicPerPrvTopic.contains(tmpPreviousTopics) && tmpPreviousTopics > 0 && fastSampling) {
+//                        
+//                        newTopic = topicPerPrvTopic.get(tmpPreviousTopics);
+//                        //System.out.println("common topic sequence found");
+//                    } else 
+                    {
+
                         double[] topicTermScores = new double[numTopics];
                         double termSkew = typeSkewIndexes[m][type];
 
@@ -1056,14 +1069,14 @@ public class MixWorkerRunnable implements Runnable {
                     }
 
 
-                    if (!topicPerPrvTopic.contains(tmpPreviousTopics)) {
-                        topicPerPrvTopic.put(tmpPreviousTopics, newTopic);
-                    }
-                    tmpPreviousTopics = tmpPreviousTopics >> topicBits;
-                    long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
-                    tmpPreviousTopics += newTopicTmp;
-
-                    doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+//                    if (!topicPerPrvTopic.contains(tmpPreviousTopics)) {
+//                        topicPerPrvTopic.put(tmpPreviousTopics, newTopic);
+//                    }
+//                    tmpPreviousTopics = tmpPreviousTopics >> topicBits;
+//                    long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
+//                    tmpPreviousTopics += newTopicTmp;
+//
+//                    doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
 
                     //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
 

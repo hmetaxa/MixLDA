@@ -39,7 +39,7 @@ public class MixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 50;
         int numIterations = 300;
-        LabelType lblType = LabelType.Authors;
+        LabelType lblType = LabelType.Grants;
 
         int pruneCnt = 15; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -81,9 +81,9 @@ public class MixTopicModelExample {
                         " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
                         + " from Doc inner join "
                         + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-                        + " where  "
-                        + " Doc.source='" + docSource + "' and "
-                        + " grantPerDoc.grantId like '" + grantType + "' "
+                      //  + " where  "
+                      //  + " Doc.source='" + docSource + "' and "
+                      //  + " grantPerDoc.grantId like '" + grantType + "' "
                         + " Group By Doc.DocId, Doc.text";
             } else if (lblType == LabelType.Authors) {
                 sql =
