@@ -72,6 +72,8 @@ public class MixWorkerRunnableNP implements Runnable {
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
+    
+    private boolean fixedNumTopics = false;
 
     public MixWorkerRunnableNP(int numTopics,
             double[] alpha, double alphaSum,
