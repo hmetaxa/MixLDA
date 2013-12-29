@@ -13,6 +13,9 @@ import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.Comparator;
+import java.util.PriorityQueue;
+import java.util.Queue;
 
 /**
  * A parallel semi supervised topic model runnable task.
@@ -31,13 +34,14 @@ public class MixWorkerRunnableNP implements Runnable {
         //public int nonZeroTopics;
         //public double few;//frequency exclusivity weight we have an array for that
     }
-    
     boolean isFinished = true;
     boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
     ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
-    protected int numTopics; // Number of topics to be fit
+    protected int maxNumTopics; // Max Number of topics to be fit
+    protected int numActiveTopics; // Number of active topics to be fit
+    
     protected byte numModalities;
     // These values are used to encode type/topic counts as
     //  count/topic pairs in a single int.
@@ -72,8 +76,11 @@ public class MixWorkerRunnableNP implements Runnable {
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
+    protected Queue<Integer> nonActiveTopics;
+    int totalDocTopics;
+    //protected int[] nonActiveTopics;
 
-    public MixWorkerRunnableNP(int numTopics,
+    public MixWorkerRunnableNP(int maxNumTopics,
             double[] alpha, double alphaSum,
             double[] beta, Randoms random,
             final ArrayList<MixTopicModelTopicAssignment> data,
@@ -84,7 +91,7 @@ public class MixWorkerRunnableNP implements Runnable {
 
         this.data = data;
 
-        this.numTopics = numTopics;
+        this.maxNumTopics = maxNumTopics;
         this.numModalities = numModalities;
         this.numTypes = new int[numModalities];
         this.betaSum = new double[numModalities];
@@ -92,7 +99,9 @@ public class MixWorkerRunnableNP implements Runnable {
         this.p_a = p_a;  //new double[numModalities][numModalities];
         this.p_b = p_b;
         this.smoothingOnlyMass = new double[numModalities];
-        this.smoothOnlyCachedCoefficients = new double[numModalities][numTopics];
+        this.smoothOnlyCachedCoefficients = new double[numModalities][maxNumTopics];
+        //this.nonActiveTopics = new int[maxNumTopics];
+        this.nonActiveTopics = new PriorityQueue<Integer>(maxNumTopics/3, topicComparator);
         this.typeSkewIndexes = typeSkewIndexes;
 
 
@@ -102,13 +111,13 @@ public class MixWorkerRunnableNP implements Runnable {
             //Arrays.fill(this.p[i], 1d);
         }
 
-        if (Integer.bitCount(numTopics) == 1) {
+        if (Integer.bitCount(maxNumTopics) == 1) {
             // exact power of 2
-            topicMask = numTopics - 1;
+            topicMask = maxNumTopics - 1;
             topicBits = Integer.bitCount(topicMask);
         } else {
             // otherwise add an extra bit
-            topicMask = Integer.highestOneBit(numTopics) * 2 - 1;
+            topicMask = Integer.highestOneBit(maxNumTopics) * 2 - 1;
             topicBits = Integer.bitCount(topicMask);
         }
 
@@ -129,11 +138,20 @@ public class MixWorkerRunnableNP implements Runnable {
 
 
 
-        //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
+        //System.err.println("WorkerRunnable Thread: " + maxNumTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
 
     }
 
+    //Comparator for sorting topics
+    public static Comparator<Integer> topicComparator = new Comparator<Integer>(){
+         
+        @Override
+        public int compare(Integer c1, Integer c2) {
+            return (int) (c1- c2);
+        }
+    };
+    
     /**
      * If there is only one thread, we don't need to go through communication
      * overhead. This method asks this worker not to prepare local type-topic
@@ -167,10 +185,9 @@ public class MixWorkerRunnableNP implements Runnable {
 //    public double[][][] getPDistr_Var() {
 //        return pDistr_Var;
 //    }
-
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[size];
-        topicDocCounts = new int[numTopics][size];
+        topicDocCounts = new int[maxNumTopics][size];
     }
 
     public void collectAlphaStatistics() {
@@ -205,15 +222,16 @@ public class MixWorkerRunnableNP implements Runnable {
      */
     public void buildLocalTypeTopicCounts() {
 
-
-
-
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
+        numActiveTopics = 0;
+        nonActiveTopics.clear();
+      
         for (byte i = 0; i < numModalities; i++) {
 
             // Clear the topic totals
             Arrays.fill(tokensPerTopic[i], 0);
+
 
             for (int type = 0; type < typeTopicCounts[i].length; type++) {
 
@@ -244,11 +262,13 @@ public class MixWorkerRunnableNP implements Runnable {
 
                         int topic = topics[position];
 
+
                         if (topic == ParallelTopicModel.UNASSIGNED_TOPIC) {
                             continue;
                         }
 
                         tokensPerTopic[i][topic]++;
+
 
                         // The format for these arrays is 
                         //  the topic in the rightmost bits
@@ -306,6 +326,41 @@ public class MixWorkerRunnableNP implements Runnable {
                 }
             }
         }
+
+
+        // Record the total number of non-zero topics
+        numActiveTopics = findNumOfActiveTopics();
+
+    }
+
+    private boolean topicExist(int topic) {
+        int i = 0;
+        boolean topicFound = false;
+        while (i < numModalities && !topicFound) {
+            if (tokensPerTopic[i][topic] != 0) {
+
+                topicFound = true;
+            }
+            i++;
+
+
+        }
+        return topicFound;
+    }
+
+    private int findNumOfActiveTopics() {
+        int denseIndex = 0;
+      
+        for (int topic = 0; topic < maxNumTopics; topic++) {
+            if (topicExist(topic)) {
+                denseIndex++;
+            } else {
+                nonActiveTopics.add(topic);
+                
+            }
+        }
+        // Record the total number of non-zero topics
+        return denseIndex;
     }
 
     public void run() {
@@ -330,7 +385,7 @@ public class MixWorkerRunnableNP implements Runnable {
                 //  These values will be selectively replaced in documents with
                 //  non-zero counts in particular topics.
 
-                for (int topic = 0; topic < numTopics; topic++) {
+                for (int topic = 0; topic < maxNumTopics; topic++) {
                     smoothingOnlyMass[i] += alpha[topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
                     smoothOnlyCachedCoefficients[i][topic] = alpha[topic] / (tokensPerTopic[i][topic] + betaSum[i]);
                 }
@@ -404,15 +459,15 @@ public class MixWorkerRunnableNP implements Runnable {
                         continue;
                     }
                     localTopicCounts[i][oneDocTopics[i][position]]++;
-                    
-                    
+
+
                 }
             }
         }
         // Build an array that densely lists the topics that
         //  have non-zero counts.
         int denseIndex = 0;
-        for (int topic = 0; topic < numTopics; topic++) {
+        for (int topic = 0; topic < maxNumTopics; topic++) {
             int i = 0;
             boolean topicFound = false;
             while (i < numModalities && !topicFound) {
@@ -541,6 +596,9 @@ public class MixWorkerRunnableNP implements Runnable {
             tokensPerTopic[m][oldTopic]--;
             assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
 
+            if (tokensPerTopic[m][oldTopic]==0) 
+                    if (!topicExist(oldTopic))
+                        nonActiveTopics.add(oldTopic);
 
             // Add the old topic's contribution back into the
             //  normalizing constants.
@@ -727,7 +785,7 @@ public class MixWorkerRunnableNP implements Runnable {
                 / (tokensPerTopic[m][topic] + betaSum[m]);
 
 
-        while (sample > 0.0 && topic < numTopics) {
+        while (sample > 0.0 && topic < maxNumTopics) {
 
             topic++;
             sample -= alpha[topic] * beta[m]
@@ -793,10 +851,10 @@ public class MixWorkerRunnableNP implements Runnable {
             }
         }
 
-        if (newTopic == -1 || newTopic > numTopics - 1) {
+        if (newTopic == -1 || newTopic > maxNumTopics - 1) {
             System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
                     + topicBetaMass[m] + " " + topicTermMass);
-            newTopic = numTopics - 1; // TODO is this appropriate
+            newTopic = maxNumTopics - 1; // TODO is this appropriate
             //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
         }
 
@@ -941,18 +999,18 @@ public class MixWorkerRunnableNP implements Runnable {
 
         MixTopicModelTopicAssignment doc = data.get(docCnt);
         double[][] cachedCoefficients;
-        cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+        cachedCoefficients = new double[numModalities][maxNumTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
         int[][] oneDocTopics = new int[numModalities][];
         FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
 
         int[] docLength = new int[numModalities];
-        int[][] localTopicCounts = new int[numModalities][numTopics];
-        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
+        int[][] localTopicCounts = new int[numModalities][maxNumTopics];
+        int[] localTopicIndex = new int[maxNumTopics]; //dense topic index for all modalities
         int type, oldTopic, newTopic;
         double[] topicBetaMass = new double[numModalities];
 
         //gnu.trove.TObjectIntHashMap<Long> topicPerPrvTopic = new gnu.trove.TObjectIntHashMap<Long>();
-        
+
         //gnu.trove.TObjectIntHashMap<MassValue> similarGroups = new gnu.trove.TObjectIntHashMap<Integer>();
 
 
@@ -1030,7 +1088,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                    } else 
                     {
 
-                        double[] topicTermScores = new double[numTopics];
+                        double[] topicTermScores = new double[maxNumTopics];
                         double termSkew = typeSkewIndexes[m][type];
 
                         double topicTermMass = calcTopicScores(
@@ -1052,7 +1110,7 @@ public class MixWorkerRunnableNP implements Runnable {
 
                         //double origSample = sample;
 
-                        newTopic = //random.nextInt(numTopics);
+                        newTopic = //random.nextInt(maxNumTopics);
 
                                 findNewTopic(
                                 localTopicCounts,
@@ -1151,8 +1209,8 @@ public class MixWorkerRunnableNP implements Runnable {
 //        FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
 //
 //        int[] docLength = new int[numModalities];
-//        int[][] localTopicCounts = new int[numModalities][numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
+//        int[][] localTopicCounts = new int[numModalities][maxNumTopics];
+//        int[] localTopicIndex = new int[maxNumTopics]; //dense topic index for all modalities
 //        int type, oldTopic, newTopic;
 //
 //        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
@@ -1177,7 +1235,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //        // Build an array that densely lists the topics that
 //        //  have non-zero counts.
 //        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
+//        for (int topic = 0; topic < maxNumTopics; topic++) {
 //            int i = 0;
 //            boolean topicFound = false;
 //            while (i < numModalities && !topicFound) {
@@ -1192,7 +1250,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        // Record the total number of non-zero topics
 //        int nonZeroTopics = denseIndex;
-//        cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+//        cachedCoefficients = new double[numModalities][maxNumTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
 //        //		Initialize the topic count/beta sampling bucket
 //        double[] topicBetaMass = new double[numModalities];
 //        Arrays.fill(topicBetaMass, 0);
@@ -1233,7 +1291,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        double topicTermMass = 0.0;
 //
-//        double[] topicTermScores = new double[numTopics];
+//        double[] topicTermScores = new double[maxNumTopics];
 //        //int[] topicTermIndices;
 //        //int[] topicTermValues;
 //        int i;
@@ -1472,7 +1530,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                            sample -= alpha[topic]
 //                                    / (tokensPerTopic[m][topic] + betaSum[m]);
 //
-//                            while (sample > 0.0 && topic < numTopics - 1) {
+//                            while (sample > 0.0 && topic < maxNumTopics - 1) {
 //                                topic++;
 //                                sample -= alpha[topic]
 //                                        / (tokensPerTopic[m][topic] + betaSum[m]);
@@ -1534,7 +1592,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                    if (newTopic == -1) {
 //                        System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
 //                                + topicBetaMass[m] + " " + topicTermMass);
-//                        newTopic = numTopics - 1; // TODO is this appropriate
+//                        newTopic = maxNumTopics - 1; // TODO is this appropriate
 //                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
 //                    }
 //                    //assert(newTopic != -1);
@@ -1637,8 +1695,8 @@ public class MixWorkerRunnableNP implements Runnable {
 //        FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
 //
 //        int[] docLength = new int[numModalities];
-//        int[][] localTopicCounts = new int[numModalities][numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
+//        int[][] localTopicCounts = new int[numModalities][maxNumTopics];
+//        int[] localTopicIndex = new int[maxNumTopics]; //dense topic index for all modalities
 //        int type, oldTopic, newTopic;
 //
 //        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
@@ -1663,7 +1721,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //        // Build an array that densely lists the topics that
 //        //  have non-zero counts.
 //        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
+//        for (int topic = 0; topic < maxNumTopics; topic++) {
 //            int i = 0;
 //            boolean topicFound = false;
 //            while (i < numModalities && !topicFound) {
@@ -1678,7 +1736,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        // Record the total number of non-zero topics
 //        int nonZeroTopics = denseIndex;
-//        cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+//        cachedCoefficients = new double[numModalities][maxNumTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
 //        //		Initialize the topic count/beta sampling bucket
 //        double[] topicBetaMass = new double[numModalities];
 //        Arrays.fill(topicBetaMass, 0);
@@ -1719,7 +1777,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        double topicTermMass = 0.0;
 //
-//        double[] topicTermScores = new double[numTopics];
+//        double[] topicTermScores = new double[maxNumTopics];
 //        //int[] topicTermIndices;
 //        //int[] topicTermValues;
 //        int i;
@@ -1958,7 +2016,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                            sample -= alpha[topic]
 //                                    / (tokensPerTopic[m][topic] + betaSum[m]);
 //
-//                            while (sample > 0.0 && topic < numTopics - 1) {
+//                            while (sample > 0.0 && topic < maxNumTopics - 1) {
 //                                topic++;
 //                                sample -= alpha[topic]
 //                                        / (tokensPerTopic[m][topic] + betaSum[m]);
@@ -2020,7 +2078,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                    if (newTopic == -1) {
 //                        System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
 //                                + topicBetaMass[m] + " " + topicTermMass);
-//                        newTopic = numTopics - 1; // TODO is this appropriate
+//                        newTopic = maxNumTopics - 1; // TODO is this appropriate
 //                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
 //                    }
 //                    //assert(newTopic != -1);
@@ -2124,8 +2182,8 @@ public class MixWorkerRunnableNP implements Runnable {
 //        //FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
 //
 //        //int docLength = new int[numModalities];
-//        int[] localTopicCounts = new int[numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
+//        int[] localTopicCounts = new int[maxNumTopics];
+//        int[] localTopicIndex = new int[maxNumTopics]; //dense topic index for all modalities
 //        int type, oldTopic, newTopic;
 //
 //        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
@@ -2150,7 +2208,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //        // Build an array that densely lists the topics that
 //        //  have non-zero counts.
 //        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
+//        for (int topic = 0; topic < maxNumTopics; topic++) {
 //            if (localTopicCounts[topic] != 0) {
 //                localTopicIndex[denseIndex] = topic;
 //                denseIndex++;
@@ -2159,7 +2217,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        // Record the total number of non-zero topics
 //        int nonZeroTopics = denseIndex;
-//        // cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+//        // cachedCoefficients = new double[numModalities][maxNumTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
 //        //		Initialize the topic count/beta sampling bucket
 //        double topicBetaMass = 0.0;//new double[numModalities];
 //        //Arrays.fill(topicBetaMass, 0);
@@ -2192,7 +2250,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        double topicTermMass = 0.0;
 //
-//        double[] topicTermScores = new double[numTopics];
+//        double[] topicTermScores = new double[maxNumTopics];
 //        //int[] topicTermIndices;
 //        //int[] topicTermValues;
 //        int i;
@@ -2429,7 +2487,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //                    sample -= alpha[topic]
 //                            / (tokensPerTopic[0][topic] + betaSum[0]);
 //
-//                    while (sample > 0.0 && topic < numTopics - 1) {
+//                    while (sample > 0.0 && topic < maxNumTopics - 1) {
 //                        topic++;
 //                        sample -= alpha[topic]
 //                                / (tokensPerTopic[0][topic] + betaSum[0]);
@@ -2491,7 +2549,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //            if (newTopic == -1) {
 //                System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[0] + " "
 //                        + topicBetaMass + " " + topicTermMass);
-//                newTopic = numTopics - 1; // TODO is this appropriate
+//                newTopic = maxNumTopics - 1; // TODO is this appropriate
 //                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
 //            }
 //            //assert(newTopic != -1);
@@ -2597,8 +2655,8 @@ public class MixWorkerRunnableNP implements Runnable {
 //        double topicWeightsSum;
 //        int docLength = tokenSequence.getLength();
 //
-//        int[] localTopicCounts = new int[numTopics];
-//        int[] localTopicIndex = new int[numTopics];
+//        int[] localTopicCounts = new int[maxNumTopics];
+//        int[] localTopicIndex = new int[maxNumTopics];
 //
 //        //		populate topic counts
 //        for (int position = 0; position < docLength; position++) {
@@ -2611,7 +2669,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //        // Build an array that densely lists the topics that
 //        //  have non-zero counts.
 //        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
+//        for (int topic = 0; topic < maxNumTopics; topic++) {
 //            if (localTopicCounts[topic] != 0) {
 //                localTopicIndex[denseIndex] = topic;
 //                denseIndex++;
@@ -2640,7 +2698,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //
 //        double topicTermMass = 0.0;
 //
-//        double[] topicTermScores = new double[numTopics];
+//        double[] topicTermScores = new double[maxNumTopics];
 //        int[] topicTermIndices;
 //        int[] topicTermValues;
 //        int i;
@@ -2886,7 +2944,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //            if (newTopic == -1) {
 //                System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass + " "
 //                        + topicBetaMass + " " + topicTermMass);
-//                newTopic = numTopics - 1; // TODO is this appropriate
+//                newTopic = maxNumTopics - 1; // TODO is this appropriate
 //                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
 //            }
 //            //assert(newTopic != -1);
