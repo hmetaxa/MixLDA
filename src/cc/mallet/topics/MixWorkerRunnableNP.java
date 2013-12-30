@@ -16,6 +16,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import org.knowceans.util.Samplers;
+import org.knowceans.util.Vectors;
 
 /**
  * A parallel semi supervised topic model runnable task.
@@ -41,7 +43,6 @@ public class MixWorkerRunnableNP implements Runnable {
     int startDoc, numDocs;
     protected int maxNumTopics; // Max Number of topics to be fit
     protected int numActiveTopics; // Number of active topics to be fit
-    
     protected byte numModalities;
     // These values are used to encode type/topic counts as
     //  count/topic pairs in a single int.
@@ -78,21 +79,26 @@ public class MixWorkerRunnableNP implements Runnable {
     //double avgSkew = 0;
     protected Queue<Integer> nonActiveTopics;
     int totalDocTopics;
+    boolean fixedNumTopics = false;
     //protected int[] nonActiveTopics;
 
-    public MixWorkerRunnableNP(int maxNumTopics,
+    public MixWorkerRunnableNP(int maxNumTopics, int initialNumTopics,
             double[] alpha, double alphaSum,
             double[] beta, Randoms random,
             final ArrayList<MixTopicModelTopicAssignment> data,
             int[][][] typeTopicCounts,
             int[][] tokensPerTopic,
             int startDoc, int numDocs, boolean ignoreLabels, byte numModalities,
-            double[][] typeSkewIndexes, MixParallelTopicModel.SkewType skewOn, double[] skewWeight, double[][] p_a, double[][] p_b) {
+            double[][] typeSkewIndexes,  double[] skewWeight, double[][] p_a, double[][] p_b) {
 
         this.data = data;
 
         this.maxNumTopics = maxNumTopics;
+        this.numActiveTopics = initialNumTopics;
+        this.fixedNumTopics = numActiveTopics == this.maxNumTopics;
+
         this.numModalities = numModalities;
+
         this.numTypes = new int[numModalities];
         this.betaSum = new double[numModalities];
         this.skewWeight = skewWeight;
@@ -101,7 +107,7 @@ public class MixWorkerRunnableNP implements Runnable {
         this.smoothingOnlyMass = new double[numModalities];
         this.smoothOnlyCachedCoefficients = new double[numModalities][maxNumTopics];
         //this.nonActiveTopics = new int[maxNumTopics];
-        this.nonActiveTopics = new PriorityQueue<Integer>(maxNumTopics/3, topicComparator);
+        this.nonActiveTopics = new PriorityQueue<Integer>(maxNumTopics / 3, topicComparator);
         this.typeSkewIndexes = typeSkewIndexes;
 
 
@@ -142,16 +148,14 @@ public class MixWorkerRunnableNP implements Runnable {
         //				   Integer.toBinaryString(topicMask) + " topic mask");
 
     }
-
     //Comparator for sorting topics
-    public static Comparator<Integer> topicComparator = new Comparator<Integer>(){
-         
+    public static Comparator<Integer> topicComparator = new Comparator<Integer>() {
         @Override
         public int compare(Integer c1, Integer c2) {
-            return (int) (c1- c2);
+            return (int) (c1 - c2);
         }
     };
-    
+
     /**
      * If there is only one thread, we don't need to go through communication
      * overhead. This method asks this worker not to prepare local type-topic
@@ -226,7 +230,7 @@ public class MixWorkerRunnableNP implements Runnable {
         //  looking at the entries before the first 0 entry.
         numActiveTopics = 0;
         nonActiveTopics.clear();
-      
+
         for (byte i = 0; i < numModalities; i++) {
 
             // Clear the topic totals
@@ -329,10 +333,14 @@ public class MixWorkerRunnableNP implements Runnable {
 
 
         // Record the total number of non-zero topics
-        numActiveTopics = findNumOfActiveTopics();
+        if (!fixedNumTopics) {
+            numActiveTopics = findNumOfActiveTopics();
+        }
 
     }
 
+  
+    
     private boolean topicExist(int topic) {
         int i = 0;
         boolean topicFound = false;
@@ -350,19 +358,54 @@ public class MixWorkerRunnableNP implements Runnable {
 
     private int findNumOfActiveTopics() {
         int denseIndex = 0;
-      
+
         for (int topic = 0; topic < maxNumTopics; topic++) {
             if (topicExist(topic)) {
                 denseIndex++;
             } else {
                 nonActiveTopics.add(topic);
-                
+
             }
         }
         // Record the total number of non-zero topics
         return denseIndex;
     }
 
+//    private void updateTau() {
+//		double[] mk = new double[K+1];
+//		
+//		for(int kk=0 ; kk<K ; kk++){
+//			int k = kactive.get(kk);
+//			
+//			for(int m=0 ; m < numDocuments ; m++){
+//				
+//				if(nmk[m].get(k) > 1){
+//					//sample number of tables
+//					mk[kk] +=Samplers.randAntoniak(alpha * tau.get(k), 
+//							nmk[m].get(k));
+//				}
+//				else //nmk[m].get(k) = 0 or 1
+//				{   
+//					mk[kk] +=nmk[m].get(k);
+//				}
+//				
+//			}
+//		}// end outter for loop
+//		
+//		//get number of tables
+//		tables = Vectors.sum(mk);
+//		mk[K] = gamma;
+//		
+//		double[] tt =Samplers.randDir(mk);
+//		
+//		for(int kk=0 ; kk < K ; kk++){
+//			
+//			int k=kactive.get(kk);
+//			tau.set(k, tt[kk]);
+//		}
+//		tau.set(K, tt[K]);
+//	}
+    
     public void run() {
 
         try {
@@ -596,9 +639,11 @@ public class MixWorkerRunnableNP implements Runnable {
             tokensPerTopic[m][oldTopic]--;
             assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
 
-            if (tokensPerTopic[m][oldTopic]==0) 
-                    if (!topicExist(oldTopic))
-                        nonActiveTopics.add(oldTopic);
+            if (tokensPerTopic[m][oldTopic] == 0) {
+                if (!topicExist(oldTopic)) {
+                    nonActiveTopics.add(oldTopic);
+                }
+            }
 
             // Add the old topic's contribution back into the
             //  normalizing constants.
