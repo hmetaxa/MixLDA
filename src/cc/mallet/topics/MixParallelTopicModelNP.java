@@ -33,6 +33,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.Queue;
 
 /**
  * Mix Parallel semi supervised, multi modal topic modal based on MALLET
@@ -70,6 +71,7 @@ public class MixParallelTopicModelNP implements Serializable {
     public int[] totalDocsPerModality; //number of docs containing this modality 
     //public int totalLabels;
     public double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    public double alphaConst;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     public double alphaSum;
     public double[] beta;   // Prior on per-topic multinomial distribution over token types (per modality) 
     public double[] betaSum; // per modality
@@ -124,10 +126,14 @@ public class MixParallelTopicModelNP implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
-
+    Queue<Integer> nonActiveTopics;
+    int totalTables;
+    int[] tablesPerTopic;
+    int[] activeTopics;
     //double lblSkewWeight = 1;
+
     public MixParallelTopicModelNP(int initialNumberOfTopics, int maxNumberOfTopics, byte numModalities) {
-        this(initialNumberOfTopics,maxNumberOfTopics, numModalities, 1*initialNumberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);
+        this(initialNumberOfTopics, maxNumberOfTopics, numModalities, 1 * initialNumberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);
     }
 
     public MixParallelTopicModelNP(int initialNumberOfTopics, int maxNumberOfTopics, byte numModalities, double alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
@@ -223,7 +229,7 @@ public class MixParallelTopicModelNP implements Serializable {
     public int getMaxNumTopics() {
         return maxNumTopics;
     }
-    
+
     public int getActiveNumTopics() {
         return activeNumTopics;
     }
@@ -893,7 +899,6 @@ public class MixParallelTopicModelNP implements Serializable {
 
     }
 
-    
     public void optimizeBeta(MixWorkerRunnableNP[] runnables) {
 
         for (Byte i = 0; i < numModalities; i++) {
@@ -990,10 +995,11 @@ public class MixParallelTopicModelNP implements Serializable {
                 }
 
 
-                runnables[thread] = new MixWorkerRunnableNP(maxNumTopics,activeNumTopics,
-                        alpha, alphaSum, beta,
+                runnables[thread] = new MixWorkerRunnableNP(maxNumTopics, 
+                        alphaConst,  gamma, beta,
                         random, data,
                         runnableCounts, runnableTotals,
+                        activeTopics,  nonActiveTopics,  totalTables, tablesPerTopic,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
                         typeSkewIndexes, skewWeight, p_a, p_b);
@@ -1015,13 +1021,14 @@ public class MixParallelTopicModelNP implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new MixWorkerRunnableNP(maxNumTopics,activeNumTopics,
-                    alpha, alphaSum, beta,
-                    random, data,
-                    typeTopicCounts, tokensPerTopic,
-                    offset, docsPerThread,
-                    ignoreLabels, numModalities,
-                    typeSkewIndexes,  skewWeight, p_a, p_b);
+            runnables[0] = new MixWorkerRunnableNP(maxNumTopics, 
+                        alphaConst,  gamma, beta,
+                        random, data,
+                        typeTopicCounts, tokensPerTopic,
+                        activeTopics,  nonActiveTopics,  totalTables, tablesPerTopic,
+                        offset, docsPerThread,
+                        ignoreLabels, numModalities,
+                        typeSkewIndexes, skewWeight, p_a, p_b);
 
 
 
