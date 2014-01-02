@@ -321,10 +321,13 @@ public class MixWorkerRunnable implements Runnable {
 
 
             isFinished = false;
+            
+            // Initialize the smoothing-only sampling bucket
+           Arrays.fill(smoothingOnlyMass, 0d);
 
             for (byte i = 0; i < numModalities; i++) {
-                // Initialize the smoothing-only sampling bucket
-                smoothingOnlyMass[i] = 0;
+                
+                
 
                 // Initialize the cached coefficients, using only smoothing.
                 //  These values will be selectively replaced in documents with

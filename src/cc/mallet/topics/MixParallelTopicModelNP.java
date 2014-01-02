@@ -34,6 +34,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Queue;
+import org.knowceans.util.Samplers;
 
 /**
  * Mix Parallel semi supervised, multi modal topic modal based on MALLET
@@ -59,7 +60,7 @@ public class MixParallelTopicModelNP implements Serializable {
     public Alphabet[] alphabet; // the alphabet for the input data per modality
     public LabelAlphabet topicAlphabet;  // the alphabet for the topics
     protected int maxNumTopics; // Max Number of topics to be fit
-    protected int activeNumTopics; // Number of active topics to be fit
+    protected int initialNumTopics; // Number of active topics to be fit
     public byte numModalities; // Number of modalities
     // These values are used to encode type/topic counts as
     //  count/topic pairs in a single int.
@@ -129,7 +130,8 @@ public class MixParallelTopicModelNP implements Serializable {
     Queue<Integer> nonActiveTopics;
     int totalTables;
     int[] tablesPerTopic;
-    int[] activeTopics;
+    int maxTopic;
+    int parameterSampleNum = 10;
     //double lblSkewWeight = 1;
 
     public MixParallelTopicModelNP(int initialNumberOfTopics, int maxNumberOfTopics, byte numModalities) {
@@ -178,7 +180,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
         this.topicAlphabet = topicAlphabet;
         this.maxNumTopics = topicAlphabet.size();
-        this.activeNumTopics = initialNumberOfTopics;
+        this.initialNumTopics = initialNumberOfTopics;
 
         this.alphabet = new Alphabet[numModalities];
 
@@ -230,8 +232,8 @@ public class MixParallelTopicModelNP implements Serializable {
         return maxNumTopics;
     }
 
-    public int getActiveNumTopics() {
-        return activeNumTopics;
+    public int getInitialNumTopics() {
+        return initialNumTopics;
     }
 
     public ArrayList<MixTopicModelTopicAssignment> getData() {
@@ -312,6 +314,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
 //while(keySetIterator.hasNext()){
 
+        maxTopic = initialNumTopics;
 
         for (Byte i = 0; i < numModalities; i++) {
 
@@ -377,7 +380,7 @@ public class MixParallelTopicModelNP implements Serializable {
                 int[] topics = topicSequence.getFeatures();
                 for (int position = 0; position < topics.length; position++) {
 
-                    int topic = random.nextInt(activeNumTopics);
+                    int topic = random.nextInt(initialNumTopics);
                     topics[position] = topic;
                 }
 
@@ -453,6 +456,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
     public void buildInitialTypeTopicCounts() {
 
+        totalTables = 0;
         for (Byte i = 0; i < numModalities; i++) {
             // Clear the topic totals
             Arrays.fill(tokensPerTopic[i], 0);
@@ -477,9 +481,11 @@ public class MixParallelTopicModelNP implements Serializable {
         }
 
         Arrays.fill(totalDocsPerModality, 0);
+        int[][] localTopicCounts = new int[numModalities][maxTopic];
 
         for (MixTopicModelTopicAssignment entity : data) {
             for (Byte i = 0; i < numModalities; i++) {
+                Arrays.fill(localTopicCounts[i], 0);
                 TopicAssignment document = entity.Assignments[i];
 
                 if (document != null) {
@@ -497,6 +503,12 @@ public class MixParallelTopicModelNP implements Serializable {
                         }
 
                         tokensPerTopic[i][topic]++;
+
+                        localTopicCounts[i][topic]++;
+                        if (localTopicCounts[i][topic] == 1) {
+                            tablesPerTopic[topic]++;
+                            totalTables++;
+                        }
 
                         // The format for these arrays is 
                         //  the topic in the rightmost bits
@@ -561,6 +573,10 @@ public class MixParallelTopicModelNP implements Serializable {
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
 
+        Arrays.fill(tablesPerTopic, 0);
+        maxTopic = 0;
+        totalTables = 0;
+
         for (Byte i = 0; i < numModalities; i++) {
 
             for (Byte m = 0; m < numModalities; m++) {
@@ -589,9 +605,11 @@ public class MixParallelTopicModelNP implements Serializable {
 
             // Handle the total-tokens-per-topic array
 
+
             int[][] sourceTotals = runnables[thread].getTokensPerTopic();
-            int[][][] sourceTypeTopicCounts =
-                    runnables[thread].getTypeTopicCounts();
+            int[][][] sourceTypeTopicCounts = runnables[thread].getTypeTopicCounts();
+            int[] sourceTablesPerTopic = runnables[thread].getTablesPerTopic();
+            maxTopic = Math.max(maxTopic, runnables[thread].getMaxTopic());
 
             double[][][] distrP_Mean = runnables[thread].getPDistr_Mean();
 
@@ -604,8 +622,10 @@ public class MixParallelTopicModelNP implements Serializable {
                     }
                 }
 
-                for (int topic = 0; topic < activeNumTopics; topic++) {
+                for (int topic = 0; topic < maxTopic; topic++) {
                     tokensPerTopic[i][topic] += sourceTotals[i][topic];
+                    tablesPerTopic[topic] += sourceTablesPerTopic[topic];
+                    totalTables += sourceTablesPerTopic[topic];
                 }
 
                 // Now handle the individual type topic counts
@@ -755,9 +775,80 @@ public class MixParallelTopicModelNP implements Serializable {
 
     }
 
+    public void optimizeAlphaAndGamma(MixWorkerRunnableNP[] runnables) {
+
+        int activeTopics = maxTopic;
+        double b_gamma = 5.0;
+        double a_gamma = 5.0;
+        double a_alpha = 1.0;
+        double b_alpha = 1.0;
+
+
+
+        for (int topic = 0; topic <= maxTopic; topic++) {
+
+            if (tablesPerTopic[topic] == 0) {
+                activeTopics--;
+            }
+        }
+
+        for (int r = 0; r < parameterSampleNum; r++) {
+
+            //check paper!
+            //gamma: root level
+            double eta = Samplers.randBeta(gamma + 1, totalTables);
+            double bloge = b_gamma - Math.log(eta);
+            double pie = (1.0 / (totalTables * bloge / (gamma + activeTopics - 1)));
+            int u = Samplers.randBernoulli(pie);
+            gamma = Samplers.randGamma(a_gamma + activeTopics - 1 + u, 1.0 / bloge);
+
+            //alpha: document level
+            double qs = 0.0;
+            double qw = 0.0;
+
+
+            int seqLen;
+
+            for (MixTopicModelTopicAssignment entity : data) {
+                for (Byte i = 0; i < numModalities; i++) {
+
+                    TopicAssignment document = entity.Assignments[i];
+
+                    if (document != null) {
+                        totalDocsPerModality[i]++;
+                        FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                        seqLen = tokens.getLength();
+                        qs += Samplers.randBernoulli(seqLen / (seqLen + alphaConst));
+                        qw += Math.log(Samplers.randBeta(alphaConst + 1, seqLen));
+                    }
+                }
+            }
+            alphaConst = Samplers.randGamma(a_alpha + totalTables - qs, 1.0 / (b_alpha - qw));
+        }
+
+        logger.info("[alpha: " + formatter.format(alphaConst) + "] ");
+        logger.info("[gamma: " + formatter.format(gamma) + "] ");
+        
+          for (int thread = 0; thread < numThreads; thread++) {
+            runnables[thread].resetAlpha(alphaConst);
+            runnables[thread].resetGamma(gamma);
+        }
+    }
+
+    
+    
     public void optimizeAlpha(MixWorkerRunnableNP[] runnables) {
 
         // First clear the sufficient statistic histograms
+
+        int activeTopics = maxTopic;
+
+        for (int topic = 0; topic <= maxTopic; topic++) {
+
+            if (tablesPerTopic[topic] == 0) {
+                activeTopics--;
+            }
+        }
 
         Arrays.fill(docLengthCounts, 0);
         for (int topic = 0; topic < topicDocCounts.length; topic++) {
@@ -778,7 +869,7 @@ public class MixParallelTopicModelNP implements Serializable {
                 //}
             }
 
-            for (int topic = 0; topic < activeNumTopics; topic++) {
+            for (int topic = 0; topic < maxTopic; topic++) {
 
                 if (!usingSymmetricAlpha) {
                     for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
@@ -814,10 +905,11 @@ public class MixParallelTopicModelNP implements Serializable {
         if (usingSymmetricAlpha) {
             alphaSum = Dirichlet.learnSymmetricConcentration(topicDocCounts[0],
                     docLengthCounts,
-                    activeNumTopics,
+                    activeTopics,
                     alphaSum);
-            for (int topic = 0; topic < activeNumTopics; topic++) {
-                alpha[topic] = alphaSum / activeNumTopics;
+            for (int topic = 0; topic < maxTopic; topic++) {
+
+                alpha[topic] = alphaSum / activeTopics;
             }
         } else {
             alphaSum = Dirichlet.learnParameters(alpha, topicDocCounts, docLengthCounts, 1.001, 1.0, 1);
@@ -826,40 +918,6 @@ public class MixParallelTopicModelNP implements Serializable {
         logger.info("[alpha: " + formatter.format(alpha[0]) + "] ");
     }
 
-//    public void temperAlpha(MixWorkerRunnable[] runnables) {
-//
-//        // First clear the sufficient statistic histograms
-//
-//        Arrays.fill(docLengthCounts, 0);
-//        for (int topic = 0; topic < topicDocCounts.length; topic++) {
-//            Arrays.fill(topicDocCounts[topic], 0);
-//        }
-//
-//        for (int thread = 0; thread < numThreads; thread++) {
-//            int[] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-//            int[][] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-//
-//            for (int count = 0; count < sourceLengthCounts.length; count++) {
-//                if (sourceLengthCounts[count] > 0) {
-//                    sourceLengthCounts[count] = 0;
-//                }
-//            }
-//
-//            for (int topic = 0; topic < numTopics; topic++) {
-//
-//                for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-//                    if (sourceTopicCounts[topic][count] > 0) {
-//                        sourceTopicCounts[topic][count] = 0;
-//                    }
-//                }
-//            }
-//        }
-//
-//        for (int topic = 0; topic < numTopics; topic++) {
-//            alpha[topic] = 1.0;
-//        }
-//        alphaSum = numTopics;
-//    }
     public void optimizeP(MixWorkerRunnableNP[] runnables) {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
@@ -892,10 +950,10 @@ public class MixParallelTopicModelNP implements Serializable {
         }
 
         // Now publish the new value
-        for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread].resetP_a(p_a);
-            runnables[thread].resetP_a(p_b);
-        }
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            runnables[thread].resetP_a(p_a);
+//            runnables[thread].resetP_a(p_b);
+//        }
 
     }
 
@@ -926,7 +984,7 @@ public class MixParallelTopicModelNP implements Serializable {
             // Figure out how large we need to make the "observation lengths"
             //  histogram.
             int maxTopicSize = 0;
-            for (int topic = 0; topic < activeNumTopics; topic++) {
+            for (int topic = 0; topic < maxTopic; topic++) {
                 if (tokensPerTopic[i][topic] > maxTopicSize) {
                     maxTopicSize = tokensPerTopic[i][topic];
                 }
@@ -934,7 +992,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
             // Now allocate it and populate it.
             int[] topicSizeHistogram = new int[maxTopicSize + 1];
-            for (int topic = 0; topic < activeNumTopics; topic++) {
+            for (int topic = 0; topic < maxTopic; topic++) {
                 topicSizeHistogram[ tokensPerTopic[i][topic]]++;
             }
 
@@ -947,10 +1005,10 @@ public class MixParallelTopicModelNP implements Serializable {
 
             logger.info("[beta: " + formatter.format(beta[i]) + "] ");
         }
-        // Now publish the new value
-        for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread].resetBeta(beta, betaSum);
-        }
+        // Now publish the new value --> not needed as beta is array now 
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            runnables[thread].resetBeta(beta, betaSum);
+//        }
 
     }
 
@@ -995,11 +1053,11 @@ public class MixParallelTopicModelNP implements Serializable {
                 }
 
 
-                runnables[thread] = new MixWorkerRunnableNP(maxNumTopics, 
-                        alphaConst,  gamma, beta,
+                runnables[thread] = new MixWorkerRunnableNP(maxNumTopics,
+                        alphaConst, gamma, beta,
                         random, data,
                         runnableCounts, runnableTotals,
-                        activeTopics,  nonActiveTopics,  totalTables, tablesPerTopic,
+                        maxTopic, totalTables, tablesPerTopic,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
                         typeSkewIndexes, skewWeight, p_a, p_b);
@@ -1021,14 +1079,14 @@ public class MixParallelTopicModelNP implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new MixWorkerRunnableNP(maxNumTopics, 
-                        alphaConst,  gamma, beta,
-                        random, data,
-                        typeTopicCounts, tokensPerTopic,
-                        activeTopics,  nonActiveTopics,  totalTables, tablesPerTopic,
-                        offset, docsPerThread,
-                        ignoreLabels, numModalities,
-                        typeSkewIndexes, skewWeight, p_a, p_b);
+            runnables[0] = new MixWorkerRunnableNP(maxNumTopics,
+                    alphaConst, gamma, beta,
+                    random, data,
+                    typeTopicCounts, tokensPerTopic,
+                    maxTopic, totalTables, tablesPerTopic,
+                    offset, docsPerThread,
+                    ignoreLabels, numModalities,
+                    typeSkewIndexes, skewWeight, p_a, p_b);
 
 
 
@@ -1163,7 +1221,7 @@ public class MixParallelTopicModelNP implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % optimizeInterval == 0) {
 
-                optimizeAlpha(runnables);
+                optimizeAlphaAndGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 
@@ -1281,7 +1339,7 @@ public class MixParallelTopicModelNP implements Serializable {
                     // also find and write phrases 
                     gnu.trove.TObjectIntHashMap<String>[] phrases = findTopicPhrases();
 
-                    for (int ti = 0; ti < activeNumTopics; ti++) {
+                    for (int ti = 0; ti < maxTopic; ti++) {
 
                         Object[] keys = phrases[ti].keys();
                         Alphabet alph = new Alphabet(keys);
@@ -1360,10 +1418,10 @@ public class MixParallelTopicModelNP implements Serializable {
      */
     public ArrayList<TreeSet<IDSorter>> getSortedWords(int modality) {
 
-        ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>(activeNumTopics);
+        ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>(maxTopic);
 
         // Initialize the tree sets
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             topicSortedWords.add(new TreeSet<IDSorter>());
         }
 
@@ -1422,9 +1480,9 @@ public class MixParallelTopicModelNP implements Serializable {
     public Object[][] getTopWords(int numWords, int modality) {
 
         ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(modality);
-        Object[][] result = new Object[activeNumTopics][];
+        Object[][] result = new Object[maxTopic][];
 
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
 
             TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
 
@@ -1461,7 +1519,7 @@ public class MixParallelTopicModelNP implements Serializable {
         }
         // Print results for each topic
 
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             for (Byte m = 0; m < numModalities; m++) {
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
 
@@ -1501,7 +1559,7 @@ public class MixParallelTopicModelNP implements Serializable {
         }
         out.println("<?xml version='1.0' ?>");
         out.println("<topicModel>");
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             for (Byte m = 0; m < numModalities; m++) {
                 out.println("  <topic id='" + topic + "' alpha='" + alpha[topic] + "' modality='" + m
                         + "' totalTokens='" + tokensPerTopic[m][topic]
@@ -1523,7 +1581,7 @@ public class MixParallelTopicModelNP implements Serializable {
     }
 
     public gnu.trove.TObjectIntHashMap<String>[] findTopicPhrases() {
-        int numTopics = activeNumTopics;// this.getNumTopics();
+        int numTopics = maxTopic;// this.getNumTopics();
 
         gnu.trove.TObjectIntHashMap<String>[] phrases = new gnu.trove.TObjectIntHashMap[numTopics];
         Alphabet alphabet = this.getAlphabet()[0];
@@ -1582,7 +1640,7 @@ public class MixParallelTopicModelNP implements Serializable {
     public void topicPhraseXMLReport(PrintWriter out, int numWords) {
 
         //Phrases only for modality 0 --> text
-        int numTopics = activeNumTopics;//this.getNumTopics();
+        int numTopics = maxTopic;//this.getNumTopics();
         Alphabet alphabet = this.getAlphabet()[0];
 
         gnu.trove.TObjectIntHashMap<String>[] phrases = findTopicPhrases();
@@ -1720,7 +1778,7 @@ public class MixParallelTopicModelNP implements Serializable {
     public void printTopicWordWeights(PrintWriter out) throws IOException {
         // Probably not the most efficient way to do this...
 
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             for (Byte m = 0; m < numModalities; m++) {
                 for (int type = 0; type < numTypes[m]; type++) {
 
@@ -1764,7 +1822,7 @@ public class MixParallelTopicModelNP implements Serializable {
      * an inferencer.
      */
     public double[] getTopicProbabilities(LabelSequence topics) {
-        double[] topicDistribution = new double[activeNumTopics];
+        double[] topicDistribution = new double[maxTopic];
 
         // Loop over the tokens in the document, counting the current topic
         //  assignments.
@@ -1774,13 +1832,13 @@ public class MixParallelTopicModelNP implements Serializable {
 
         // Add the smoothing parameters and normalize
         double sum = 0.0;
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             topicDistribution[topic] += alpha[topic];
             sum += topicDistribution[topic];
         }
 
         // And normalize
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             topicDistribution[topic] /= sum;
         }
 
@@ -1807,17 +1865,17 @@ public class MixParallelTopicModelNP implements Serializable {
         out.print("#doc name topic proportion ...\n");
         int[] docLen = new int[numModalities];
 
-        int[][] topicCounts = new int[numModalities][activeNumTopics];
+        int[][] topicCounts = new int[numModalities][maxTopic];
 
 
-        IDSorter[] sortedTopics = new IDSorter[activeNumTopics];
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        IDSorter[] sortedTopics = new IDSorter[maxTopic];
+        for (int topic = 0; topic < maxTopic; topic++) {
             // Initialize the sorters with dummy values
             sortedTopics[topic] = new IDSorter(topic, topic);
         }
 
-        if (max < 0 || max > activeNumTopics) {
-            max = activeNumTopics;
+        if (max < 0 || max > maxTopic) {
+            max = maxTopic;
         }
 
 
@@ -1871,7 +1929,7 @@ public class MixParallelTopicModelNP implements Serializable {
                     }
 
                     // And normalize
-                    for (int topic = 0; topic < activeNumTopics; topic++) {
+                    for (int topic = 0; topic < maxTopic; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
                             topicProportion += (double) topicCounts[m][topic] / docLen[m];
@@ -1972,7 +2030,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
         out.println("#doc source pos typeindex type topic");
         out.print("#alpha : ");
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             out.print(alpha[topic] + " ");
         }
         out.println();
@@ -2029,7 +2087,7 @@ public class MixParallelTopicModelNP implements Serializable {
         double[] topicLogGammas = new double[maxNumTopics];
         int[] docTopics;
 
-        for (int topic = 0; topic < activeNumTopics; topic++) {
+        for (int topic = 0; topic < maxTopic; topic++) {
             topicLogGammas[ topic] = Dirichlet.logGammaStirling(alpha[topic]);
         }
 
@@ -2047,7 +2105,7 @@ public class MixParallelTopicModelNP implements Serializable {
                             topicCounts[ docTopics[token]]++;
                         }
 
-                        for (int topic = 0; topic < activeNumTopics; topic++) {
+                        for (int topic = 0; topic < maxTopic; topic++) {
                             if (topicCounts[topic] > 0) {
                                 logLikelihood[m] += (Dirichlet.logGammaStirling(alpha[topic] + topicCounts[topic])
                                         - topicLogGammas[ topic]);
@@ -2099,7 +2157,7 @@ public class MixParallelTopicModelNP implements Serializable {
                 }
             }
 
-            for (int topic = 0; topic < activeNumTopics; topic++) {
+            for (int topic = 0; topic < maxTopic; topic++) {
                 logLikelihood[m] -=
                         Dirichlet.logGammaStirling((beta[m] * numTypes[m])
                         + tokensPerTopic[m][ topic]);
@@ -2118,7 +2176,7 @@ public class MixParallelTopicModelNP implements Serializable {
 
             // logGamma(|V|*beta) for every topic
             logLikelihood[m] +=
-                    Dirichlet.logGammaStirling(beta[m] * numTypes[m]) * activeNumTopics;
+                    Dirichlet.logGammaStirling(beta[m] * numTypes[m]) * maxTopic;
 
             // logGamma(beta) for all type/topic pairs with non-zero count
             logLikelihood[m] -=
@@ -2153,7 +2211,7 @@ public class MixParallelTopicModelNP implements Serializable {
      * under this model //TODO: build a MixMarginalProbEstimator
      */
     public MarginalProbEstimator getProbEstimator() {
-        return new MarginalProbEstimator(activeNumTopics, alpha, alphaSum, beta[0],
+        return new MarginalProbEstimator(maxTopic, alpha, alphaSum, beta[0],
                 typeTopicCounts[0], tokensPerTopic[0]);
     }
     // Serialization
@@ -2168,7 +2226,7 @@ public class MixParallelTopicModelNP implements Serializable {
         out.writeObject(alphabet);
         out.writeObject(topicAlphabet);
 
-        out.writeInt(activeNumTopics);
+        out.writeInt(maxTopic);
         out.writeInt(maxNumTopics);
 
         out.writeInt(topicMask);
@@ -2218,7 +2276,7 @@ public class MixParallelTopicModelNP implements Serializable {
         alphabet = (Alphabet[]) in.readObject();
         topicAlphabet = (LabelAlphabet) in.readObject();
 
-        activeNumTopics = in.readInt();
+        maxTopic = in.readInt();
         maxNumTopics = in.readInt();
 
         topicMask = in.readInt();
