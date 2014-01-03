@@ -35,18 +35,18 @@ public class MixTopicModelExampleNP {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.LabelsOnly;
+        MixParallelTopicModelNP.SkewType skewOn = MixParallelTopicModelNP.SkewType.LabelsOnly;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 300;
-        LabelType lblType = LabelType.Grants;
+        int numIterations = 100;
+        LabelType lblType = LabelType.Authors;
 
         int pruneCnt = 15; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
-        String experimentId = "50T_300I_NIPS_Flat";
+        String experimentId = "50T_100I_NIPS_Lbls_NP";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -315,6 +315,8 @@ public class MixTopicModelExampleNP {
         }
         double[] beta = new double[numModalities];
         Arrays.fill(beta, 0.01);
+        
+        double gamma = 10;
 
         boolean runOrigParallelModel = false;
         if (runOrigParallelModel) {
@@ -324,7 +326,7 @@ public class MixTopicModelExampleNP {
 
             // Use two parallel samplers, which each look at one half the corpus and combine
             //  statistics after every iteration.
-            modelOrig.setNumThreads(2);
+            modelOrig.setNumThreads(6);
             // Run the model for 50 iterations and stop (this is for testing only, 
             //  for real applications, use 1000 to 2000 iterations)
             modelOrig.setNumIterations(numIterations);
@@ -335,7 +337,7 @@ public class MixTopicModelExampleNP {
             //model.saveModelInterval=250;
             modelOrig.estimate();
         }
-        MixParallelTopicModel model = new MixParallelTopicModel(numTopics, numModalities, 1.0, beta, ignoreLabels, skewOn);
+        MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 1000, numModalities, 1.0, beta, gamma, ignoreLabels, skewOn);
 
         // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
 
@@ -343,12 +345,12 @@ public class MixTopicModelExampleNP {
 
         // Use two parallel samplers, which each look at one half the corpus and combine
         //  statistics after every iteration.
-        model.setNumThreads(4);
+        model.setNumThreads(2);
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);
-        model.optimizeInterval = 50;
-        model.burninPeriod = 100;
+        model.optimizeInterval = 10;
+        model.burninPeriod = 50;
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;
@@ -557,7 +559,7 @@ public class MixTopicModelExampleNP {
 
         if (modelDiagnosticsFile != null) {
             PrintWriter out = new PrintWriter(modelDiagnosticsFile);
-            MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
+            MixTopicModelDiagnosticsNP diagnostics = new MixTopicModelDiagnosticsNP(model, topWords);
             out.println(diagnostics.toXML()); //preferable than XML???
             out.close();
         }

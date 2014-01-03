@@ -16,8 +16,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Queue;
-import org.knowceans.util.Samplers;
-import org.knowceans.util.Vectors;
+//import org.knowceans.util.Samplers;
+//import org.knowceans.util.Vectors;
 
 /**
  * A parallel semi supervised topic model runnable task.
@@ -110,6 +110,8 @@ public class MixWorkerRunnableNP implements Runnable {
         this.p_b = p_b;
         this.smoothingOnlyMass = new double[numModalities];
         this.smoothOnlyCachedCoefficients = new double[numModalities][maxNumTopics];
+        this.nonActiveTopics = new PriorityQueue<Integer>(10, topicComparator);
+        this.tau = new double[maxNumTopics];
         //this.nonActiveTopics = new int[maxNumTopics];
         //this.nonActiveTopics = new PriorityQueue<Integer>(maxNumTopics / 3, topicComparator); go to global
         this.typeSkewIndexes = typeSkewIndexes;
@@ -137,6 +139,7 @@ public class MixWorkerRunnableNP implements Runnable {
 
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
+        //this.nonActiveTopics = new Queue<Integer> (10);
 
         this.alpha = alpha;
 
@@ -247,6 +250,43 @@ public class MixWorkerRunnableNP implements Runnable {
         this.fastSampling = fastSampling;
     }
 
+    private double[] sampleDirichlet(double[] p) {
+        double magnitude = 1;
+        double[] partition;
+
+        magnitude = 0;
+        partition = new double[p.length];
+
+        // Add up the total
+        for (int i = 0; i < p.length; i++) {
+            magnitude += p[i];
+        }
+
+        for (int i = 0; i < p.length; i++) {
+            partition[i] = p[i] / magnitude;
+        }
+
+        double distribution[] = new double[partition.length];
+
+
+//		For each dimension, draw a sample from Gamma(mp_i, 1)
+        double sum = 0;
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
+            if (distribution[i] <= 0) {
+                distribution[i] = 0.0001;
+            }
+            sum += distribution[i];
+        }
+
+//		Normalize
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] /= sum;
+        }
+
+        return distribution;
+    }
+
     /**
      * Once we have sampled the local counts, trash the "global" type topic
      * counts and reuse the space to build a summary of the type topic counts
@@ -280,7 +320,8 @@ public class MixWorkerRunnableNP implements Runnable {
             }
         }
 
-        int[][] localTopicCounts = new int[numModalities][maxTopic];
+
+        int[] localTopicCounts = new int[maxNumTopics];
 
         for (int doc = startDoc;
                 doc < data.size() && doc < startDoc + numDocs;
@@ -289,7 +330,8 @@ public class MixWorkerRunnableNP implements Runnable {
 
 
             for (byte i = 0; i < numModalities; i++) {
-                Arrays.fill(localTopicCounts[i], 0);
+
+                Arrays.fill(localTopicCounts, 0);
 
                 TopicAssignment document = data.get(doc).Assignments[i];
                 if (document != null) {
@@ -308,8 +350,8 @@ public class MixWorkerRunnableNP implements Runnable {
 
                         tokensPerTopic[i][topic]++;
 
-                        localTopicCounts[i][topic]++;
-                        if (localTopicCounts[i][topic] == 1) {
+                        localTopicCounts[topic]++;
+                        if (localTopicCounts[topic] == 1) {
                             tablesPerTopic[topic]++;
                             maxTopic = Math.max(maxTopic, topic);
                         }
@@ -398,7 +440,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //    private int findActiveTopics() {
 //        int denseIndex = 0;
 //
-//        for (int topic = 0; topic < maxTopic; topic++) {
+//        for (int topic = 0; topic <= maxTopic; topic++) {
 //            if (topicExist(topic)) {
 //                activeTopics[denseIndex] = topic;
 //                denseIndex++;
@@ -412,7 +454,7 @@ public class MixWorkerRunnableNP implements Runnable {
 //    }
     //we should also update coeffifients and smoothing 
     private void updateTauAndSmoothing() {
-        double[] mk = new double[maxTopic];
+        double[] mk = new double[maxTopic + 2];
 
         for (int t = 0; t <= maxTopic; t++) {
 
@@ -440,12 +482,13 @@ public class MixWorkerRunnableNP implements Runnable {
         //tables = Vectors.sum(mk);
         mk[maxTopic + 1] = gamma;
 
-        double[] tt = Samplers.randDir(mk);
+        double[] tt = sampleDirichlet(mk);
 
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
         nonActiveTopics.clear();
 
+        int newMaxTopic = maxTopic;
         for (int topic = 0; topic <= maxTopic + 1; topic++) {
 
             if (mk[topic] == 0) {
@@ -456,6 +499,9 @@ public class MixWorkerRunnableNP implements Runnable {
                 }
 
             } else {
+                if (topic != maxTopic + 1) {
+                    newMaxTopic = topic;
+                }
                 tau[topic] = tt[topic];
                 for (byte m = 0; m < numModalities; m++) {
                     // Initialize the cached coefficients, using only smoothing.
@@ -467,9 +513,7 @@ public class MixWorkerRunnableNP implements Runnable {
                 }
             }
         }
-
-
-
+        maxTopic = newMaxTopic;
 
 
     }
@@ -566,7 +610,7 @@ public class MixWorkerRunnableNP implements Runnable {
         // Build an array that densely lists the topics that
         //  have non-zero counts.
         int denseIndex = 0;
-        for (int topic = 0; topic < maxTopic; topic++) {
+        for (int topic = 0; topic <= maxTopic; topic++) {
             int i = 0;
             boolean topicFound = false;
             while (i < numModalities && !topicFound) {
@@ -651,66 +695,14 @@ public class MixWorkerRunnableNP implements Runnable {
 
             // Maintain the dense index, if we are deleting
             //  the old topic
-            boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
+            // boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
 
-            if (isDeletedTopic) {
-                //we have a table per modality thus we should decrease related tables num
-                totalTables--;
-                tablesPerTopic[oldTopic]--;
+            if (localTopicCounts[m][oldTopic] == 0) { //last token  in modality 
 
-                //check if this topic should be deleted from document
-                byte j = 0;
-                while (isDeletedTopic && j < numModalities) {
-
-                    if (j != m) { //do not check m twice
-                        if (localTopicCounts[j][oldTopic] > 0) {
-                            isDeletedTopic = false;
-
-                        }
-                    }
-                    j++;
-                }
-
-                if (isDeletedTopic) {
-
-                    // First get to the dense location associated with
-                    //  the old topic.
-                    int denseIndex = 0;
-                    // We know it's in there somewhere, so we don't 
-                    //  need bounds checking.
-                    while (localTopicIndex[denseIndex] != oldTopic) {
-                        denseIndex++;
-                    }
-                    // shift all remaining dense indices to the left.
-                    while (denseIndex < nonZeroTopics) {
-                        if (denseIndex < localTopicIndex.length - 1) {
-                            localTopicIndex[denseIndex] =
-                                    localTopicIndex[denseIndex + 1];
-                        }
-                        denseIndex++;
-                    }
-                    nonZeroTopics--;
-                }
-
-
+                nonZeroTopics = removeTopicFromDocument(localTopicCounts, localTopicIndex, oldTopic, nonZeroTopics, m);
             }
 
-            // Decrement the global topic count totals
-            tokensPerTopic[m][oldTopic]--;
-            assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-
-            if (tokensPerTopic[m][oldTopic] == 0) {
-                if (tablesPerTopic[oldTopic] == 0) { //globally last topic
-
-                    nonActiveTopics.add(oldTopic);
-                    tau[oldTopic] = 0;
-                    maxTopic = Math.max(oldTopic - 1, maxTopic);
-                    for (byte mm = 0; mm < numModalities; mm++) {
-                        smoothOnlyCachedCoefficients[mm][oldTopic] = 0;
-                    }
-
-                }
-            }
+            decreaseGlobalCounts(oldTopic, m);
 
             // Add the old topic's contribution back into the
             //  normalizing constants.
@@ -731,6 +723,83 @@ public class MixWorkerRunnableNP implements Runnable {
 
     }
 
+    protected int removeTopicFromDocument(
+            int[][] localTopicCounts,
+            int[] localTopicIndex,
+            int oldTopic,
+            int nonZeroTopics,
+            byte m //modality)
+            ) {
+        //we have a table per modality thus we should decrease related tables num
+        totalTables--;
+        tablesPerTopic[oldTopic]--;
+
+        //check if this topic should be deleted from document
+        byte j = 0;
+        boolean isDeletedTopic = true;
+        while (isDeletedTopic && j < numModalities) {
+
+            if (j != m) { //do not check m twice
+                if (localTopicCounts[j][oldTopic] > 0) {
+                    isDeletedTopic = false;
+
+                }
+            }
+            j++;
+        }
+
+        if (isDeletedTopic) { //last in document
+
+            // First get to the dense location associated with
+            //  the old topic.
+            int denseIndex = 0;
+            // We know it's in there somewhere, so we don't 
+            //  need bounds checking.
+            while (localTopicIndex[denseIndex] != oldTopic) {
+                denseIndex++;
+            }
+            // shift all remaining dense indices to the left.
+            while (denseIndex < nonZeroTopics) {
+                if (denseIndex < localTopicIndex.length - 1) {
+                    localTopicIndex[denseIndex] =
+                            localTopicIndex[denseIndex + 1];
+                }
+                denseIndex++;
+            }
+            nonZeroTopics--;
+        }
+
+        return nonZeroTopics;
+
+    }
+
+    protected void decreaseGlobalCounts(int oldTopic,
+            byte m)//modality)
+    {
+        // Decrement the global topic count totals
+        tokensPerTopic[m][oldTopic]--;
+        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
+
+        if (tokensPerTopic[m][oldTopic] == 0) {
+            if (tablesPerTopic[oldTopic] == 0) { //globally last topic
+
+                nonActiveTopics.add(oldTopic);
+                tau[oldTopic] = 0;
+                if (maxTopic == oldTopic) {
+                    int i = oldTopic;
+                    while (i > 0 && tablesPerTopic[i] == 0) {
+                        i--;
+                    }
+                    maxTopic = i;
+                }
+                for (byte mm = 0; mm < numModalities; mm++) {
+                    smoothOnlyCachedCoefficients[mm][oldTopic] = 0;
+                }
+
+            }
+        }
+    }
+
     protected double calcTopicScores(
             double[][] cachedCoefficients,
             int oldTopic,
@@ -743,7 +812,7 @@ public class MixWorkerRunnableNP implements Runnable {
         //  where appropriate, and calculating the score
         //  for each topic at the same time.
 
-        final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
+        //final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
         int index = 0;
         int currentTopic, currentValue;
         double score;
@@ -758,59 +827,71 @@ public class MixWorkerRunnableNP implements Runnable {
             currentTopic = currentTypeTopicCounts[index] & topicMask;
             currentValue = currentTypeTopicCounts[index] >> topicBits;
 
-            if (!alreadyDecremented
-                    && currentTopic == oldTopic) {
+            if (!alreadyDecremented && currentTopic == oldTopic) {
 
-                // We're decrementing and adding up the 
+
+// We're decrementing and adding up the 
                 //  sampling weights at the same time, but
                 //  decrementing may require us to reorder
                 //  the topics, so after we're done here,
                 //  look at this cell in the array again.
 
                 currentValue--;
-                if (currentValue == 0) {
-                    currentTypeTopicCounts[index] = 0;
-                } else {
-                    currentTypeTopicCounts[index] =
-                            (currentValue << topicBits) + oldTopic;
-                }
-
-                // Shift the reduced value to the right, if necessary.
-
-                int subIndex = index;
-                while (subIndex < currentTypeTopicCounts.length - 1
-                        && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
-                    int temp = currentTypeTopicCounts[subIndex];
-                    currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
-                    currentTypeTopicCounts[subIndex + 1] = temp;
-
-                    subIndex++;
-                }
-
+                reorderTypeTopicCounts(
+                        currentValue,
+                        currentTypeTopicCounts,
+                        index,
+                        oldTopic);
                 alreadyDecremented = true;
-            } else {
-
-                // re scale topic term scores (probability mass related to token/label type)
-                //types having large skew--> not ver discriminative. Thus I decrease their probability mass
-                // skewWeight is used for normalization. Thus the total probability mass (topic term scores) related to types remains almost constant
-                // but is share based on type skewness promoting types that are discriminative
-                double skewInx = skewWeight[m] * (1 + termSkew); //1;
-                //if (!ignoreSkewness) {
-                //skewInx = skewWeight[m] * (1 + termSkew);
-                // }
-
-                //add normalized smoothingOnly coefficient 
-                score =
-                        (cachedCoefficients[m][currentTopic] + (smoothOnlyCachedCoefficientsLcl[m][currentTopic] / docLength[m])) * currentValue * skewInx;
-
-                topicTermMass += score;
-                topicTermScores[index] = score;
-
-                index++;
             }
+
+            // re scale topic term scores (probability mass related to token/label type)
+            //types having large skew--> not ver discriminative. Thus I decrease their probability mass
+            // skewWeight is used for normalization. Thus the total probability mass (topic term scores) related to types remains almost constant
+            // but is share based on type skewness promoting types that are discriminative
+            double skewInx = skewWeight[m] * (1 + termSkew); //1;
+            //if (!ignoreSkewness) {
+            //skewInx = skewWeight[m] * (1 + termSkew);
+            // }
+
+            //add normalized smoothingOnly coefficient 
+            score =
+                    (cachedCoefficients[m][currentTopic] + (smoothOnlyCachedCoefficients[m][currentTopic] / docLength[m])) * currentValue * skewInx;
+
+            topicTermMass += score;
+            topicTermScores[index] = score;
+
+            index++;
+
         }
 
         return topicTermMass;
+    }
+
+    protected void reorderTypeTopicCounts(
+            int currentValue,
+            int[] currentTypeTopicCounts,
+            int index,
+            int oldTopic) {
+
+        if (currentValue == 0) {
+            currentTypeTopicCounts[index] = 0;
+        } else {
+            currentTypeTopicCounts[index] =
+                    (currentValue << topicBits) + oldTopic;
+        }
+
+        // Shift the reduced value to the right, if necessary.
+
+        int subIndex = index;
+        while (subIndex < currentTypeTopicCounts.length - 1
+                && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
+            int temp = currentTypeTopicCounts[subIndex];
+            currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
+            currentTypeTopicCounts[subIndex + 1] = temp;
+
+            subIndex++;
+        }
     }
 
     protected int findNewTopicInTopicTermMass(
@@ -893,24 +974,26 @@ public class MixWorkerRunnableNP implements Runnable {
         //sample /= beta[m];
 
         int topic = 0;
-        sample -= alpha * tau[topic] * beta[m]
-                / (tokensPerTopic[m][topic] + betaSum[m]);
+//        sample -= alpha * tau[topic] * beta[m]
+//                / (tokensPerTopic[m][topic] + betaSum[m]);
 
 
-        while (sample > 0.0 && topic < maxTopic) {
+        while (sample > 0.0 && topic <= maxTopic) {
 
-            topic++;
             sample -= alpha * tau[topic] * beta[m]
                     / (tokensPerTopic[m][topic] + betaSum[m]);
-
 
             if (sample <= 0.0) {
                 newTopic = topic;
                 break;
             }
+
+            topic++;
         }
 
-
+        if (newTopic == -1) {
+            newTopic = topic; // error in rounding??
+        }
 
         return newTopic;
     }
@@ -926,7 +1009,8 @@ public class MixWorkerRunnableNP implements Runnable {
             int[] currentTypeTopicCounts,
             final int[] docLength,
             double sample,
-            double[][] p) {
+            double[][] p,
+            double newTopicMass) {
         //	Make sure it actually gets set
 
         int newTopic = -1;
@@ -973,10 +1057,10 @@ public class MixWorkerRunnableNP implements Runnable {
             }
         }
 
-        if (newTopic == -1 || newTopic > maxTopic - 1) {
-            System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
+        if (newTopic == -1 || newTopic > maxTopic) {
+            System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + newTopicMass + " " + smoothingOnlyMass[m] + " "
                     + topicBetaMass[m] + " " + topicTermMass);
-            newTopic = maxTopic - 1; // TODO is this appropriate
+            newTopic = maxTopic; // TODO is this appropriate
             //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
         }
 
@@ -1258,7 +1342,8 @@ public class MixWorkerRunnableNP implements Runnable {
                                 currentTypeTopicCounts,
                                 docLength,
                                 sample,
-                                p);
+                                p,
+                                newTopicMass);
                     }
 
 
