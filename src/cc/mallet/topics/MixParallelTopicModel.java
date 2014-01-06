@@ -1141,9 +1141,9 @@ public class MixParallelTopicModel implements Serializable {
 
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
             if (elapsedMillis < 1000) {
-                logger.fine(elapsedMillis + "ms ");
+                logger.info(elapsedMillis + "ms ");
             } else {
-                logger.fine((elapsedMillis / 1000) + "s ");
+                logger.info((elapsedMillis / 1000) + "s ");
             }
 
             if (iteration > burninPeriod && optimizeInterval != 0

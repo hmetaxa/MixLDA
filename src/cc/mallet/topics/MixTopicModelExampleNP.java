@@ -337,7 +337,7 @@ public class MixTopicModelExampleNP {
             //model.saveModelInterval=250;
             modelOrig.estimate();
         }
-        MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 1000, numModalities, 1.0, beta, gamma, ignoreLabels, skewOn);
+        MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 60, numModalities, 1.0, beta, gamma, ignoreLabels, skewOn);
 
         // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
 
@@ -345,7 +345,7 @@ public class MixTopicModelExampleNP {
 
         // Use two parallel samplers, which each look at one half the corpus and combine
         //  statistics after every iteration.
-        model.setNumThreads(2);
+        model.setNumThreads(4);
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);

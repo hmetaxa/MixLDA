@@ -38,9 +38,9 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.LabelsOnly;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 300;
-        LabelType lblType = LabelType.Grants;
-
+        int numIterations = 100;
+        LabelType lblType = LabelType.Authors;
+        
         int pruneCnt = 15; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -324,12 +324,12 @@ public class MixTopicModelExample {
 
             // Use two parallel samplers, which each look at one half the corpus and combine
             //  statistics after every iteration.
-            modelOrig.setNumThreads(2);
+            modelOrig.setNumThreads(4);
             // Run the model for 50 iterations and stop (this is for testing only, 
             //  for real applications, use 1000 to 2000 iterations)
             modelOrig.setNumIterations(numIterations);
-            modelOrig.optimizeInterval = 50;
-            modelOrig.burninPeriod = 150;
+            modelOrig.optimizeInterval = 10;
+            modelOrig.burninPeriod = 50;
             //model.optimizeInterval = 0;
             //model.burninPeriod = 0;
             //model.saveModelInterval=250;
@@ -347,8 +347,8 @@ public class MixTopicModelExample {
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);
-        model.optimizeInterval = 50;
-        model.burninPeriod = 100;
+        model.optimizeInterval =    10;
+        model.burninPeriod = 50;
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;
