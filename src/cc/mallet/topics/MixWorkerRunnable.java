@@ -325,8 +325,6 @@ public class MixWorkerRunnable implements Runnable {
 
             for (byte i = 0; i < numModalities; i++) {
 
-
-
                 // Initialize the cached coefficients, using only smoothing.
                 //  These values will be selectively replaced in documents with
                 //  non-zero counts in particular topics.
@@ -461,14 +459,7 @@ public class MixWorkerRunnable implements Runnable {
 
                     }
                 }
-                //topicBetaMass[m] *= beta[m];
-
-//                if (Double.isNaN(topicBetaMass[m])) {
-//                    topicBetaMass[m] = 0;
-//                }
-//                if (Double.isNaN(cachedCoefficients[m][topic])) {
-//                    cachedCoefficients[m][topic] = 0;
-//                }
+                
             }
         }
         return nonZeroTopics;
@@ -495,6 +486,7 @@ public class MixWorkerRunnable implements Runnable {
 
             for (byte j = 0; j < numModalities; j++) {
                 if (docLength[j] > 0) {
+
                     double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
                             / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
                     /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
@@ -556,9 +548,10 @@ public class MixWorkerRunnable implements Runnable {
             smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
                     / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
+            smoothOnlyCachedCoefficients[m][oldTopic] = alpha[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+
             for (byte j = 0; j < numModalities; j++) {
                 if (docLength[j] > 0) {
-
                     double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
                             / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
 
@@ -586,7 +579,7 @@ public class MixWorkerRunnable implements Runnable {
         //  where appropriate, and calculating the score
         //  for each topic at the same time.
 
-        final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
+        //final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
         int index = 0;
         int currentTopic, currentValue;
         double score;
@@ -644,7 +637,7 @@ public class MixWorkerRunnable implements Runnable {
 
                 //add normalized smoothingOnly coefficient 
                 score =
-                        (cachedCoefficients[m][currentTopic] + (smoothOnlyCachedCoefficientsLcl[m][currentTopic] / docLength[m])) * currentValue * skewInx;
+                        (cachedCoefficients[m][currentTopic] + (smoothOnlyCachedCoefficients[m][currentTopic] / docLength[m])) * currentValue * skewInx;
 
                 topicTermMass += score;
                 topicTermScores[index] = score;
@@ -697,7 +690,12 @@ public class MixWorkerRunnable implements Runnable {
             double[][] p) {
 
         //sample /= beta[m];
+        
+        
+            
         int topic = -1;
+        if (m==1)
+            topic=-2;
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
             topic = localTopicIndex[denseIndex];
@@ -723,7 +721,7 @@ public class MixWorkerRunnable implements Runnable {
         }
 //       
         if (sample > 0) {
-            return -1; // error in rounding (?) I should find a solution 
+            return -1; // error in rounding (?) I should check it again
         }
         return topic;
     }
@@ -754,7 +752,8 @@ public class MixWorkerRunnable implements Runnable {
         }
 
         if (newTopic == -1) {
-            newTopic = numTopics - 1;
+            return -1;
+            //          newTopic = numTopics - 1;
         }
 
         return newTopic;
@@ -891,6 +890,7 @@ public class MixWorkerRunnable implements Runnable {
             if (docLength[j] > 0) {
                 double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
                         / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
+
                 /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
                 topicBetaMass[m] -= beta[m] * normSumN;
                 cachedCoefficients[m][newTopic] -= normSumN;
@@ -911,17 +911,17 @@ public class MixWorkerRunnable implements Runnable {
         //  add the topic to the dense index.
 
         boolean isNewTopic = (localTopicCounts[m][newTopic] == 1);
-        if (isNewTopic) {
-            byte j = 0;
-            while (isNewTopic && j < numModalities) {
-                if (j != m) {
-                    if (localTopicCounts[j][newTopic] > 0) {
-                        isNewTopic = false;
-                    }
+
+        byte jj = 0;
+        while (isNewTopic && jj < numModalities) {
+            if (jj != m) {
+                if (localTopicCounts[jj][newTopic] > 0) {
+                    isNewTopic = false;
                 }
-                j++;
             }
+            jj++;
         }
+
 
 
         if (isNewTopic) {
@@ -952,10 +952,13 @@ public class MixWorkerRunnable implements Runnable {
         smoothingOnlyMass[m] += alpha[newTopic] * beta[m]
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
+        smoothOnlyCachedCoefficients[m][newTopic] = alpha[newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
         for (byte j = 0; j < numModalities; j++) {
             if (docLength[j] > 0) {
                 double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
                         / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
+
                 /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
                 topicBetaMass[m] += beta[m] * normSumN;
                 cachedCoefficients[m][newTopic] += normSumN;
@@ -1064,7 +1067,7 @@ public class MixWorkerRunnable implements Runnable {
 //                        newTopic = topicPerPrvTopic.get(tmpPreviousTopics);
 //                        //System.out.println("common topic sequence found");
 //                    } else 
-                    {
+                    
 
                         double[] topicTermScores = new double[numTopics];
                         double termSkew = typeSkewIndexes[m][type];
@@ -1102,7 +1105,7 @@ public class MixWorkerRunnable implements Runnable {
                                 docLength,
                                 sample,
                                 p);
-                    }
+                    
 
 
 //                    if (!topicPerPrvTopic.contains(tmpPreviousTopics)) {

@@ -316,7 +316,7 @@ public class MixTopicModelExampleNP {
         double[] beta = new double[numModalities];
         Arrays.fill(beta, 0.01);
         
-        double gamma = 10;
+     
 
         boolean runOrigParallelModel = false;
         if (runOrigParallelModel) {
@@ -337,7 +337,10 @@ public class MixTopicModelExampleNP {
             //model.saveModelInterval=250;
             modelOrig.estimate();
         }
-        MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 60, numModalities, 1.0, beta, gamma, ignoreLabels, skewOn);
+        
+           double gamma = 10;
+           
+        MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 60, numModalities, 5, beta, gamma, ignoreLabels, skewOn);
 
         // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
 

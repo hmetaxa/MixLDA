@@ -1243,7 +1243,7 @@ public class MixParallelTopicModelNP implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % optimizeInterval == 0) {
 
-                optimizeAlphaAndGamma(runnables);
+                //optimizeAlphaAndGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 

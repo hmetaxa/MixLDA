@@ -250,6 +250,40 @@ public class MixWorkerRunnableNP implements Runnable {
         this.fastSampling = fastSampling;
     }
 
+    public double[] SampleSymmetricDirichlet(int size, double alpha) {
+        double magnitude = 1;
+        double[] partition;
+
+        magnitude = size * alpha;
+
+        partition = new double[size];
+
+        partition[0] = 1.0 / size;
+        for (int i = 1; i < size; i++) {
+            partition[i] = partition[0];
+        }
+
+        double distribution[] = new double[partition.length];
+
+
+//		For each dimension, draw a sample from Gamma(mp_i, 1)
+        double sum = 0;
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
+            if (distribution[i] <= 0) {
+                distribution[i] = 0.0001;
+            }
+            sum += distribution[i];
+        }
+
+//		Normalize
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] /= sum;
+        }
+
+        return distribution;
+    }
+
     private double[] sampleDirichlet(double[] p) {
         double magnitude = 1;
         double[] partition;
@@ -352,6 +386,7 @@ public class MixWorkerRunnableNP implements Runnable {
 
                         localTopicCounts[topic]++;
                         if (localTopicCounts[topic] == 1) {
+                            totalTables++;
                             tablesPerTopic[topic]++;
                             maxTopic = Math.max(maxTopic, topic);
                         }
@@ -456,10 +491,19 @@ public class MixWorkerRunnableNP implements Runnable {
     private void updateTauAndSmoothing() {
         double[] mk = new double[maxTopic + 2];
 
+        double[] tt = new double[maxTopic + 2];
+
         for (int t = 0; t <= maxTopic; t++) {
 
             //direct assignment scheme: one table per topic per doc per modality
-            mk[t] = (double) tablesPerTopic[t];
+            if (tablesPerTopic[t] >= 0) {
+                mk[t] = (double) tablesPerTopic[t];
+                tt[t] = ((double) tablesPerTopic[t] / (totalTables + gamma));
+
+            } else {
+                mk[t] = 0;
+            }
+
 
 //			int k = kactive.get(kk);
 //			
@@ -481,8 +525,10 @@ public class MixWorkerRunnableNP implements Runnable {
         //get number of tables
         //tables = Vectors.sum(mk);
         mk[maxTopic + 1] = gamma;
+        tt[maxTopic + 1] = gamma / (totalTables + gamma);
+        // tt = sampleDirichlet(mk);
 
-        double[] tt = sampleDirichlet(mk);
+        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
 
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
@@ -499,7 +545,7 @@ public class MixWorkerRunnableNP implements Runnable {
                 }
 
             } else {
-                if (topic != maxTopic + 1) {
+                if (topic <= maxTopic) { //maxTopic
                     newMaxTopic = topic;
                 }
                 tau[topic] = tt[topic];
@@ -635,31 +681,35 @@ public class MixWorkerRunnableNP implements Runnable {
         }
         // Initialize cached coefficients and the topic/beta 
         //  normalizing constant.
+        int topic = -1;
 
         for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-            for (byte i = 0; i < numModalities; i++) {
-                int topic = localTopicIndex[denseIndex];
+
+            topic = localTopicIndex[denseIndex];
+            for (byte m = 0; m < numModalities; m++) {
                 //double normSumN = 0;
                 for (byte j = 0; j < numModalities; j++) {
                     if (docLength[j] > 0) {
+
                         //	initialize the normalization constant for the (B * n_{t|d}) term
-                        double normSumN = p[i][j] * localTopicCounts[j][topic] /// docLength[j] * 1000
-                                / (docLength[j] * (tokensPerTopic[i][topic] + betaSum[i]));
+                        double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]  * 1000
+                                / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
                         /// (tokensPerTopic[i][topic] + betaSum[i]);
 
-                        topicBetaMass[i] += beta[i] * normSumN;
+                        topicBetaMass[m] += beta[m] * normSumN;
                         //	update the coefficients for the non-zero topics
-                        cachedCoefficients[i][topic] += normSumN;
+                        cachedCoefficients[m][topic] += normSumN;
+
 
                     }
                 }
 
-                if (Double.isNaN(topicBetaMass[i])) {
-                    topicBetaMass[i] = 0;
-                }
-                if (Double.isNaN(cachedCoefficients[i][topic])) {
-                    cachedCoefficients[i][topic] = 0;
-                }
+//                if (Double.isNaN(topicBetaMass[i])) {
+//                    topicBetaMass[i] = 0;
+//                }
+//                if (Double.isNaN(cachedCoefficients[i][topic])) {
+//                    cachedCoefficients[i][topic] = 0;
+//                }
             }
         }
         return nonZeroTopics;
@@ -673,8 +723,8 @@ public class MixWorkerRunnableNP implements Runnable {
             int oldTopic,
             int nonZeroTopics,
             final int[] docLength,
-            byte m //modality
-            ) {
+            byte m, //modality
+            double[][] p) {
 
         if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
             //	Remove this token from all counts. 
@@ -684,12 +734,17 @@ public class MixWorkerRunnableNP implements Runnable {
             smoothingOnlyMass[m] -= alpha * tau[oldTopic] * beta[m]
                     / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
-            double tmp = localTopicCounts[m][oldTopic]// / docLength[m] * 1000
-                    / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-            /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
-            topicBetaMass[m] -= beta[m] * tmp;
-            cachedCoefficients[m][oldTopic] -= tmp;
-            // Decrement the local doc/topic counts
+            for (byte j = 0; j < numModalities; j++) {
+                if (docLength[j] > 0) {
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+                    /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                    topicBetaMass[m] -= beta[m] * normSumN;
+                    cachedCoefficients[m][oldTopic] -= normSumN;
+                }
+            }
+
+
 
             localTopicCounts[m][oldTopic]--;
 
@@ -702,20 +757,35 @@ public class MixWorkerRunnableNP implements Runnable {
                 nonZeroTopics = removeTopicFromDocument(localTopicCounts, localTopicIndex, oldTopic, nonZeroTopics, m);
             }
 
-            decreaseGlobalCounts(oldTopic, m);
+            // Decrement the global topic count totals
+            tokensPerTopic[m][oldTopic]--;
+            assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
 
-            // Add the old topic's contribution back into the
-            //  normalizing constants.
-            smoothingOnlyMass[m] += alpha * tau[oldTopic] * beta[m]
-                    / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+            if (tablesPerTopic[oldTopic] == 0) { //globally last topic
 
-            topicBetaMass[m] += beta[m] * localTopicCounts[m][oldTopic] /// docLength[m] * 1000
-                    / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-            /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                updateTauAndSmoothing();
 
-            // Reset the cached coefficient for this topic
-            cachedCoefficients[m][oldTopic] += localTopicCounts[m][oldTopic]// / docLength[m]  * 1000
-                    / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+            } else {
+                // Add the old topic's contribution back into the
+                //  normalizing constants.
+                smoothingOnlyMass[m] += alpha * tau[oldTopic] * beta[m]
+                        / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+
+                smoothOnlyCachedCoefficients[m][oldTopic] = alpha * tau[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+            }
+
+            for (byte j = 0; j < numModalities; j++) {
+                if (docLength[j] > 0) {
+
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+
+                    topicBetaMass[m] += beta[m] * normSumN;
+
+                    cachedCoefficients[m][oldTopic] += normSumN;
+                }
+            }
+
             /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         }
@@ -773,33 +843,38 @@ public class MixWorkerRunnableNP implements Runnable {
 
     }
 
-    protected void decreaseGlobalCounts(int oldTopic,
-            byte m)//modality)
-    {
-        // Decrement the global topic count totals
-        tokensPerTopic[m][oldTopic]--;
-        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-
-        if (tokensPerTopic[m][oldTopic] == 0) {
-            if (tablesPerTopic[oldTopic] == 0) { //globally last topic
-
-                nonActiveTopics.add(oldTopic);
-                tau[oldTopic] = 0;
-                if (maxTopic == oldTopic) {
-                    int i = oldTopic;
-                    while (i > 0 && tablesPerTopic[i] == 0) {
-                        i--;
-                    }
-                    maxTopic = i;
-                }
-                for (byte mm = 0; mm < numModalities; mm++) {
-                    smoothOnlyCachedCoefficients[mm][oldTopic] = 0;
-                }
-
-            }
-        }
-    }
-
+//    protected boolean decreaseGlobalCounts(int oldTopic,
+//            byte m)//modality)
+//    {
+//        boolean topicRemoved = false;
+//
+//        // Decrement the global topic count totals
+//        tokensPerTopic[m][oldTopic]--;
+//        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
+//
+//        if (tokensPerTopic[m][oldTopic] == 0) {
+//            if (tablesPerTopic[oldTopic] == 0) { //globally last topic
+//
+//                topicRemoved = true;
+//                nonActiveTopics.add(oldTopic);
+//                //tau[oldTopic] = 0;
+//                if (maxTopic == oldTopic) {
+//                    int i = oldTopic;
+//                    while (i > 0 && tablesPerTopic[i] == 0) {
+//                        i--;
+//                    }
+//                    maxTopic = i;
+//                }
+//                updateTauAndSmoothing();
+//
+////                for (byte mm = 0; mm < numModalities; mm++) {
+////                    smoothOnlyCachedCoefficients[mm][oldTopic] = 0;
+////                }
+//
+//            }
+//        }
+//        return topicRemoved;
+//    }
     protected double calcTopicScores(
             double[][] cachedCoefficients,
             int oldTopic,
@@ -943,9 +1018,11 @@ public class MixWorkerRunnableNP implements Runnable {
 
             for (byte j = 0; j < numModalities; j++) {
                 if (docLength[j] > 0) {
-                    sample -= p[m][j] * beta[m] * localTopicCounts[j][topic] /// docLength[j]  * 1000
+                    double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]  * 1000
                             / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
-                    /// (tokensPerTopic[m][topic] + betaSum[m]);
+
+                    sample -= beta[m] * normSumN;
+
 
                 }
             }
@@ -959,7 +1036,7 @@ public class MixWorkerRunnableNP implements Runnable {
         }
 //       
         if (sample > 0) {
-            return topic; // error in rounding (?) I should find a solution 
+            return -1; // error in rounding (?) I should find a solution 
         }
         return topic;
     }
@@ -992,7 +1069,7 @@ public class MixWorkerRunnableNP implements Runnable {
         }
 
         if (newTopic == -1) {
-            newTopic = topic; // error in rounding??
+            newTopic = -1;//topic; // error in rounding??
         }
 
         return newTopic;
@@ -1044,7 +1121,7 @@ public class MixWorkerRunnableNP implements Runnable {
                 if (sample < smoothingOnlyMass[m]) {
                     newTopic = findNewTopicInSmoothingMass(sample, m, docLength);
                 } else {
-
+                    //totally new topic
                     if (nonActiveTopics.peek() != null) {
                         newTopic = nonActiveTopics.poll();
                         maxTopic = Math.max(newTopic, maxTopic);
@@ -1129,27 +1206,32 @@ public class MixWorkerRunnableNP implements Runnable {
             double[] topicBetaMass,
             int nonZeroTopics,
             final int[] docLength,
-            byte m) {
+            byte m,
+            double[][] p) {
         //			Put that new topic into the counts
         oneDocTopics[m][position] = newTopic;
 
         smoothingOnlyMass[m] -= alpha * tau[newTopic] * beta[m]
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
-        topicBetaMass[m] -= beta[m] * localTopicCounts[m][newTopic]// / docLength[m]  * 1000
-                / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-        /// (tokensPerTopic[m][newTopic] + betaSum[m]);
+        for (byte j = 0; j < numModalities; j++) {
+            if (docLength[j] > 0) {
+                double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
+                        / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
+                /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                topicBetaMass[m] -= beta[m] * normSumN;
+                cachedCoefficients[m][newTopic] -= normSumN;
+            }
+        }
 
-        cachedCoefficients[m][newTopic] -= localTopicCounts[m][newTopic] /// docLength[m]  * 1000
-                / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-        /// (tokensPerTopic[m][newTopic] + betaSum[m]);
+
 
         localTopicCounts[m][newTopic]++;
 
         // If this is a new topic for this document,
         //  add the topic to the dense index.
 
-        boolean isNewTopic = (localTopicCounts[m][newTopic] == 1); //new in Document / modality
+        boolean isNewTopic = (localTopicCounts[m][newTopic] == 1); //new in Document for this modality
         if (isNewTopic) {
 
             totalTables++;
@@ -1198,15 +1280,20 @@ public class MixWorkerRunnableNP implements Runnable {
         {
             smoothingOnlyMass[m] += alpha * tau[newTopic] * beta[m]
                     / (tokensPerTopic[m][newTopic] + betaSum[m]);
+            smoothOnlyCachedCoefficients[m][newTopic] = alpha * tau[newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
         }
 
-        topicBetaMass[m] += beta[m] * localTopicCounts[m][newTopic]// / docLength[m]  * 1000
-                / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-        /// (tokensPerTopic[m][newTopic] + betaSum[m]);
+        for (byte j = 0; j < numModalities; j++) {
+            if (docLength[j] > 0) {
+                double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
+                        / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
+                /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                topicBetaMass[m] += beta[m] * normSumN;
+                cachedCoefficients[m][newTopic] += normSumN;
+            }
+        }
 
-        cachedCoefficients[m][newTopic] += localTopicCounts[m][newTopic]// / docLength[m]  * 1000
-                / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-        /// (tokensPerTopic[m][newTopic] + betaSum[m]);
+
 
         return nonZeroTopics;
     }
@@ -1270,7 +1357,7 @@ public class MixWorkerRunnableNP implements Runnable {
         //	Iterate over the positions (words) in the document for each modality
         for (byte m = 0; m < numModalities; m++) // byte m = 0;
         {
-            final FeatureSequence tokenSequenceCurMod = tokenSequence[m];
+            FeatureSequence tokenSequenceCurMod = tokenSequence[m];
             for (int position = 0; position < docLength[m]; position++) {
 
                 if (tokenSequenceCurMod != null) {
@@ -1293,8 +1380,8 @@ public class MixWorkerRunnableNP implements Runnable {
                             oldTopic,
                             nonZeroTopics,
                             docLength,
-                            m //modality)
-                            );
+                            m, //modality)
+                            p);
 
 
 //                    if (topicPerPrvTopic.contains(tmpPreviousTopics) && tmpPreviousTopics > 0 && fastSampling) {
@@ -1369,7 +1456,8 @@ public class MixWorkerRunnableNP implements Runnable {
                             topicBetaMass,
                             nonZeroTopics,
                             docLength,
-                            m);
+                            m,
+                            p);
 
                     //statistics for p optimization
 
