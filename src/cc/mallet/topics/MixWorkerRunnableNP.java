@@ -538,7 +538,7 @@ public class MixWorkerRunnableNP implements Runnable {
         for (int topic = 0; topic <= maxTopic + 1; topic++) {
 
             if (mk[topic] == 0) {
-                nonActiveTopics.add(topic);
+               // nonActiveTopics.add(topic);
                 tau[topic] = 0;
                 for (byte m = 0; m < numModalities; m++) {
                     smoothOnlyCachedCoefficients[m][topic] = 0;
@@ -1248,7 +1248,7 @@ public class MixWorkerRunnableNP implements Runnable {
             }
 
 
-            if (isNewTopic) { //new in Document
+            if (isNewTopic) { //new in Document for all modalities
 
                 // First find the point where we 
                 //  should insert the new topic by going to
