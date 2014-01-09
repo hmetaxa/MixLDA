@@ -1,6 +1,15 @@
 package cc.mallet.examples;
 
+import cc.mallet.topics.MixTopicModelExample;
+import static cc.mallet.topics.MixTopicModelExample.LabelType.Authors;
+import static cc.mallet.topics.MixTopicModelExample.LabelType.Grants;
+import cc.mallet.types.Instance;
 import java.io.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 
 public class CsvBuilder {
@@ -156,6 +165,57 @@ public class CsvBuilder {
             e.printStackTrace();
             return null;
         }
+    }
+
+    public void createCitationGraphFile(String outputCsv) {
+        String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
+
+        Connection connection = null;
+        try {
+
+            FileWriter fwrite = new FileWriter(outputCsv);
+            BufferedWriter out = new BufferedWriter(fwrite);
+            String header = "# DBLP citation graph \n"
+                    + "# fromNodeId, toNodeId \n";
+            out.write(header);
+
+            connection = DriverManager.getConnection(SQLLitedb);
+
+
+            String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10";
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+            ResultSet rs = statement.executeQuery(sql);
+            while (rs.next()) {
+                // read the result set
+                int Id = rs.getInt("Id");
+                String citationNums = rs.getString("CitationNum");
+                String[] str = citationNums.split("\t");
+                String csvLine = "";
+                for (int i = 0; i < str.length - 1; i++) {
+                    csvLine = Id + "\t" + str[i] ;
+                    out.write(csvLine + "\n");
+                }
+
+            }
+            out.flush();
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } catch (Exception e) {
+            System.err.println("File input error");
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
     }
 
     public void buildCsv2(String docTopicsFile, String outputCsv) //topics in doc
