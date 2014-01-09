@@ -24,7 +24,8 @@ public class MixTopicModelExample {
     public enum LabelType {
 
         Authors,
-        Grants
+        Grants,
+        DBLP
     }
 
     public MixTopicModelExample() throws IOException {
@@ -38,18 +39,20 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.LabelsOnly;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 100;
-        LabelType lblType = LabelType.Authors;
-        
+        int numIterations = 300;
+        LabelType lblType = LabelType.DBLP;
         int pruneCnt = 15; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
-        String experimentId = "50T_300I_NIPS_Flat";
+        String experimentId = "50T_300I_DBLP";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
+        if (lblType == LabelType.DBLP) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/citation-network2.db";
+        }
         Connection connection = null;
 
         // create a database connection
@@ -81,9 +84,9 @@ public class MixTopicModelExample {
                         " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
                         + " from Doc inner join "
                         + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-                      //  + " where  "
-                      //  + " Doc.source='" + docSource + "' and "
-                      //  + " grantPerDoc.grantId like '" + grantType + "' "
+                        //  + " where  "
+                        //  + " Doc.source='" + docSource + "' and "
+                        //  + " grantPerDoc.grantId like '" + grantType + "' "
                         + " Group By Doc.DocId, Doc.text";
             } else if (lblType == LabelType.Authors) {
                 sql =
@@ -93,6 +96,11 @@ public class MixTopicModelExample {
                         + "Where \n"
                         + "Doc.source='NIPS' \n"
                         + "Group By Doc.DocId, Doc.text";
+            } else if (lblType == LabelType.DBLP) {
+                sql =
+                        " select id, title||' '||abstract AS Text, Authors from papers\n"
+                        + " WHERE (abstract IS NOT NULL) AND (abstract<>'')\n"
+                        + " LIMIT 300000";
             }
 
 
@@ -115,6 +123,10 @@ public class MixTopicModelExample {
                     case Authors:
                         instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
                         instanceBuffer.get(1).add(new Instance(rs.getString("AuthorIds"), null, rs.getString("DocId"), "author"));
+                        break;
+                    case DBLP:
+                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                        instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "author"));
                         break;
                     default:
                 }
@@ -158,8 +170,11 @@ public class MixTopicModelExample {
 
         // Other Modalities
         ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-        pipeListCSV.add(new CSV2FeatureSequence());
-
+        if (lblType == LabelType.DBLP) {
+            pipeListCSV.add(new CSV2FeatureSequence(","));
+        } else {
+            pipeListCSV.add(new CSV2FeatureSequence());
+        }
         InstanceList[] instances = new InstanceList[numModalities];
 
 
@@ -167,8 +182,8 @@ public class MixTopicModelExample {
         instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
         for (Byte m = 1; m < numModalities; m++) {
-            instances[1] = new InstanceList(new SerialPipes(pipeListCSV));
-            instances[1].addThruPipe(instanceBuffer.get(1).iterator());
+            instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+            instances[m].addThruPipe(instanceBuffer.get(m).iterator());
         }
 
 
@@ -328,8 +343,8 @@ public class MixTopicModelExample {
             // Run the model for 50 iterations and stop (this is for testing only, 
             //  for real applications, use 1000 to 2000 iterations)
             modelOrig.setNumIterations(numIterations);
-            modelOrig.optimizeInterval = 10;
-            modelOrig.burninPeriod = 50;
+            modelOrig.optimizeInterval = 50;
+            modelOrig.burninPeriod = 100;
             //model.optimizeInterval = 0;
             //model.burninPeriod = 0;
             //model.saveModelInterval=250;
@@ -347,7 +362,7 @@ public class MixTopicModelExample {
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);
-        model.optimizeInterval =    10;
+        model.optimizeInterval = 10;
         model.burninPeriod = 50;
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
@@ -710,6 +725,8 @@ public class MixTopicModelExample {
 
     }
 
+   
+    
     public static void main(String[] args) throws Exception {
         Class.forName("org.sqlite.JDBC");
         MixTopicModelExample trainer = new MixTopicModelExample();

@@ -167,12 +167,14 @@ public class HtmlBuilder {
                 out.write("<table style=\" text-align: left;\" border=\"0\" cellpadding=\"2\" cellspacing=\"2\"><tbody>");
                 String tdocname = st[1];
                 if (input.isDirectory()) {
-                    //out.write("<body><h4><u>DOC</u> :" + new File(st[1]).getName() + "</h4><br>");
-                    //writeFileExcerpt(new File(st[1]), out);
+                    out.write("<body><h4><u>DOC</u> :" + new File(st[1]).getName() + "</h4><br>");
+                    writeFileExcerpt(new File(st[1]), out);
                 } else {
-                    out.write("<body><h4><u>DOC</u> : " + "doc " + st[0] + "</h4><br>");
-                    String abc = br.readLine();
-                    writeLineExcerpt(abc, out);
+                    if (br != null) {
+                        out.write("<body><h4><u>DOC</u> : " + "doc " + st[0] + "</h4><br>");
+                        String abc = br.readLine();
+                        writeLineExcerpt(abc, out);
+                    }
                 }
                 out.write("<br><br>Top topics in this doc (% words in doc assigned to this topic) <br>");
                 for (int i = 2; i < st.length - 1; i = i + 2) {

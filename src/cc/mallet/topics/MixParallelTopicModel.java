@@ -354,25 +354,29 @@ public class MixParallelTopicModel implements Serializable {
 
             doc = 0;
 
+            //LabelSequence lblSequence =  new LabelSequence(topicAlphabet);
+
             for (Instance instance : training[i]) {
                 doc++;
+                long iterationStart = System.currentTimeMillis();
 
                 FeatureSequence tokens = (FeatureSequence) instance.getData();
                 int size = tokens.size();
-                LabelSequence topicSequence =
-                        new LabelSequence(topicAlphabet, new int[size]);
-                int[] topics = topicSequence.getFeatures();
+
+                int[] topics = new int[size]; //topicSequence.getFeatures();
                 for (int position = 0; position < topics.length; position++) {
 
-                    int topic = random.nextInt(numTopics);
-                    topics[position] = topic;
+                    //int topic = random.nextInt(numTopics);
+                    topics[position] = ThreadLocalRandom.current().nextInt(numTopics);//random.nextInt(numTopics);
                 }
 
-                TopicAssignment t = new TopicAssignment(instance, topicSequence, new long[size]);
+                //lblSequence.
+                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
                 MixTopicModelTopicAssignment mt;
                 String entityId = (String) instance.getName();
                 mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[numModalities]);
-                int index = data.indexOf(mt);
+                
+                int index = i == 0 ? -1 : data.indexOf(mt);
                 if (index != -1) {
                     mt = data.get(index);
                     mt.Assignments[i] = t;
@@ -382,7 +386,11 @@ public class MixParallelTopicModel implements Serializable {
                     data.add(mt);
                 }
 
+                long elapsedMillis = System.currentTimeMillis() - iterationStart;
+                if (doc % 100 == 0) {
+                    logger.info(elapsedMillis + "ms ");
 
+                }
 
             }
         }
@@ -886,7 +894,6 @@ public class MixParallelTopicModel implements Serializable {
 
     }
 
-    
     public void optimizeBeta(MixWorkerRunnable[] runnables) {
 
         for (Byte i = 0; i < numModalities; i++) {

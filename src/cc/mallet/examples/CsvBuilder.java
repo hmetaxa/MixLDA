@@ -138,7 +138,7 @@ public class CsvBuilder {
                 } else {
                     String augfile = extractFileSubstring(str, 1);
                     String[] filewnum = augfile.split(" ");
-                    String filename = filewnum[0].substring(6);
+                    String filename = filewnum[0].substring(Math.min(filewnum[0].length(), 6));
                     docNames.add(filename);
                     csvLine = csvLine + "," + filename;
                     start = Integer.parseInt(filewnum[1]);
