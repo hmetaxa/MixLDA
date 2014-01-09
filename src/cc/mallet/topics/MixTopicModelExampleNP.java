@@ -38,7 +38,7 @@ public class MixTopicModelExampleNP {
         MixParallelTopicModelNP.SkewType skewOn = MixParallelTopicModelNP.SkewType.LabelsOnly;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 100;
+        int numIterations = 150;
         LabelType lblType = LabelType.Authors;
 
         int pruneCnt = 15; //Reduce features to those that occur more than N times
@@ -338,7 +338,7 @@ public class MixTopicModelExampleNP {
             modelOrig.estimate();
         }
         
-           double gamma = 10;
+           double gamma = 15;
            
         MixParallelTopicModelNP model = new MixParallelTopicModelNP(numTopics, 60, numModalities, 5, beta, gamma, ignoreLabels, skewOn);
 
