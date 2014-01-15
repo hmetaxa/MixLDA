@@ -18,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.logging.Logger;
 
 public class MixTopicModelExample {
 
@@ -30,6 +31,7 @@ public class MixTopicModelExample {
 
     public MixTopicModelExample() throws IOException {
 
+        Logger logger = MalletLogger.getLogger(MixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
         byte numModalities = 2;
@@ -39,14 +41,14 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.LabelsOnly;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 300;
+        int numIterations = 600;
         LabelType lblType = LabelType.DBLP;
         int pruneCnt = 15; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneLblCnt = 7;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
-        String experimentId = "50T_300I_DBLP";
+        String experimentId = "50T_600I_DBLP";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -100,7 +102,7 @@ public class MixTopicModelExample {
                 sql =
                         " select id, title||' '||abstract AS Text, Authors from papers\n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')\n"
-                        + " LIMIT 300000";
+                        + " LIMIT 500000";
             }
 
 
@@ -147,6 +149,10 @@ public class MixTopicModelExample {
             }
         }
 
+
+        logger.info("Read " + instanceBuffer.get(0).size() + " instances modality 0");
+        logger.info("Read " + instanceBuffer.get(1).size() + " instances modality 1");
+
         numModalities = 2;
 
         // Begin by importing documents from text to feature sequences
@@ -186,7 +192,7 @@ public class MixTopicModelExample {
             instances[m].addThruPipe(instanceBuffer.get(m).iterator());
         }
 
-
+        logger.info(" instances added through pipe");
 // pruning for all other modalities no text
         for (Byte m = 0; m < numModalities; m++) {
             if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
@@ -248,6 +254,7 @@ public class MixTopicModelExample {
             }
         }
 
+        logger.info(" instances pruned");
 
 
         //instances.addThruPipe(new FileIterator(inputDir));
@@ -260,27 +267,38 @@ public class MixTopicModelExample {
         //  Note that the first parameter is passed as the sum over topics, while
         //  the second is 
         InstanceList[] testInstances = new InstanceList[numModalities];
+
+
+        InstanceList[] trainingInstances = new InstanceList[numModalities];
+
         for (Byte m = 0; m < numModalities; m++) {
-            InstanceList[] ilists = instances[m].split(new double[]{.9, .1});
-            instances[m] = ilists[0];
-            testInstances[m] = ilists[1];
+            Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
+            InstanceList newInstanceList = new InstanceList(newPipe);
+            testInstances[m] = newInstanceList;
+            InstanceList newInstanceList2 = new InstanceList(newPipe);
+            trainingInstances[m] = newInstanceList2;
+            for (int i = 0; i < instances[m].size(); i++) {
+                Instance instance = instances[m].get(i);
+                if (i < instances[m].size() * 0.9) {
+                    trainingInstances[m].add(instance);
+                } else {
+                    testInstances[m].add(instance);
+                }
+            }
         }
+
         String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
-
         File outPath = new File(outputDir);
-        outPath.mkdir();
 
+        outPath.mkdir();
         String stateFile = outputDir + File.separator + "output_state";
         String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
         String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
-
         String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
         String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
-
         String stateFileZip = outputDir + File.separator + "output_state.gz";
         String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
         String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
-
         boolean runNPModel = false;
         if (runNPModel) {
             NPTopicModel npModel = new NPTopicModel(5.0, 10.0, 0.1);
@@ -293,7 +311,6 @@ public class MixTopicModelExample {
             NP_Topics_out.flush();
             npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
         }
-
         boolean runHDPModel = false;
         if (runHDPModel) {
             //setup HDP parameters(alpha, beta, gamma, initialTopics)
@@ -329,13 +346,17 @@ public class MixTopicModelExample {
 
         }
         double[] beta = new double[numModalities];
-        Arrays.fill(beta, 0.01);
+
+        Arrays.fill(beta,
+                0.01);
 
         boolean runOrigParallelModel = false;
         if (runOrigParallelModel) {
             ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, beta[0]);
 
             modelOrig.addInstances(instances[0]);
+
+
 
             // Use two parallel samplers, which each look at one half the corpus and combine
             //  statistics after every iteration.
@@ -344,7 +365,7 @@ public class MixTopicModelExample {
             //  for real applications, use 1000 to 2000 iterations)
             modelOrig.setNumIterations(numIterations);
             modelOrig.optimizeInterval = 50;
-            modelOrig.burninPeriod = 100;
+            modelOrig.burninPeriod = 150;
             //model.optimizeInterval = 0;
             //model.burninPeriod = 0;
             //model.saveModelInterval=250;
@@ -353,8 +374,9 @@ public class MixTopicModelExample {
         MixParallelTopicModel model = new MixParallelTopicModel(numTopics, numModalities, 1.0, beta, ignoreLabels, skewOn);
 
         // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
-
         model.addInstances(instances);
+
+        logger.info(" instances added");
 
         // Use two parallel samplers, which each look at one half the corpus and combine
         //  statistics after every iteration.
@@ -362,38 +384,55 @@ public class MixTopicModelExample {
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);
-        model.optimizeInterval = 10;
-        model.burninPeriod = 50;
+        model.optimizeInterval = 50;
+        model.burninPeriod = 150;
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;
+
         model.estimate();
+
+        logger.info("model estimated");
         model.saveTopics(SQLLitedb, experimentId);
-        model.printTopWords(new File(topicKeysFile), topWords, topLabels, false);
+        logger.info("Topics Saved");
+
+        model.printTopWords(
+                new File(topicKeysFile), topWords, topLabels, false);
+        logger.info("Top words printed");
         //model.printTopWords(new File(topicKeysFile), topWords,  false);
         //model.printTopicWordWeights(new File(topicWordWeightsFile));
         //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
-        model.printState(new File(stateFileZip));
+        model.printState(
+                new File(stateFileZip));
         PrintWriter outState = new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
-        model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId, 0.1);
+
+        model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
+                0.1);
 
         outState.close();
+        logger.info("printDocumentTopics finished");
 
         PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
+
         model.topicPhraseXMLReport(outXMLPhrase, topWords);
+
         outState.close();
 
+        logger.info("topicPhraseXML report finished");
+
         GunZipper g = new GunZipper(new File(stateFileZip));
-        g.unzip(new File(stateFile));
+
+        g.unzip(
+                new File(stateFile));
 
         try {
-            outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
+            // outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
+            logger.info("outputCsvFiles finished");
         } catch (Exception e) {
             // if the error message is "out of memory", 
             // it probably means no database file is found
             System.err.println(e.getMessage());
         }
-
 
         //calc similarities
 
@@ -539,11 +578,10 @@ public class MixTopicModelExample {
             }
         }
 
+        logger.info("similarities calculation finished");
 
-
-
-
-        if (modelEvaluationFile != null) {
+        if (modelEvaluationFile
+                != null) {
             try {
 
 //                ObjectOutputStream oos =
@@ -561,6 +599,7 @@ public class MixTopicModelExample {
 
 
                 System.out.println("preplexity for the test set=" + perplexity);
+                logger.info("preplexity calculation finished");
 
 
 
@@ -569,25 +608,17 @@ public class MixTopicModelExample {
             }
 
         }
-
-        if (modelDiagnosticsFile != null) {
+        if (modelDiagnosticsFile
+                != null) {
             PrintWriter out = new PrintWriter(modelDiagnosticsFile);
             MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
             out.println(diagnostics.toXML()); //preferable than XML???
             out.close();
         }
-
-
-
         //If any value in <tt>p2</tt> is <tt>0.0</tt> then the KL-divergence
         //double a = Maths.klDivergence();
-
         //model.printTypeTopicCounts(new File (wordTopicCountsFile.value));
-
-
-
         // Show the words and topics in the first instance
-
         // The data alphabet maps word IDs to strings
      /*   Alphabet dataAlphabet = instances.getDataAlphabet();
 
@@ -641,7 +672,6 @@ public class MixTopicModelExample {
          double[] testProbabilities = inferencer.getSampledDistribution(testing.get(0), 10, 1, 5);
          System.out.println("0\t" + testProbabilities[0]);
          */
-
     }
 
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionCutoff, boolean preserveCase)
@@ -725,8 +755,6 @@ public class MixTopicModelExample {
 
     }
 
-   
-    
     public static void main(String[] args) throws Exception {
         Class.forName("org.sqlite.JDBC");
         MixTopicModelExample trainer = new MixTopicModelExample();

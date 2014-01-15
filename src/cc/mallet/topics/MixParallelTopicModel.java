@@ -298,7 +298,7 @@ public class MixParallelTopicModel implements Serializable {
         //    Iterator<Integer> keySetIterator = map.keySet().iterator();
 
 //while(keySetIterator.hasNext()){
-
+        gnu.trove.TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
 
         for (Byte i = 0; i < numModalities; i++) {
 
@@ -315,14 +315,65 @@ public class MixParallelTopicModel implements Serializable {
             typeSkewIndexes[i] = new double[tmpNumTypes];
 
 
+            Randoms random = null;
+            if (randomSeed == -1) {
+                random = new Randoms();
+            } else {
+                random = new Randoms(randomSeed);
+            }
+
             int doc = 0;
+
+
+
             for (Instance instance : training[i]) {
                 doc++;
+                long iterationStart = System.currentTimeMillis();
+
                 FeatureSequence tokens = (FeatureSequence) instance.getData();
-                for (int position = 0; position < tokens.getLength(); position++) {
+                int size = tokens.size();
+
+                int[] topics = new int[size]; //topicSequence.getFeatures();
+                for (int position = 0; position < topics.length; position++) {
+
+                    //int topic = random.nextInt(numTopics);
                     int type = tokens.getIndexAtPosition(position);
                     typeTotals[i][ type]++;
+                    topics[position] = ThreadLocalRandom.current().nextInt(numTopics);//random.nextInt(numTopics);
                 }
+
+                //lblSequence.
+                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
+                MixTopicModelTopicAssignment mt;
+                String entityId = (String) instance.getName();
+
+
+                //int index = i == 0 ? -1 : data.indexOf(mt);
+                int index = -1;
+                //if (i != 0 && (entityPosition.containsKey(entityId))) {
+
+                if (i != 0 && entityPosition.containsKey(entityId)) {
+
+                    index = entityPosition.get(entityId);
+                    mt = data.get(index);
+                    mt.Assignments[i] = t;
+
+
+                } else {
+                    mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[numModalities]);
+                    mt.Assignments[i] = t;
+                    data.add(mt);
+                    index = data.size() - 1;
+                    entityPosition.put(entityId, index);
+                }
+
+
+                long elapsedMillis = System.currentTimeMillis() - iterationStart;
+                if (doc % 100 == 0) {
+                    logger.info(elapsedMillis + "ms " + "  docNum:" + doc);
+
+                }
+
 
 
             }
@@ -344,57 +395,11 @@ public class MixParallelTopicModel implements Serializable {
                 typeTopicCounts[i][type] = new int[Math.min(numTopics, typeTotals[i][type])];
             }
 
-
-            Randoms random = null;
-            if (randomSeed == -1) {
-                random = new Randoms();
-            } else {
-                random = new Randoms(randomSeed);
-            }
-
-            doc = 0;
-
-            //LabelSequence lblSequence =  new LabelSequence(topicAlphabet);
-
-            for (Instance instance : training[i]) {
-                doc++;
-                long iterationStart = System.currentTimeMillis();
-
-                FeatureSequence tokens = (FeatureSequence) instance.getData();
-                int size = tokens.size();
-
-                int[] topics = new int[size]; //topicSequence.getFeatures();
-                for (int position = 0; position < topics.length; position++) {
-
-                    //int topic = random.nextInt(numTopics);
-                    topics[position] = ThreadLocalRandom.current().nextInt(numTopics);//random.nextInt(numTopics);
-                }
-
-                //lblSequence.
-                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
-                MixTopicModelTopicAssignment mt;
-                String entityId = (String) instance.getName();
-                mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[numModalities]);
-                
-                int index = i == 0 ? -1 : data.indexOf(mt);
-                if (index != -1) {
-                    mt = data.get(index);
-                    mt.Assignments[i] = t;
-                } else {
-
-                    mt.Assignments[i] = t;
-                    data.add(mt);
-                }
-
-                long elapsedMillis = System.currentTimeMillis() - iterationStart;
-                if (doc % 100 == 0) {
-                    logger.info(elapsedMillis + "ms ");
-
-                }
-
-            }
         }
+
+        //LabelSequence lblSequence =  new LabelSequence(topicAlphabet);
         buildInitialTypeTopicCounts();
+
         initializeHistograms();
     }
 
@@ -878,8 +883,8 @@ public class MixParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + mean + " a:" + a + " b:" + b + "] ");
-                p_a[m][i] = a;
-                p_a[i][m] = a;
+                p_a[m][i] = Math.max(a, 2);//a;
+                p_a[i][m] = Math.max(a, 2);;
                 p_b[m][i] = b;
                 p_b[i][m] = b;
 
@@ -887,10 +892,10 @@ public class MixParallelTopicModel implements Serializable {
         }
 
         // Now publish the new value
-        for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread].resetP_a(p_a);
-            runnables[thread].resetP_a(p_b);
-        }
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            runnables[thread].resetP_a(p_a);
+//            runnables[thread].resetP_a(p_b);
+//        }
 
     }
 
@@ -1223,7 +1228,7 @@ public class MixParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts integer, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50)) ");
                 String deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
@@ -1233,41 +1238,35 @@ public class MixParallelTopicModel implements Serializable {
                 try {
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-                    for (Byte i = 0; i < numModalities; i++) {
-                        for (int type = 0; type < numTypes[i]; type++) {
 
-                            int[] topicCounts = typeTopicCounts[i][type];
+                    ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(4);
 
-                            int index = 0;
+                    for (Byte m = 0; m < numModalities; m++) {
+                        topicSortedWords.add(getSortedWords(m));
+                    }
 
-                            while (index < topicCounts.length
-                                    && topicCounts[index] > 0) {
+                    for (int topic = 0; topic < numTopics; topic++) {
+                        for (Byte m = 0; m < numModalities; m++) {
+                            TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
 
-                                int topic = topicCounts[index] & topicMask;
-                                int count = topicCounts[index] >> topicBits;
+                            int word = 1;
+                            Iterator<IDSorter> iterator = sortedWords.iterator();
 
+                            while (iterator.hasNext() && word < 20) {
+                                IDSorter info = iterator.next();
                                 bulkInsert.setInt(1, topic);
-                                bulkInsert.setInt(2, i);
-                                bulkInsert.setString(3, alphabet[i].lookupObject(type).toString());
-                                bulkInsert.setInt(4, count);
+                                bulkInsert.setInt(2, m);
+                                bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
+                                bulkInsert.setDouble(4, info.getWeight());
                                 bulkInsert.setString(5, experimentId);
                                 bulkInsert.executeUpdate();
 
-                                //sql += String.format(Locale.ENGLISH, "insert into TopicAnalysis values(%d,%d,'%s',%d,'%s' );", topic, 1, alphabet.lookupObject(type), count, experimentId);
-
-
-                                index++;
+                                word++;
                             }
 
-//                    if ((type / 20) * 20 == type) {
-//                        statement.executeUpdate(sql);
-//                        sql = "";
-//                    }
-
-
-
-
                         }
+
+
 
                     }
 
@@ -1276,29 +1275,32 @@ public class MixParallelTopicModel implements Serializable {
 
                     for (int ti = 0; ti < numTopics; ti++) {
 
+                        // Print phrases
                         Object[] keys = phrases[ti].keys();
+                        int[] values = phrases[ti].getValues();
+                        double counts[] = new double[keys.length];
+                        for (int i = 0; i < counts.length; i++) {
+                            counts[i] = values[i];
+                        }
+                        double countssum = MatrixOps.sum(counts);
                         Alphabet alph = new Alphabet(keys);
+                        RankedFeatureVector rfv = new RankedFeatureVector(alph, counts);
+                        int max = rfv.numLocations() < 20 ? rfv.numLocations() : 20;
+                        for (int ri = 0; ri < max; ri++) {
+                            int fi = rfv.getIndexAtRank(ri);
 
-                        for (int i = 0; i < keys.length; i++) {
-
-                            int[] values = phrases[ti].getValues();
-                            double counts[] = new double[keys.length];
-
-
-                            int count = phrases[ti].getValues()[i];
-                            String phraseStr = alph.lookupObject(i).toString();
+                            double count = counts[fi]/countssum;
+                            String phraseStr = alph.lookupObject(fi).toString();
 
 
                             bulkInsert.setInt(1, ti);
                             bulkInsert.setInt(2, -1);
                             bulkInsert.setString(3, phraseStr);
-                            bulkInsert.setInt(4, count);
+                            bulkInsert.setDouble(4, count);
                             bulkInsert.setString(5, experimentId);
                             bulkInsert.executeUpdate();
-
-                            //sql += String.format(Locale.ENGLISH, "insert into TopicAnalysis values(%d,%d,'%s',%d,'%s' );", topic, 1, alphabet.lookupObject(type), count, experimentId);
-
                         }
+
                     }
                     connection.commit();
 //                if (!sql.equals("")) {
