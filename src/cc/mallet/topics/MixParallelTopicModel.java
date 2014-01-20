@@ -860,6 +860,59 @@ public class MixParallelTopicModel implements Serializable {
 //        }
 //        alphaSum = numTopics;
 //    }
+    public boolean checkConvergence(double convergenceLimit, int prevTopicsNum) {
+
+        int[] totalModalityTokens = new int[numModalities];
+        int[] totalConvergedTokens = new int[numModalities];
+        Arrays.fill(totalModalityTokens, 0);
+        Arrays.fill(totalConvergedTokens, 0);
+        boolean converged = true;
+
+        for (MixTopicModelTopicAssignment entity : data) {
+            for (Byte m = 0; m < numModalities; m++) {
+                TopicAssignment document = entity.Assignments[m];
+
+                if (document != null) {
+                    FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                    //FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+                    //int[] topics = topicSequence.getFeatures();
+
+                    for (int position = 0; position < tokens.size(); position++) {
+
+                        totalModalityTokens[m]++;
+                        long tmpPreviousTopics = document.prevTopicsSequence[position];
+
+                        long currentMask = (long) topicMask << 63 - topicBits;
+                        long topTopic = (tmpPreviousTopics & currentMask);
+                        topTopic = topTopic >> 63 - topicBits;
+                        int index = 1;
+                        boolean isSameTopic = true;
+                        while (index < prevTopicsNum && isSameTopic) {
+                            index++;
+                            currentMask = (long) topicMask << 63 - topicBits * index;
+                            long curTopic = tmpPreviousTopics & currentMask;
+                            curTopic = curTopic >> 63 - topicBits * index;
+                            isSameTopic = curTopic == topTopic;
+                            //currentTopic = currentTypeTopicCounts[index] & topicMask;
+
+                        }
+                        if (isSameTopic) {
+                            totalConvergedTokens[m]++;
+                        }
+
+                    }
+                }
+
+            }
+        }
+        for (Byte m = 0; m < numModalities; m++) {
+            double rate = (double) totalConvergedTokens[m] / (double) totalModalityTokens[m];
+            converged = converged && (rate < convergenceLimit);
+            logger.info("Convergence Rate for modality: " + m + "  Converged/Total: " + totalConvergedTokens[m] + "/" + totalModalityTokens[m] + "  (%):" + rate);
+        }
+        return converged;
+    }
+
     public void optimizeP(MixWorkerRunnable[] runnables) {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
@@ -903,6 +956,7 @@ public class MixParallelTopicModel implements Serializable {
 
         for (Byte i = 0; i < numModalities; i++) {
 
+            double prevBetaSum = betaSum[i];
             // The histogram starts at count 0, so if all of the
             //  tokens of the most frequent type were assigned to one topic,
             //  we would need to store a maxTypeCount + 1 count.
@@ -942,6 +996,8 @@ public class MixParallelTopicModel implements Serializable {
                     topicSizeHistogram,
                     numTypes[i],
                     betaSum[i]);
+            if (Double.isNaN(betaSum[i]))
+                betaSum[i] = prevBetaSum;
             beta[i] = betaSum[i] / numTypes[i];
 
 
@@ -1164,7 +1220,7 @@ public class MixParallelTopicModel implements Serializable {
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
-
+                checkConvergence(0.8, 3);
 
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
@@ -1289,7 +1345,7 @@ public class MixParallelTopicModel implements Serializable {
                         for (int ri = 0; ri < max; ri++) {
                             int fi = rfv.getIndexAtRank(ri);
 
-                            double count = counts[fi]/countssum;
+                            double count = counts[fi] / countssum;
                             String phraseStr = alph.lookupObject(fi).toString();
 
 

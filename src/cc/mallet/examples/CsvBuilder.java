@@ -167,8 +167,8 @@ public class CsvBuilder {
         }
     }
 
-    public void createCitationGraphFile(String outputCsv) {
-        String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
+    public void createCitationGraphFile(String outputCsv, String SQLLitedb) {
+        //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         Connection connection = null;
         try {

@@ -386,6 +386,7 @@ public class MixWorkerRunnable implements Runnable {
             double[][] p) {
 
         for (byte i = 0; i < numModalities; i++) {
+            docLength[i] = 0;
             if (doc.Assignments[i] != null) {
                 oneDocTopics[i] = doc.Assignments[i].topicSequence.getFeatures();
 
@@ -459,7 +460,7 @@ public class MixWorkerRunnable implements Runnable {
 
                     }
                 }
-                
+
             }
         }
         return nonZeroTopics;
@@ -690,12 +691,11 @@ public class MixWorkerRunnable implements Runnable {
             double[][] p) {
 
         //sample /= beta[m];
-        
-        
-            
+
+
+
         int topic = -1;
-        if (m==1)
-            topic=-2;
+       
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
             topic = localTopicIndex[denseIndex];
@@ -1038,28 +1038,28 @@ public class MixWorkerRunnable implements Runnable {
             FeatureSequence tokenSequenceCurMod = tokenSequence[m];
             for (int position = 0; position < docLength[m]; position++) {
 
-                if (tokenSequenceCurMod != null) {
+                // if (tokenSequenceCurMod != null) { already checked in init sampling --> docLength[m] =0 if is null
 
-                    //long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+                long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
 
-                    type = tokenSequenceCurMod.getIndexAtPosition(position);
+                type = tokenSequenceCurMod.getIndexAtPosition(position);
 
-                    oldTopic = oneDocTopics[m][position];
+                oldTopic = oneDocTopics[m][position];
 
-                    int[] currentTypeTopicCounts = typeTopicCounts[m][type];
-                    //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
-                    //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length-1);
+                int[] currentTypeTopicCounts = typeTopicCounts[m][type];
+                //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
+                //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length-1);
 
-                    nonZeroTopics = removeOldTopicContribution(
-                            cachedCoefficients,
-                            localTopicCounts,
-                            localTopicIndex,
-                            topicBetaMass,
-                            oldTopic,
-                            nonZeroTopics,
-                            docLength,
-                            m,
-                            p);
+                nonZeroTopics = removeOldTopicContribution(
+                        cachedCoefficients,
+                        localTopicCounts,
+                        localTopicIndex,
+                        topicBetaMass,
+                        oldTopic,
+                        nonZeroTopics,
+                        docLength,
+                        m,
+                        p);
 
 
 //                    if (topicPerPrvTopic.contains(tmpPreviousTopics) && tmpPreviousTopics > 0 && fastSampling) {
@@ -1067,76 +1067,76 @@ public class MixWorkerRunnable implements Runnable {
 //                        newTopic = topicPerPrvTopic.get(tmpPreviousTopics);
 //                        //System.out.println("common topic sequence found");
 //                    } else 
-                    
-
-                        double[] topicTermScores = new double[numTopics];
-                        double termSkew = typeSkewIndexes[m][type];
-
-                        double topicTermMass = calcTopicScores(
-                                cachedCoefficients,
-                                oldTopic,
-                                m,
-                                topicTermScores,
-                                currentTypeTopicCounts,
-                                docLength,
-                                termSkew);
-
-                        //normalize smoothing mass. 
-                        //ThreadLocalRandom.current().nextDouble()
-                        double sample = ThreadLocalRandom.current().nextDouble() * ((smoothingOnlyMass[m] / docLength[m])
-                                + topicBetaMass[m] + topicTermMass);
 
 
-                        //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
+                double[] topicTermScores = new double[numTopics];
+                double termSkew = typeSkewIndexes[m][type];
 
-                        //double origSample = sample;
+                double topicTermMass = calcTopicScores(
+                        cachedCoefficients,
+                        oldTopic,
+                        m,
+                        topicTermScores,
+                        currentTypeTopicCounts,
+                        docLength,
+                        termSkew);
 
-                        newTopic = //random.nextInt(numTopics);
+                //normalize smoothing mass. 
+                //ThreadLocalRandom.current().nextDouble()
+                double sample = ThreadLocalRandom.current().nextDouble() * ((smoothingOnlyMass[m] / docLength[m])
+                        + topicBetaMass[m] + topicTermMass);
 
-                                findNewTopic(
-                                localTopicCounts,
-                                localTopicIndex,
-                                topicBetaMass,
-                                nonZeroTopics,
-                                m,
-                                topicTermMass,
-                                topicTermScores,
-                                currentTypeTopicCounts,
-                                docLength,
-                                sample,
-                                p);
-                    
+
+                //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
+
+                //double origSample = sample;
+
+                newTopic = //random.nextInt(numTopics);
+
+                        findNewTopic(
+                        localTopicCounts,
+                        localTopicIndex,
+                        topicBetaMass,
+                        nonZeroTopics,
+                        m,
+                        topicTermMass,
+                        topicTermScores,
+                        currentTypeTopicCounts,
+                        docLength,
+                        sample,
+                        p);
+
 
 
 //                    if (!topicPerPrvTopic.contains(tmpPreviousTopics)) {
 //                        topicPerPrvTopic.put(tmpPreviousTopics, newTopic);
 //                    }
-//                    tmpPreviousTopics = tmpPreviousTopics >> topicBits;
-//                    long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
-//                    tmpPreviousTopics += newTopicTmp;
+                tmpPreviousTopics = tmpPreviousTopics >> topicBits;
+                long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
+                tmpPreviousTopics += newTopicTmp;
 //
-//                    doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+                doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
 
-                    //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
+                //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
 
-                    //assert(newTopic != -1);
-                    nonZeroTopics = updateTopicCounts(
-                            oneDocTopics,
-                            position,
-                            newTopic,
-                            cachedCoefficients,
-                            localTopicCounts,
-                            localTopicIndex,
-                            topicBetaMass,
-                            nonZeroTopics,
-                            docLength,
-                            m,
-                            p);
+                //assert(newTopic != -1);
+                nonZeroTopics = updateTopicCounts(
+                        oneDocTopics,
+                        position,
+                        newTopic,
+                        cachedCoefficients,
+                        localTopicCounts,
+                        localTopicIndex,
+                        topicBetaMass,
+                        nonZeroTopics,
+                        docLength,
+                        m,
+                        p);
 
-                    //statistics for p optimization
+                //statistics for p optimization
 
 
-                    for (byte i = (byte) (m - 1); i >= 0; i--) {
+                for (byte i = (byte) (m - 1); i >= 0; i--) {
 //                        
 //                        if (localTopicCounts[i][newTopic] == 0)
 //                        {
@@ -1144,13 +1144,13 @@ public class MixWorkerRunnable implements Runnable {
 //                            
 //                        }
 
-                        pDistr_Mean[m][i][docCnt] += (localTopicCounts[i][newTopic] > 0 ? 1.0 : 0d) / (double) docLength[m];
-                        pDistr_Mean[i][m][docCnt] = pDistr_Mean[m][i][docCnt];
-                        //pDistr_Var[m][i][docCnt]+= localTopicCounts[i][newTopic]/docLength[m];
-                    }
-
-
+                    pDistr_Mean[m][i][docCnt] += (localTopicCounts[i][newTopic] > 0 ? 1.0 : 0d) / (double) docLength[m];
+                    pDistr_Mean[i][m][docCnt] = pDistr_Mean[m][i][docCnt];
+                    //pDistr_Var[m][i][docCnt]+= localTopicCounts[i][newTopic]/docLength[m];
                 }
+
+
+                //}
 
 
             }

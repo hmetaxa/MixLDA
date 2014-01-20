@@ -38,17 +38,17 @@ public class MixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.LabelsOnly;
+        MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 600;
-        LabelType lblType = LabelType.DBLP;
+        int numIterations = 1000;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 15; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 7;
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
-        String experimentId = "50T_600I_DBLP";
+        String experimentId = "50T_1000I_NIPS_Flat";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -385,7 +385,7 @@ public class MixTopicModelExample {
         //  for real applications, use 1000 to 2000 iterations)
         model.setNumIterations(numIterations);
         model.optimizeInterval = 50;
-        model.burninPeriod = 150;
+        model.burninPeriod = 250;
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;
