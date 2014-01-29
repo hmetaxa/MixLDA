@@ -122,6 +122,10 @@ public class MixParallelTopicModel implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    
+    public double[][] convergenceRates ;//= new gnu.trove.TObjectIntHashMap<Double>(); 
+    public double[][] perplexities ;//= new gnu.trove.TObjectIntHashMap<Double>(); 
+  
 
     //double lblSkewWeight = 1;
     public MixParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -191,6 +195,10 @@ public class MixParallelTopicModel implements Serializable {
         this.beta = beta;
 
         this.tokensPerTopic = new int[numModalities][numTopics];
+        
+        convergenceRates = new double[numModalities][100];
+        perplexities= new double[numModalities][100];
+      
 
 
         formatter = NumberFormat.getInstance();
@@ -370,7 +378,7 @@ public class MixParallelTopicModel implements Serializable {
 
                 long elapsedMillis = System.currentTimeMillis() - iterationStart;
                 if (doc % 100 == 0) {
-                    logger.info(elapsedMillis + "ms " + "  docNum:" + doc);
+                    logger.fine(elapsedMillis + "ms " + "  docNum:" + doc);
 
                 }
 
@@ -860,7 +868,7 @@ public class MixParallelTopicModel implements Serializable {
 //        }
 //        alphaSum = numTopics;
 //    }
-    public boolean checkConvergence(double convergenceLimit, int prevTopicsNum) {
+    public boolean checkConvergence(double convergenceLimit, int prevTopicsNum, int iteration) {
 
         int[] totalModalityTokens = new int[numModalities];
         int[] totalConvergedTokens = new int[numModalities];
@@ -908,6 +916,7 @@ public class MixParallelTopicModel implements Serializable {
         for (Byte m = 0; m < numModalities; m++) {
             double rate = (double) totalConvergedTokens[m] / (double) totalModalityTokens[m];
             converged = converged && (rate < convergenceLimit);
+            convergenceRates[m][iteration] = rate; 
             logger.info("Convergence Rate for modality: " + m + "  Converged/Total: " + totalConvergedTokens[m] + "/" + totalModalityTokens[m] + "  (%):" + rate);
         }
         return converged;
@@ -936,8 +945,8 @@ public class MixParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + mean + " a:" + a + " b:" + b + "] ");
-                p_a[m][i] = Math.max(a, 2);//a;
-                p_a[i][m] = Math.max(a, 2);;
+                p_a[m][i] = Math.min(a, 3);//a;
+                p_a[i][m] = Math.min(a, 3);;
                 p_b[m][i] = b;
                 p_b[i][m] = b;
 
@@ -1220,15 +1229,18 @@ public class MixParallelTopicModel implements Serializable {
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
-                checkConvergence(0.8, 3);
+                
 
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
+                    checkConvergence(0.8, 3, iteration/10);
                     for (Byte i = 0; i < numModalities; i++) {
-                        logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(modelLogLikelihood()[i] / totalTokens[i])); //LL for eachmodality
+                        double ll = modelLogLikelihood()[i] / totalTokens[i];
+                        perplexities[i][iteration/10] = ll;
+                        logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
                     }
                 } else {
                     logger.info("<" + iteration + ">");

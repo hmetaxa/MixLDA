@@ -449,6 +449,8 @@ public class MixWorkerRunnable implements Runnable {
                 //double normSumN = 0;
                 for (byte j = 0; j < numModalities; j++) {
                     if (docLength[j] > 0) {
+
+
                         //	initialize the normalization constant for the (B * n_{t|d}) term
                         double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]  * 1000
                                 / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
@@ -514,6 +516,7 @@ public class MixWorkerRunnable implements Runnable {
                 jj++;
             }
 
+            //isDeletedTopic = false;//todo omiros test
             if (isDeletedTopic) {
 
                 // First get to the dense location associated with
@@ -662,21 +665,22 @@ public class MixWorkerRunnable implements Runnable {
             i++;
             sample -= topicTermScores[i];
         }
+        if (i >= 0) {
+            newTopic = currentTypeTopicCounts[i] & topicMask;
+            currentValue = currentTypeTopicCounts[i] >> topicBits;
 
-        newTopic = currentTypeTopicCounts[i] & topicMask;
-        currentValue = currentTypeTopicCounts[i] >> topicBits;
+            currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
 
-        currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
+            // Bubble the new value up, if necessary
 
-        // Bubble the new value up, if necessary
+            while (i > 0
+                    && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
+                int temp = currentTypeTopicCounts[i];
+                currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
+                currentTypeTopicCounts[i - 1] = temp;
 
-        while (i > 0
-                && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-            int temp = currentTypeTopicCounts[i];
-            currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-            currentTypeTopicCounts[i - 1] = temp;
-
-            i--;
+                i--;
+            }
         }
         return newTopic;
     }
@@ -695,7 +699,7 @@ public class MixWorkerRunnable implements Runnable {
 
 
         int topic = -1;
-       
+
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
             topic = localTopicIndex[denseIndex];
@@ -721,7 +725,7 @@ public class MixWorkerRunnable implements Runnable {
         }
 //       
         if (sample > 0) {
-            return -1; // error in rounding (?) I should check it again
+            return topic;//-1; // error in rounding (?) I should check it again
         }
         return topic;
     }

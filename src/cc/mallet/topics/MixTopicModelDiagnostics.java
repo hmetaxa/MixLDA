@@ -9,6 +9,12 @@ import cc.mallet.types.*;
 import cc.mallet.util.*;
 
 import gnu.trove.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public class MixTopicModelDiagnostics {
 
@@ -543,6 +549,114 @@ public class MixTopicModelDiagnostics {
         }
 
         return scores;
+    }
+
+    public void saveToDB(String SQLLitedb, String experimentId, double perplexity) {
+        //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
+
+        Connection connection = null;
+        try {
+
+
+            connection = DriverManager.getConnection(SQLLitedb);
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+            statement.executeUpdate("create table if not exists diagnostics (ExperimentId text, EntityId text, EntityType int, ScoreName text, Score double )");
+            String deleteSQL = String.format("Delete from diagnostics where  ExperimentId = '%s'", experimentId);
+            statement.executeUpdate(deleteSQL);
+
+            PreparedStatement bulkInsert = null;
+            String sql = "insert into diagnostics values(?,?,?,?,?);";
+
+            connection.setAutoCommit(false);
+            bulkInsert = connection.prepareStatement(sql);
+
+
+            for (byte m = 0; m < model.numModalities; m++) {
+
+                 bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, "TestCorpus");
+                    bulkInsert.setInt(3, 0); //corpus
+                    bulkInsert.setString(4, "perplexity");
+                    bulkInsert.setDouble(5, perplexity);
+                    bulkInsert.executeUpdate();
+                    
+                for (int p = 0; p < model.perplexities.length; p++) {
+                    bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, String.format("%d", 10*p));
+                    bulkInsert.setInt(3, 0); //corpus
+                    bulkInsert.setString(4, "LogLikehood");
+                    bulkInsert.setDouble(5, model.perplexities[m][p]);
+                    bulkInsert.executeUpdate();
+                }
+                
+                for (int p = 0; p < model.convergenceRates.length; p++) {
+                    bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, String.format("%d", 10*p));
+                    bulkInsert.setInt(3, 0); //corpus
+                    bulkInsert.setString(4, "convergenceRates");
+                    bulkInsert.setDouble(5, model.convergenceRates[m][p]);
+                    bulkInsert.executeUpdate();
+                }
+
+            }
+
+            for (int topic = 0; topic < numTopics; topic++) {
+
+                for (TopicScores scores : diagnostics) {
+                    bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, String.format("Topic %d", topic));
+                    bulkInsert.setInt(3, 1); //Topic
+                    bulkInsert.setString(4, scores.name);
+                    bulkInsert.setDouble(5, scores.scores[topic]);
+                    bulkInsert.executeUpdate();
+                }
+
+
+//                for (int position = 0; position < topicTopWords[topic].length; position++) {
+//                    if (topicTopWords[topic][position] == null) {
+//                        break;
+//                    }
+//
+//                    formatter.format("  %s", topicTopWords[topic][position]);
+//                    for (TopicScores scores : diagnostics) {
+//                        if (scores.wordScoresDefined) {
+//                            formatter.format("\t%s=%.4f", scores.name, scores.topicWordScores[topic][position]);
+//                            bulkInsert.setString(1, experimentId);
+//                    bulkInsert.setString(2, String.format("Topic %d", topic));
+//                    bulkInsert.setInt(3, 1); //Word
+//                    bulkInsert.setString(4, scores.name);
+//                    bulkInsert.setDouble(5, scores.scores[topic]);
+//                    bulkInsert.executeUpdate();
+//                        }
+//                    }
+//                    
+//                }
+            }
+
+
+
+            connection.commit();
+            if (bulkInsert != null) {
+                bulkInsert.close();
+            }
+            connection.setAutoCommit(true);
+
+        } catch (SQLException e) {
+
+            if (connection != null) {
+                try {
+                    System.err.print("Transaction is being rolled back");
+                    connection.rollback();
+                } catch (SQLException excep) {
+                    System.err.print("Error in insert grantSimilarity");
+                }
+            }
+        } finally {
+        }
+
+
     }
 
     public String toString() {
