@@ -42,9 +42,9 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 400;
+        int numIterations = 600;
         int burnIn = 100;
-        LabelType lblType = LabelType.DBLP;
+        LabelType lblType = LabelType.PM_pdb;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
         int pruneLblCnt = 10;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -107,10 +107,10 @@ public class MixTopicModelExample {
             } else if (lblType == LabelType.DBLP) {
                 sql =
                         "   select id, title||' '||abstract AS text, Authors, GROUP_CONCAT(prLinks.Target,',') as citations,  GROUP_CONCAT(prLinks.Counts,',') as citationsCnt from papers\n"
-                        + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>50 \n"
+                        + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>200 \n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
                         + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" // 
-                        + " LIMIT 100000"
+                        // + " LIMIT 10000"
                         ;
             } else if (lblType == LabelType.PM_pdb) {
                 sql =
@@ -157,7 +157,7 @@ public class MixTopicModelExample {
 
                                 while (index < citationsCnt.length) {
                                     int cnt = Integer.parseInt(citationsCnt[index]);
-                                    for (int i = 1; i <= cnt / 50; i++) {
+                                    for (int i = 1; i <= cnt / 200; i++) {
                                         if (citationStr != "") {
                                             citationStr += ",";
                                         }
@@ -180,7 +180,9 @@ public class MixTopicModelExample {
                         break;
                     case PM_pdb:
                         instanceBuffer.get(0).add(new Instance(rs.getString("abstract") + " " + rs.getString("body"), null, rs.getString("pmcId"), "text"));
-                        instanceBuffer.get(1).add(new Instance(rs.getString("pbdCodes"), null, rs.getString("pmcId"), "pbdCode"));
+                        if (numModalities > 1) {
+                            instanceBuffer.get(1).add(new Instance(rs.getString("pbdCodes"), null, rs.getString("pmcId"), "pbdCode"));
+                        }
                         break;
                     default:
                 }
@@ -601,7 +603,7 @@ public class MixTopicModelExample {
                             startCalc = true;
                             similarity = 1 - cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId)); // the function returns distance not similarity
                             if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                bulkInsert.setInt(1, lblType.hashCode());
+                                bulkInsert.setInt(1, lblType.ordinal());
                                 bulkInsert.setString(2, fromGrantId);
                                 bulkInsert.setString(3, toGrantId);
                                 bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
