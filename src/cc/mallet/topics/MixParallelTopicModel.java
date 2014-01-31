@@ -122,18 +122,18 @@ public class MixParallelTopicModel implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
-    
-    public double[][] convergenceRates ;//= new gnu.trove.TObjectIntHashMap<Double>(); 
-    public double[][] perplexities ;//= new gnu.trove.TObjectIntHashMap<Double>(); 
-  
+    public double[][] convergenceRates;//= new gnu.trove.TObjectIntHashMap<Double>(); 
+    public double[][] perplexities;//= new gnu.trove.TObjectIntHashMap<Double>(); 
+    public int numIndependentTopics; //= 5;
+    private int numCommonTopics;
 
     //double lblSkewWeight = 1;
     public MixParallelTopicModel(int numberOfTopics, byte numModalities) {
-        this(numberOfTopics, numModalities, numberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);
+        this(numberOfTopics, 5, numModalities, numberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);
     }
 
-    public MixParallelTopicModel(int numberOfTopics, byte numModalities, double alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
-        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities), ignoreLabels, skewnOn);
+    public MixParallelTopicModel(int numberOfTopics, int numberOfIndependentTopics, byte numModalities, double alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
+        this(newLabelAlphabet(numberOfTopics + numberOfIndependentTopics * numModalities), numberOfIndependentTopics, numModalities, alphaSum, defaultBeta(numModalities), ignoreLabels, skewnOn);
     }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
@@ -150,9 +150,10 @@ public class MixParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public MixParallelTopicModel(LabelAlphabet topicAlphabet, byte numModalities, double alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
+    public MixParallelTopicModel(LabelAlphabet topicAlphabet, int numberOfIndependentTopics, byte numModalities, double alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
 
         this.numModalities = numModalities;
+        this.numIndependentTopics = numberOfIndependentTopics;
 
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
         this.numTypes = new int[numModalities];
@@ -174,6 +175,7 @@ public class MixParallelTopicModel implements Serializable {
 
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
+        this.numCommonTopics = this.numTopics - numModalities * numberOfIndependentTopics;
 
         this.alphabet = new Alphabet[numModalities];
 
@@ -195,10 +197,10 @@ public class MixParallelTopicModel implements Serializable {
         this.beta = beta;
 
         this.tokensPerTopic = new int[numModalities][numTopics];
-        
+
         convergenceRates = new double[numModalities][100];
-        perplexities= new double[numModalities][100];
-      
+        perplexities = new double[numModalities][100];
+
 
 
         formatter = NumberFormat.getInstance();
@@ -347,7 +349,13 @@ public class MixParallelTopicModel implements Serializable {
                     //int topic = random.nextInt(numTopics);
                     int type = tokens.getIndexAtPosition(position);
                     typeTotals[i][ type]++;
-                    topics[position] = ThreadLocalRandom.current().nextInt(numTopics);//random.nextInt(numTopics);
+
+                    int topic = ThreadLocalRandom.current().nextInt(numCommonTopics + numIndependentTopics);//random.nextInt(numTopics);
+                    if (topic >= numCommonTopics) {
+                        topic = topic - numCommonTopics + 1;
+                        topic = numCommonTopics - 1 + numIndependentTopics * i + topic;
+                    }
+                    topics[position] = topic;
                 }
 
                 //lblSequence.
@@ -916,7 +924,7 @@ public class MixParallelTopicModel implements Serializable {
         for (Byte m = 0; m < numModalities; m++) {
             double rate = (double) totalConvergedTokens[m] / (double) totalModalityTokens[m];
             converged = converged && (rate < convergenceLimit);
-            convergenceRates[m][iteration] = rate; 
+            convergenceRates[m][iteration] = rate;
             logger.info("Convergence Rate for modality: " + m + "  Converged/Total: " + totalConvergedTokens[m] + "/" + totalModalityTokens[m] + "  (%):" + rate);
         }
         return converged;
@@ -1005,8 +1013,9 @@ public class MixParallelTopicModel implements Serializable {
                     topicSizeHistogram,
                     numTypes[i],
                     betaSum[i]);
-            if (Double.isNaN(betaSum[i]))
+            if (Double.isNaN(betaSum[i])) {
                 betaSum[i] = prevBetaSum;
+            }
             beta[i] = betaSum[i] / numTypes[i];
 
 
@@ -1060,7 +1069,7 @@ public class MixParallelTopicModel implements Serializable {
                 }
 
 
-                runnables[thread] = new MixWorkerRunnable(numTopics,
+                runnables[thread] = new MixWorkerRunnable(numTopics, numIndependentTopics,
                         alpha, alphaSum, beta,
                         random, data,
                         runnableCounts, runnableTotals,
@@ -1085,7 +1094,7 @@ public class MixParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new MixWorkerRunnable(numTopics,
+            runnables[0] = new MixWorkerRunnable(numTopics, numIndependentTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
@@ -1229,17 +1238,17 @@ public class MixParallelTopicModel implements Serializable {
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
-                
+
 
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
-                    checkConvergence(0.8, 3, iteration/10);
+                    checkConvergence(0.8, 3, iteration / 10);
                     for (Byte i = 0; i < numModalities; i++) {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
-                        perplexities[i][iteration/10] = ll;
+                        perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
                     }
                 } else {
