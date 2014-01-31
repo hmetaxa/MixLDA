@@ -575,29 +575,35 @@ public class MixTopicModelDiagnostics {
 
             for (byte m = 0; m < model.numModalities; m++) {
 
-                 bulkInsert.setString(1, experimentId);
-                    bulkInsert.setString(2, "TestCorpus");
-                    bulkInsert.setInt(3, 0); //corpus
-                    bulkInsert.setString(4, "perplexity");
-                    bulkInsert.setDouble(5, perplexity);
-                    bulkInsert.executeUpdate();
-                    
-                for (int p = 0; p < model.perplexities.length; p++) {
+                bulkInsert.setString(1, experimentId);
+                bulkInsert.setString(2, "TestCorpus");
+                bulkInsert.setInt(3, 0); //corpus
+                bulkInsert.setString(4, "perplexity");
+                bulkInsert.setDouble(5, perplexity);
+                bulkInsert.executeUpdate();
+
+                int p = 1;
+                while (p < model.perplexities[m].length && model.perplexities[m][p] > 0) //for (int p = 0; p < model.perplexities[m].length; p++) 
+                {
                     bulkInsert.setString(1, experimentId);
-                    bulkInsert.setString(2, String.format("%d", 10*p));
+                    bulkInsert.setString(2, String.format("%d", 10 * p));
                     bulkInsert.setInt(3, 0); //corpus
                     bulkInsert.setString(4, "LogLikehood");
                     bulkInsert.setDouble(5, model.perplexities[m][p]);
                     bulkInsert.executeUpdate();
+                    p++;
                 }
-                
-                for (int p = 0; p < model.convergenceRates.length; p++) {
+
+                p = 1;
+                while (p < model.convergenceRates[m].length && model.convergenceRates[m][p] > 0) //                for (int p = 0; p < model.convergenceRates[m].length; p++) 
+                {
                     bulkInsert.setString(1, experimentId);
-                    bulkInsert.setString(2, String.format("%d", 10*p));
+                    bulkInsert.setString(2, String.format("%d", 10 * p));
                     bulkInsert.setInt(3, 0); //corpus
                     bulkInsert.setString(4, "convergenceRates");
                     bulkInsert.setDouble(5, model.convergenceRates[m][p]);
                     bulkInsert.executeUpdate();
+                    p++;
                 }
 
             }
