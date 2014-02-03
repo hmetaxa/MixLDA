@@ -742,7 +742,7 @@ public class MixWorkerRunnable implements Runnable {
         }
 //       
         if (sample > 0) {
-            return topic;//-1; // error in rounding (?) I should check it again
+            return -1; // error in rounding (?) I should check it again
         }
         return topic;
     }

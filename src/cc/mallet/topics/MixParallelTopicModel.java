@@ -127,6 +127,10 @@ public class MixParallelTopicModel implements Serializable {
     public int numIndependentTopics; //= 5;
     private int numCommonTopics;
 
+    //todo fast sampling: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
+    // on entities distribution 
+    
+    
     //double lblSkewWeight = 1;
     public MixParallelTopicModel(int numberOfTopics, byte numModalities) {
         this(numberOfTopics, 5, numModalities, numberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);

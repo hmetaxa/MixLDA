@@ -36,7 +36,7 @@ public class MixTopicModelExample {
         int topWords = 10;
         int topLabels = 10;
         byte numModalities = 2;
-        int numIndependentTopics = 5;
+        int numIndependentTopics = 10;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
@@ -45,7 +45,7 @@ public class MixTopicModelExample {
         int numTopics = 50;
         int numIterations = 600;
         int burnIn = 100;
-        LabelType lblType = LabelType.Authors;
+        LabelType lblType = LabelType.DBLP;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
         int pruneLblCnt = 10;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
