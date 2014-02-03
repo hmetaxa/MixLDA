@@ -127,10 +127,6 @@ public class MixParallelTopicModel implements Serializable {
     public int numIndependentTopics; //= 5;
     private int numCommonTopics;
 
-    //todo fast sampling: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
-    // on entities distribution 
-    
-    
     //double lblSkewWeight = 1;
     public MixParallelTopicModel(int numberOfTopics, byte numModalities) {
         this(numberOfTopics, 5, numModalities, numberOfTopics, defaultBeta(numModalities), false, SkewType.LabelsOnly);
@@ -573,6 +569,109 @@ public class MixParallelTopicModel implements Serializable {
                 }
             }
         }
+    }
+
+    //TODO... 
+    //fast sampling initialization: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
+    // on entities distribution 
+    //Needs much work to align topics 
+    public void alignTopicsInModalities() {
+//        int[] totalModalityTokens = new int[numModalities];
+//        int[] totalConvergedTokens = new int[numModalities];
+//        Arrays.fill(totalModalityTokens, 0);
+//        Arrays.fill(totalConvergedTokens, 0);
+
+        //int[][][] entityIdPerTopicPerModality = new int[numModalities][numTopics][data.size()];
+        //int[][][] entityIdPerTopicPerModality = new int[numModalities][numTopics][data.size()];
+
+
+
+        HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
+        String labelId = "";
+        NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+        for (Byte m = 0; m < numModalities; m++) {
+
+            for (int t = 0; t < numCommonTopics; t++) {
+                gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+
+                for (MixTopicModelTopicAssignment entity : data) {
+
+                    TopicAssignment document = entity.Assignments[m];
+
+                    if (document != null) {
+
+                        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                        FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+                        int[] topics = topicSequence.getFeatures();
+
+                        for (int position = 0; position < topics.length; position++) {
+                            if (topics[position] == t) {
+                                topicEntitiesCnt.adjustOrPutValue(entity.EntityId, 1, 1);
+                            }
+                        }
+                    }
+                }
+                int[] entities = new int[data.size()];
+                double[] weights = new double[data.size()];
+                int cnt = 0;
+                for (Object entity : topicEntitiesCnt.keys()) {
+                    entities[cnt] = ((String) entity).hashCode();
+                    weights[cnt] = topicEntitiesCnt.get((String) entity);
+                    cnt++;
+                }
+                labelId = m + "_" + t;
+                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, true, true));
+            }
+        }
+
+        double similarity = 0;
+        double maxSimilarity = 0;
+        String labelTextId;
+        int[][] topicMapping = new int[numModalities][numCommonTopics];
+
+        for (Byte m = 1; m < numModalities; m++) {
+            gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
+            for (int t = 0; t < numCommonTopics; t++) {
+                topicMapping[m][t] = t;
+                for (int t_text = 0; t_text < numCommonTopics; t_text++) {
+                    if (!usedTopics.contains(t_text)) {
+                        labelId = m + "_" + t;
+                        labelTextId = "0_" + t_text;
+                        similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(labelId), labelVectors.get(labelTextId))); // the function returns distance not similarity
+                        if (similarity > maxSimilarity) {
+                            maxSimilarity = similarity;
+                            topicMapping[m][t] = t_text;
+                        }
+                    }
+                }
+                usedTopics.add(topicMapping[m][t]);
+            }
+
+        }
+
+        for (MixTopicModelTopicAssignment entity : data) {
+            for (Byte m = 1; m < numModalities; m++) {
+                TopicAssignment document = entity.Assignments[m];
+
+                if (document != null) {
+
+                    //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                    FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+                    int[] topics = topicSequence.getFeatures();
+
+                    for (int position = 0; position < topics.length; position++) {
+                        int oldTopic = topics[position];
+                        if (oldTopic < numCommonTopics) {
+                            topics[position] = topicMapping[m][oldTopic];
+                        }
+
+                    }
+                }
+            }
+        }
+
+        buildInitialTypeTopicCounts();
+
     }
 
     public void sumTypeTopicCounts(MixWorkerRunnable[] runnables, boolean calcSkew) {
@@ -1181,6 +1280,12 @@ public class MixParallelTopicModel implements Serializable {
                 //System.out.print("[" + (System.currentTimeMillis() - iterationStart) + "] ");
 
                 //synchronize counts
+//                if (iteration == 10) {
+//                    alignTopicsInModalities();
+//                } else {
+//                    sumTypeTopicCounts(runnables, iteration > burninPeriod);
+//                }
+
                 sumTypeTopicCounts(runnables, iteration > burninPeriod);
 
 

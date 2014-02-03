@@ -43,15 +43,15 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 600;
+        int numIterations = 300;
         int burnIn = 100;
-        LabelType lblType = LabelType.DBLP;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 10;
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
-        String experimentId = numTopics + "T_" +numIndependentTopics+"IT_"+ numIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
+        String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -461,6 +461,9 @@ public class MixTopicModelExample {
         //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
         model.printState(
                 new File(stateFileZip));
+
+        logger.info("printState finished");
+
         PrintWriter outState = new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
 
         model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
@@ -477,22 +480,46 @@ public class MixTopicModelExample {
 
         logger.info("topicPhraseXML report finished");
 
-        GunZipper g = new GunZipper(new File(stateFileZip));
+//        GunZipper g = new GunZipper(new File(stateFileZip));
+//
+//        g.unzip(
+//                new File(stateFile));
+//
+//        try {
+//            // outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
+//            logger.info("outputCsvFiles finished");
+//        } catch (Exception e) {
+//            // if the error message is "out of memory", 
+//            // it probably means no database file is found
+//            System.err.println(e.getMessage());
+//        }
 
-        g.unzip(
-                new File(stateFile));
+        if (modelEvaluationFile != null) {
+            try {
 
-        try {
-            // outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
-            logger.info("outputCsvFiles finished");
-        } catch (Exception e) {
-            // if the error message is "out of memory", 
-            // it probably means no database file is found
-            System.err.println(e.getMessage());
+//                ObjectOutputStream oos =
+//                        new ObjectOutputStream(new FileOutputStream(modelEvaluationFile));
+//                oos.writeObject(model.getProbEstimator());
+//                oos.close();
+//                
+                PrintStream docProbabilityStream = null;
+                docProbabilityStream = new PrintStream(modelEvaluationFile);
+
+                double perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                System.out.println("perplexity for the test set=" + perplexity);
+                logger.info("perplexity calculation finished");
+                MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
+                diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
+                logger.info("full diagnostics calculation finished");
+
+            } catch (Exception e) {
+                System.err.println(e.getMessage());
+            }
+
         }
 
         //calc similarities
-
+        logger.info("similarities calculation Started");
         try {
             // create a database connection
             //connection = DriverManager.getConnection(SQLLitedb);
@@ -602,7 +629,7 @@ public class MixTopicModelExample {
                             continue;
                         } else {
                             startCalc = true;
-                            similarity = 1 - cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId)); // the function returns distance not similarity
+                            similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
                             if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
                                 bulkInsert.setInt(1, lblType.ordinal());
                                 bulkInsert.setString(2, fromGrantId);
@@ -653,37 +680,7 @@ public class MixTopicModelExample {
 
         logger.info("similarities calculation finished");
 
-        if (modelEvaluationFile
-                != null) {
-            try {
 
-//                ObjectOutputStream oos =
-//                        new ObjectOutputStream(new FileOutputStream(modelEvaluationFile));
-//                oos.writeObject(model.getProbEstimator());
-//                oos.close();
-//                
-                PrintStream docProbabilityStream = null;
-                if (modelEvaluationFile != null) {
-                    docProbabilityStream = new PrintStream(modelEvaluationFile);
-                }
-
-
-                double perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
-
-
-                System.out.println("perplexity for the test set=" + perplexity);
-                logger.info("perplexity calculation finished");
-
-                MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
-                diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
-
-                logger.info("full diagnostics calculation finished");
-
-            } catch (Exception e) {
-                System.err.println(e.getMessage());
-            }
-
-        }
 //        if (modelDiagnosticsFile
 //                != null) {
 //            PrintWriter out = new PrintWriter(modelDiagnosticsFile);

@@ -500,16 +500,16 @@ public class MixWorkerRunnable implements Runnable {
                     / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
             for (byte j = 0; j < numModalities; j++) {
-               // if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                    if (docLength[j] > 0) {
+                // if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                if (docLength[j] > 0) {
 
-                        double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
-                                / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-                        /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
-                        topicBetaMass[m] -= beta[m] * normSumN;
-                        cachedCoefficients[m][oldTopic] -= normSumN;
-                    }
-              //  }
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+                    /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                    topicBetaMass[m] -= beta[m] * normSumN;
+                    cachedCoefficients[m][oldTopic] -= normSumN;
+                }
+                //  }
             }
             // Decrement the local doc/topic counts
 
@@ -569,16 +569,16 @@ public class MixWorkerRunnable implements Runnable {
             smoothOnlyCachedCoefficients[m][oldTopic] = alpha[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
             for (byte j = 0; j < numModalities; j++) {
-              //  if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                    if (docLength[j] > 0) {
-                        double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
-                                / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+                //  if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                if (docLength[j] > 0) {
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
 
-                        topicBetaMass[m] += beta[m] * normSumN;
+                    topicBetaMass[m] += beta[m] * normSumN;
 
-                        cachedCoefficients[m][oldTopic] += normSumN;
-                    }
-               // }
+                    cachedCoefficients[m][oldTopic] += normSumN;
+                }
+                // }
             }
             /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
@@ -1041,14 +1041,10 @@ public class MixWorkerRunnable implements Runnable {
         for (byte i = 0; i < numModalities; i++) {
             // Arrays.fill( p[i], 1);
             for (byte j = i; j < numModalities; j++) {
-
                 double pRand = i == j ? 1.0 : ((double) Math.round(1000 * random.nextBeta(p_a[i][j], p_b[i][j])) / (double) 1000);
                 p[i][j] = pRand;
                 p[j][i] = pRand;
-
             }
-
-
         }
 
         //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
@@ -1125,9 +1121,9 @@ public class MixWorkerRunnable implements Runnable {
                 double sample = ThreadLocalRandom.current().nextDouble() * ((smoothingOnlyMass[m] / docLength[m])
                         + topicBetaMass[m] + topicTermMass);
 
-                if (sample < 0) {
-                    newTopic = 0;
-                }
+//                if (sample < 0) {
+//                    newTopic = 0;
+//                }
 
                 //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
 
