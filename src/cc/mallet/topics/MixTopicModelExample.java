@@ -112,7 +112,7 @@ public class MixTopicModelExample {
                         + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>200 \n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
                         + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" // 
-                        // + " LIMIT 10000"
+                         + " LIMIT 100000"
                         ;
             } else if (lblType == LabelType.PM_pdb) {
                 sql =
