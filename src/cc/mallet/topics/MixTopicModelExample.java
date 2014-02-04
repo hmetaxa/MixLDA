@@ -40,6 +40,7 @@ public class MixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
+        boolean calcSimilarities = false; 
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
@@ -517,169 +518,170 @@ public class MixTopicModelExample {
             }
 
         }
+        if (calcSimilarities) {
+            //calc similarities
+            logger.info("similarities calculation Started");
+            try {
+                // create a database connection
+                //connection = DriverManager.getConnection(SQLLitedb);
+                connection = DriverManager.getConnection(SQLLitedb);
+                Statement statement = connection.createStatement();
+                statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-        //calc similarities
-        logger.info("similarities calculation Started");
-        try {
-            // create a database connection
-            //connection = DriverManager.getConnection(SQLLitedb);
-            connection = DriverManager.getConnection(SQLLitedb);
-            Statement statement = connection.createStatement();
-            statement.setQueryTimeout(30);  // set timeout to 30 sec.
-
-            // statement.executeUpdate("drop table if exists person");
+                // statement.executeUpdate("drop table if exists person");
 //      statement.executeUpdate("create table person (id integer, name string)");
 //      statement.executeUpdate("insert into person values(1, 'leo')");
 //      statement.executeUpdate("insert into person values(2, 'yui')");
 //      ResultSet rs = statement.executeQuery("select * from person");
-            String sql = "";
-            switch (lblType) {
-                case Grants:
-                    sql = "select    GrantId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join GrantPerDoc on topicsPerDoc.DocId= GrantPerDoc.DocId"
-                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
-                    break;
-                case Authors:
-                    sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join AuthorPerDoc on topicsPerDoc.DocId= AuthorPerDoc.DocId"
-                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
-                    break;
-                case PM_pdb:
-                    sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
-                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
-
-                    break;
-                case DBLP:
-                    sql = "select  Source, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join prlinks on topicsPerDoc.DocId= prlinks.source"
-                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
-
-                    break;
-                default:
-            }
-
-
-            // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
-
-            ResultSet rs = statement.executeQuery(sql);
-
-            HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
-
-            String labelId = "";
-            int[] topics = new int[numTopics];
-            double[] weights = new double[numTopics];
-            int cnt = 0;
-            double a;
-            while (rs.next()) {
-
-                String newLabelId = "";
-
+                String sql = "";
                 switch (lblType) {
                     case Grants:
-                        newLabelId = rs.getString("GrantId");
+                        sql = "select    GrantId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join GrantPerDoc on topicsPerDoc.DocId= GrantPerDoc.DocId"
+                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
                         break;
                     case Authors:
-                        newLabelId = rs.getString("AuthorId");
+                        sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join AuthorPerDoc on topicsPerDoc.DocId= AuthorPerDoc.DocId"
+                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
                         break;
                     case PM_pdb:
-                        newLabelId = rs.getString("pdbCode");
+                        sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
+                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
+
                         break;
                     case DBLP:
-                        newLabelId = rs.getString("Source");
+                        sql = "select  Source, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join prlinks on topicsPerDoc.DocId= prlinks.source"
+                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
+
                         break;
                     default:
                 }
 
-                if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
-                    labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
-                    topics = new int[numTopics];
-                    weights = new double[numTopics];
-                    cnt = 0;
+
+                // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
+
+                ResultSet rs = statement.executeQuery(sql);
+
+                HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
+
+                String labelId = "";
+                int[] topics = new int[numTopics];
+                double[] weights = new double[numTopics];
+                int cnt = 0;
+                double a;
+                while (rs.next()) {
+
+                    String newLabelId = "";
+
+                    switch (lblType) {
+                        case Grants:
+                            newLabelId = rs.getString("GrantId");
+                            break;
+                        case Authors:
+                            newLabelId = rs.getString("AuthorId");
+                            break;
+                        case PM_pdb:
+                            newLabelId = rs.getString("pdbCode");
+                            break;
+                        case DBLP:
+                            newLabelId = rs.getString("Source");
+                            break;
+                        default:
+                    }
+
+                    if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
+                        labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
+                        topics = new int[numTopics];
+                        weights = new double[numTopics];
+                        cnt = 0;
+                    }
+                    labelId = newLabelId;
+                    topics[cnt] = rs.getInt("TopicId");
+                    weights[cnt] = rs.getDouble("Weight");
+                    cnt++;
+
+
                 }
-                labelId = newLabelId;
-                topics[cnt] = rs.getInt("TopicId");
-                weights[cnt] = rs.getDouble("Weight");
-                cnt++;
 
-
-            }
-
-            cnt = 0;
-            double similarity = 0;
-            double similarityThreshold = 0.1;
-            NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+                cnt = 0;
+                double similarity = 0;
+                double similarityThreshold = 0.1;
+                NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
 
 
 
-            statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
-            String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s'", experimentId);
-            statement.executeUpdate(deleteSQL);
+                statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
+                String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
 
-            PreparedStatement bulkInsert = null;
-            sql = "insert into EntitySimilarity values(?,?,?,?,?);";
+                PreparedStatement bulkInsert = null;
+                sql = "insert into EntitySimilarity values(?,?,?,?,?);";
 
-            try {
+                try {
 
-                connection.setAutoCommit(false);
-                bulkInsert = connection.prepareStatement(sql);
+                    connection.setAutoCommit(false);
+                    bulkInsert = connection.prepareStatement(sql);
 
 
-                for (String fromGrantId : labelVectors.keySet()) {
-                    boolean startCalc = false;
+                    for (String fromGrantId : labelVectors.keySet()) {
+                        boolean startCalc = false;
 
-                    for (String toGrantId : labelVectors.keySet()) {
-                        if (!fromGrantId.equals(toGrantId) && !startCalc) {
-                            continue;
-                        } else {
-                            startCalc = true;
-                            similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
-                            if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                bulkInsert.setInt(1, lblType.ordinal());
-                                bulkInsert.setString(2, fromGrantId);
-                                bulkInsert.setString(3, toGrantId);
-                                bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
-                                bulkInsert.setString(5, experimentId);
-                                bulkInsert.executeUpdate();
+                        for (String toGrantId : labelVectors.keySet()) {
+                            if (!fromGrantId.equals(toGrantId) && !startCalc) {
+                                continue;
+                            } else {
+                                startCalc = true;
+                                similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
+                                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+                                    bulkInsert.setInt(1, lblType.ordinal());
+                                    bulkInsert.setString(2, fromGrantId);
+                                    bulkInsert.setString(3, toGrantId);
+                                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                                    bulkInsert.setString(5, experimentId);
+                                    bulkInsert.executeUpdate();
+                                }
                             }
                         }
                     }
-                }
-                connection.commit();
+                    connection.commit();
 
-            } catch (SQLException e) {
+                } catch (SQLException e) {
 
-                if (connection != null) {
-                    try {
-                        System.err.print("Transaction is being rolled back");
-                        connection.rollback();
-                    } catch (SQLException excep) {
-                        System.err.print("Error in insert grantSimilarity");
+                    if (connection != null) {
+                        try {
+                            System.err.print("Transaction is being rolled back");
+                            connection.rollback();
+                        } catch (SQLException excep) {
+                            System.err.print("Error in insert grantSimilarity");
+                        }
                     }
+                } finally {
+
+                    if (bulkInsert != null) {
+                        bulkInsert.close();
+                    }
+                    connection.setAutoCommit(true);
                 }
-            } finally {
-
-                if (bulkInsert != null) {
-                    bulkInsert.close();
-                }
-                connection.setAutoCommit(true);
-            }
 
 
 
-        } catch (SQLException e) {
-            // if the error message is "out of memory", 
-            // it probably means no database file is found
-            System.err.println(e.getMessage());
-        } finally {
-            try {
-                if (connection != null) {
-                    connection.close();
-                }
             } catch (SQLException e) {
-                // connection close failed.
-                System.err.println(e);
+                // if the error message is "out of memory", 
+                // it probably means no database file is found
+                System.err.println(e.getMessage());
+            } finally {
+                try {
+                    if (connection != null) {
+                        connection.close();
+                    }
+                } catch (SQLException e) {
+                    // connection close failed.
+                    System.err.println(e);
+                }
             }
+
+
+            logger.info("similarities calculation finished");
         }
-
-        logger.info("similarities calculation finished");
-
 
 //        if (modelDiagnosticsFile
 //                != null) {
