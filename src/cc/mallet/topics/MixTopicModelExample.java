@@ -43,11 +43,11 @@ public class MixTopicModelExample {
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int numIterations = 300;
+        int numIterations = 500;
         int burnIn = 100;
-        LabelType lblType = LabelType.Authors;
+        LabelType lblType = LabelType.DBLP;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneLblCnt = 10;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
