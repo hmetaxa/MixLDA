@@ -1041,7 +1041,8 @@ public class MixWorkerRunnable implements Runnable {
         for (byte i = 0; i < numModalities; i++) {
             // Arrays.fill( p[i], 1);
             for (byte j = i; j < numModalities; j++) {
-                double pRand = i == j ? 1.0 : ((double) Math.round(1000 * random.nextBeta(p_a[i][j], p_b[i][j])) / (double) 1000);
+                double pRand = i == j ? 1.0 : p_a[i][j] == 0 ? 0 : ((double) Math.round(1000 * random.nextBeta(p_a[i][j], p_b[i][j])) / (double) 1000);
+
                 p[i][j] = pRand;
                 p[j][i] = pRand;
             }
