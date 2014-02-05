@@ -463,9 +463,8 @@ public class MixWorkerRunnable implements Runnable {
 
 
                             //	initialize the normalization constant for the (B * n_{t|d}) term
-                            double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]  * 1000
+                            double normSumN = p[m][j] * localTopicCounts[j][topic]
                                     / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
-                            /// (tokensPerTopic[i][topic] + betaSum[i]);
 
                             topicBetaMass[m] += beta[m] * normSumN;
                             //	update the coefficients for the non-zero topics
@@ -503,8 +502,9 @@ public class MixWorkerRunnable implements Runnable {
                 // if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
                 if (docLength[j] > 0) {
 
-                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic]
                             / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
+
                     /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
                     topicBetaMass[m] -= beta[m] * normSumN;
                     cachedCoefficients[m][oldTopic] -= normSumN;
@@ -571,7 +571,7 @@ public class MixWorkerRunnable implements Runnable {
             for (byte j = 0; j < numModalities; j++) {
                 //  if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
                 if (docLength[j] > 0) {
-                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic] /// docLength[j]  * 1000
+                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic]
                             / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
 
                     topicBetaMass[m] += beta[m] * normSumN;
@@ -670,7 +670,7 @@ public class MixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopicInTopicTermMass(
-            final double[] topicTermScores,
+            double[] topicTermScores,
             int[] currentTypeTopicCounts,
             double sample) {
 
@@ -702,8 +702,8 @@ public class MixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopicInBetaMass(
-            final int[][] localTopicCounts,
-            final int[] localTopicIndex,
+            int[][] localTopicCounts,
+            int[] localTopicIndex,
             int nonZeroTopics,
             byte m,
             final int[] docLength,
@@ -722,8 +722,7 @@ public class MixWorkerRunnable implements Runnable {
             if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
                 for (byte j = 0; j < numModalities; j++) {
                     if (docLength[j] > 0) {
-
-                        double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]  * 1000
+                        double normSumN = p[m][j] * localTopicCounts[j][topic]
                                 / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
 
                         sample -= beta[m] * normSumN;
@@ -799,15 +798,15 @@ public class MixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopic(
-            final int[][] localTopicCounts,
-            final int[] localTopicIndex,
-            final double[] topicBetaMass,
+            int[][] localTopicCounts,
+            int[] localTopicIndex,
+            double[] topicBetaMass,
             int nonZeroTopics,
             byte m,
             double topicTermMass,
-            final double[] topicTermScores,
+            double[] topicTermScores,
             int[] currentTypeTopicCounts,
-            final int[] docLength,
+            int[] docLength,
             double sample,
             double[][] p) {
         //	Make sure it actually gets set
@@ -927,9 +926,8 @@ public class MixWorkerRunnable implements Runnable {
 
         for (byte j = 0; j < numModalities; j++) {
             if (docLength[j] > 0) {
-                double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
+                double normSumN = p[m][j] * localTopicCounts[j][newTopic]
                         / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-
                 /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
                 topicBetaMass[m] -= beta[m] * normSumN;
                 cachedCoefficients[m][newTopic] -= normSumN;
@@ -995,10 +993,9 @@ public class MixWorkerRunnable implements Runnable {
 
         for (byte j = 0; j < numModalities; j++) {
             if (docLength[j] > 0) {
-                double normSumN = p[m][j] * localTopicCounts[j][newTopic] /// docLength[j]  * 1000
+                double normSumN = p[m][j] * localTopicCounts[j][newTopic]
                         / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-
-                /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+                
                 topicBetaMass[m] += beta[m] * normSumN;
                 cachedCoefficients[m][newTopic] += normSumN;
             }

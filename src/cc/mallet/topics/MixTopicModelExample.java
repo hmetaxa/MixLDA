@@ -40,13 +40,14 @@ public class MixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        boolean calcSimilarities = false; 
+        boolean calcSimilarities = false;
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
         int numIterations = 500;
+        int independentIterations = 0;
         int burnIn = 100;
-        LabelType lblType = LabelType.DBLP;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
         int pruneLblCnt = 10;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -111,8 +112,8 @@ public class MixTopicModelExample {
                         "   select id, title||' '||abstract AS text, Authors, GROUP_CONCAT(prLinks.Target,',') as citations,  GROUP_CONCAT(prLinks.Counts,',') as citationsCnt from papers\n"
                         + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>200 \n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
-                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" // 
-                         + " LIMIT 100000"
+                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
+                        //+ " LIMIT 200000"
                         ;
             } else if (lblType == LabelType.PM_pdb) {
                 sql =
@@ -431,6 +432,11 @@ public class MixTopicModelExample {
         MixParallelTopicModel model = new MixParallelTopicModel(numTopics, numIndependentTopics, numModalities, 1.0, beta, ignoreLabels, skewOn);
 
         // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
+        model.setNumIterations(numIterations);
+        model.setIndependentIterations(independentIterations);
+        model.optimizeInterval = 50;
+        model.burninPeriod = burnIn;
+
         model.addInstances(instances);
 
         logger.info(" instances added");
@@ -440,9 +446,7 @@ public class MixTopicModelExample {
         model.setNumThreads(4);
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
-        model.setNumIterations(numIterations);
-        model.optimizeInterval = 50;
-        model.burninPeriod = burnIn;
+
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;

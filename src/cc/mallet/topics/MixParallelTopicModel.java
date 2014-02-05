@@ -95,6 +95,7 @@ public class MixParallelTopicModel implements Serializable {
     public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
     public int numIterations = 1000;
     public int burninPeriod = 200;
+    public int independentIterations = 50;
     public int saveSampleInterval = 10;
     public int optimizeInterval = 50;
     public int temperingInterval = 0;
@@ -220,13 +221,7 @@ public class MixParallelTopicModel implements Serializable {
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
 
-        for (byte i = 0; i < numModalities; i++) {
 
-            Arrays.fill(this.p_a[i], 0d);
-            Arrays.fill(this.p_b[i], 0d);
-            //Arrays.fill(this.p_a[i], 5d);
-            //Arrays.fill(this.p_b[i], 1d);
-        }
     }
 
     public Alphabet[] getAlphabet() {
@@ -247,6 +242,10 @@ public class MixParallelTopicModel implements Serializable {
 
     public void setNumIterations(int numIterations) {
         this.numIterations = numIterations;
+    }
+
+    public void setIndependentIterations(int numIterations) {
+        this.independentIterations = numIterations;
     }
 
     public void setBurninPeriod(int burninPeriod) {
@@ -601,13 +600,13 @@ public class MixParallelTopicModel implements Serializable {
         NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
         //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
 
-        HashMap<String, gnu.trove.TObjectIntHashMap<String>> topicEntitiesPerModality = new HashMap<String, gnu.trove.TObjectIntHashMap<String>>();
+        HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
 
         for (Byte m = 0; m < numModalities; m++) {
 
             for (int t = 0; t < numCommonTopics; t++) {
                 labelId = m + "_" + t;
-                topicEntitiesPerModality.put(labelId, new gnu.trove.TObjectIntHashMap<String>());
+                topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
             }
         }
         //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
@@ -627,7 +626,7 @@ public class MixParallelTopicModel implements Serializable {
                     for (int position = 0; position < topics.length; position++) {
                         if (topics[position] < numCommonTopics) {
                             labelId = m + "_" + topics[position];
-                            topicEntitiesPerModality.get(labelId).adjustOrPutValue(entity.EntityId, 1, 1);
+                            topicEntitiesPerModality.get(labelId).adjustOrPutValue(Integer.parseInt(entity.EntityId), 1, 1);
                         }
                     }
                     // }
@@ -642,13 +641,15 @@ public class MixParallelTopicModel implements Serializable {
                 int[] entities = new int[data.size()];
                 double[] weights = new double[data.size()];
                 int cnt = 0;
-                for (Object entity : topicEntitiesPerModality.get(labelId).keys()) {
-                    entities[cnt] = Integer.parseInt((String) entity);//((String) entity).hashCode();
-                    weights[cnt] = topicEntitiesPerModality.get(labelId).get((String) entity);
+                int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
+                Arrays.sort(entityIds);
+                for (int entity : entityIds) {
+                    entities[cnt] = entity;//((String) entity).hashCode();
+                    weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
                     cnt++;
                 }
 
-                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, true, true));
+                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
             }
         }
 
@@ -675,6 +676,8 @@ public class MixParallelTopicModel implements Serializable {
                 }
 
             }
+
+            Arrays.fill(topicMapping[m], -1);
             boolean found = true;
             TopicMapping topicMap = new TopicMapping();
             while (found) {
@@ -712,7 +715,7 @@ public class MixParallelTopicModel implements Serializable {
 
                     for (int position = 0; position < topics.length; position++) {
                         int oldTopic = topics[position];
-                        if (oldTopic < numCommonTopics) {
+                        if (oldTopic < numCommonTopics && topicMapping[m][oldTopic] != -1) {
                             topics[position] = topicMapping[m][oldTopic];
                         }
 
@@ -1217,6 +1220,13 @@ public class MixParallelTopicModel implements Serializable {
         int offset = 0;
         pDistr_Mean = new double[numModalities][numModalities][data.size()];
         pDistr_Var = new double[numModalities][numModalities][data.size()];
+        for (byte i = 0; i < numModalities; i++) {
+
+            Arrays.fill(this.p_a[i], independentIterations == 0 ? 5d : 0d);
+            Arrays.fill(this.p_b[i], independentIterations == 0 ? 1d : 0d);
+            //Arrays.fill(this.p_a[i], 5d);
+            //Arrays.fill(this.p_b[i], 1d);
+        }
 
         if (numThreads > 1) {
 
@@ -1356,7 +1366,7 @@ public class MixParallelTopicModel implements Serializable {
                 //System.out.print("[" + (System.currentTimeMillis() - iterationStart) + "] ");
 
                 //synchronize counts
-                if (iteration == 10) {
+                if (iteration == independentIterations) {
                     logger.info("Topics alignment started");
                     alignTopicsInModalities();
                     for (byte i = 0; i < numModalities; i++) {
