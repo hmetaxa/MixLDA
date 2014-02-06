@@ -580,9 +580,6 @@ public class MixParallelTopicModel implements Serializable {
         }
     }
 
-    //fast sampling initialization: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
-    // on entities distribution 
-    //Needs much work to align topics 
     public void alignTopicsInModalities() {
 //        int[] totalModalityTokens = new int[numModalities];
 //        int[] totalConvergedTokens = new int[numModalities];
@@ -603,11 +600,9 @@ public class MixParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
 
-            for (int t = 0; t < numTopics; t++) {
-                if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                    labelId = m + "_" + t;
-                    topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
-                }
+            for (int t = 0; t < numCommonTopics; t++) {
+                labelId = m + "_" + t;
+                topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
             }
         }
         //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
@@ -634,61 +629,54 @@ public class MixParallelTopicModel implements Serializable {
                     int[] topics = topicSequence.getFeatures();
 
                     for (int position = 0; position < topics.length; position++) {
-                        //if (topics[position] < numCommonTopics) {
-                        labelId = m + "_" + topics[position];
-                        topicEntitiesPerModality.get(labelId).adjustOrPutValue(entityId, 1, 1);
-                        // }
+                        if (topics[position] < numCommonTopics) {
+                            labelId = m + "_" + topics[position];
+                            topicEntitiesPerModality.get(labelId).adjustOrPutValue(entityId, 1, 1);
+                        }
                     }
                     // }
                 }
             }
+        }
 
+        for (Byte m = 0; m < numModalities; m++) {
 
-            for (Byte m = 0; m < numModalities; m++) {
-
-
-                for (int t = 0; t < numTopics; t++) {
-                    if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                        labelId = m + "_" + t;
-                        int[] entities = new int[data.size()];
-                        double[] weights = new double[data.size()];
-                        int cnt = 0;
-                        int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
-                        Arrays.sort(entityIds);
-                        for (int entId : entityIds) {
-                            entities[cnt] = entId;//((String) entity).hashCode();
-                            weights[cnt] = topicEntitiesPerModality.get(labelId).get(entId);
-                            cnt++;
-                        }
-
-                        labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
-                    }
+            for (int t = 0; t < numCommonTopics; t++) {
+                labelId = m + "_" + t;
+                int[] entities = new int[data.size()];
+                double[] weights = new double[data.size()];
+                int cnt = 0;
+                int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
+                Arrays.sort(entityIds);
+                for (int entity : entityIds) {
+                    entities[cnt] = entity;//((String) entity).hashCode();
+                    weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
+                    cnt++;
                 }
+
+                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
             }
         }
+
         double similarity = 0;
         //double maxSimilarity = 0;
         String labelTextId;
-        int[][] topicMapping = new int[numModalities][numTopics];
+        int[][] topicMapping = new int[numModalities][numCommonTopics];
         //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
-        double[][] topicSimilarities = new double[numTopics][numTopics];
+        double[][] topicSimilarities = new double[numCommonTopics][numCommonTopics];
+
         for (Byte m = 1; m < numModalities; m++) {
-            for (int i = 0; i < numTopics; i++) {
+            for (int i = 0; i < numCommonTopics; i++) {
                 Arrays.fill(topicSimilarities[i], 0);
             }
             gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
             gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
-            for (int t = 0; t < numTopics; t++) {
+            for (int t = 0; t < numCommonTopics; t++) {
 
-                for (int t_text = 0; t_text < numTopics; t_text++) {
+                for (int t_text = 0; t_text < numCommonTopics; t_text++) {
                     labelId = m + "_" + t;
                     labelTextId = "0_" + t_text;
-                    SparseVector source = labelVectors.get(labelId);
-                    SparseVector target = labelVectors.get(labelTextId);
-                    similarity = 0;
-                    if (source != null & target != null) {
-                        similarity = 1 - Math.abs(cosineSimilarity.distance(source, target)); // the function returns distance not similarity
-                    }
+                    similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(labelId), labelVectors.get(labelTextId))); // the function returns distance not similarity
                     topicSimilarities[t][t_text] = similarity;
                 }
 
@@ -711,7 +699,7 @@ public class MixParallelTopicModel implements Serializable {
                 }
             }
 
-            for (int i = 0; i < numTopics; i++) {
+            for (int i = 0; i < numCommonTopics; i++) {
                 if (topicMapping[m][i] == 0 && usedTopics.contains(i)) {
                     topicMapping[m][i] = emptyTopics.get(0);
                     emptyTopics.remove(0);
@@ -719,6 +707,7 @@ public class MixParallelTopicModel implements Serializable {
             }
 
         }
+
         for (MixTopicModelTopicAssignment entity : data) {
             for (Byte m = 1; m < numModalities; m++) {
                 TopicAssignment document = entity.Assignments[m];
@@ -731,7 +720,7 @@ public class MixParallelTopicModel implements Serializable {
 
                     for (int position = 0; position < topics.length; position++) {
                         int oldTopic = topics[position];
-                        if (oldTopic < numTopics && topicMapping[m][oldTopic] != -1) {
+                        if (oldTopic < numCommonTopics && topicMapping[m][oldTopic] != -1) {
                             topics[position] = topicMapping[m][oldTopic];
                         }
 
@@ -743,22 +732,189 @@ public class MixParallelTopicModel implements Serializable {
         }
 
         buildInitialTypeTopicCounts();
+
     }
 
+    //fast sampling initialization: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
+    // on entities distribution 
+    //Needs much work to align topics 
+     /*
+     public void alignTopicsInModalities() {
+     //        int[] totalModalityTokens = new int[numModalities];
+     //        int[] totalConvergedTokens = new int[numModalities];
+     //        Arrays.fill(totalModalityTokens, 0);
+     //        Arrays.fill(totalConvergedTokens, 0);
+
+     //int[][][] entityIdPerTopicPerModality = new int[numModalities][numTopics][data.size()];
+     //int[][][] entityIdPerTopicPerModality = new int[numModalities][numTopics][data.size()];
+
+
+
+     HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
+     String labelId = "";
+     NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+     //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+
+     HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
+
+     for (Byte m = 0; m < numModalities; m++) {
+
+     for (int t = 0; t < numTopics; t++) {
+     if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+     labelId = m + "_" + t;
+     topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
+     }
+     }
+     }
+     //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+     // topicEntitiesCnt.clear();
+     for (MixTopicModelTopicAssignment entity : data) {
+
+     int entityId = entity.EntityId.hashCode();
+     try {
+     entityId = Integer.parseInt(entity.EntityId);
+
+     } catch (NumberFormatException e) {
+     // entityId = entity.EntityId.hashCode();
+     }
+
+     for (Byte m = 0; m < numModalities; m++) {
+
+     //for (int t = 0; t < numCommonTopics; t++) {
+     TopicAssignment document = entity.Assignments[m];
+
+     if (document != null) {
+
+     //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+     FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+     int[] topics = topicSequence.getFeatures();
+
+     for (int position = 0; position < topics.length; position++) {
+     //if (topics[position] < numCommonTopics) {
+     labelId = m + "_" + topics[position];
+     topicEntitiesPerModality.get(labelId).adjustOrPutValue(entityId, 1, 1);
+     // }
+     }
+     // }
+     }
+     }
+
+
+     for (Byte m = 0; m < numModalities; m++) {
+
+
+     for (int t = 0; t < numTopics; t++) {
+     if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+     labelId = m + "_" + t;
+     int[] entities = new int[data.size()];
+     double[] weights = new double[data.size()];
+     int cnt = 0;
+     int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
+     Arrays.sort(entityIds);
+     for (int entId : entityIds) {
+     entities[cnt] = entId;//((String) entity).hashCode();
+     weights[cnt] = topicEntitiesPerModality.get(labelId).get(entId);
+     cnt++;
+     }
+
+     labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
+     }
+     }
+     }
+     }
+     double similarity = 0;
+     //double maxSimilarity = 0;
+     String labelTextId;
+     int[][] topicMapping = new int[numModalities][numTopics];
+     //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
+     double[][] topicSimilarities = new double[numTopics][numTopics];
+     for (Byte m = 1; m < numModalities; m++) {
+     for (int i = 0; i < numTopics; i++) {
+     Arrays.fill(topicSimilarities[i], 0);
+     }
+     gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
+     gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
+     for (int t = 0; t < numTopics; t++) {
+
+     for (int t_text = 0; t_text < numTopics; t_text++) {
+     labelId = m + "_" + t;
+     labelTextId = "0_" + t_text;
+     SparseVector source = labelVectors.get(labelId);
+     SparseVector target = labelVectors.get(labelTextId);
+     similarity = 0;
+     if (source != null & target != null) {
+     similarity = 1 - Math.abs(cosineSimilarity.distance(source, target)); // the function returns distance not similarity
+     }
+     topicSimilarities[t][t_text] = similarity;
+     }
+
+     }
+
+     Arrays.fill(topicMapping[m], -1);
+     boolean found = true;
+     TopicMapping topicMap = new TopicMapping();
+     while (found) {
+     found = findNextMapping(topicSimilarities, topicMap);
+     if (found) {
+     if (!usedTopics.contains(topicMap.from)) {
+     emptyTopics.add(topicMap.from);
+     }
+     topicMapping[m][topicMap.from] = topicMap.to;
+     usedTopics.add(topicMap.to);
+     if (emptyTopics.contains(topicMap.to)) {
+     emptyTopics.remove(emptyTopics.indexOf(topicMap.to));
+     }
+     }
+     }
+
+     for (int i = 0; i < numTopics; i++) {
+     if (topicMapping[m][i] == 0 && usedTopics.contains(i)) {
+     topicMapping[m][i] = emptyTopics.get(0);
+     emptyTopics.remove(0);
+     }
+     }
+
+     }
+     for (MixTopicModelTopicAssignment entity : data) {
+     for (Byte m = 1; m < numModalities; m++) {
+     TopicAssignment document = entity.Assignments[m];
+
+     if (document != null) {
+
+     //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+     FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+     int[] topics = topicSequence.getFeatures();
+
+     for (int position = 0; position < topics.length; position++) {
+     int oldTopic = topics[position];
+     if (oldTopic < numTopics && topicMapping[m][oldTopic] != -1) {
+     topics[position] = topicMapping[m][oldTopic];
+     }
+
+     }
+     }
+
+
+     }
+     }
+
+     buildInitialTypeTopicCounts();
+     }
+     */
     private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap) {
         boolean found = false;
         topicMap.from = 0;
         topicMap.to = 0;
         double maxSimilarity = 0;
-        for (int i = 0; i < numTopics; i++) {
-            for (int j = 0; j < numTopics; j++) {
+        for (int i = 0; i < numCommonTopics; i++) {
+            for (int j = 0; j < numCommonTopics; j++) {
                 if (topicSimilarities[i][j] != 0 && topicSimilarities[i][j] > maxSimilarity) {
                     found = true;
                     maxSimilarity = topicSimilarities[i][j];
                     topicMap.from = i;
                     topicMap.to = j;
                     //Arrays.fill(topicSimilarities[i], 0);
-                    for (int k = 0; k < numTopics; k++) {
+                    for (int k = 0; k < numCommonTopics; k++) {
                         topicSimilarities[i][k] = 0;
                         topicSimilarities[k][j] = 0;
                     }

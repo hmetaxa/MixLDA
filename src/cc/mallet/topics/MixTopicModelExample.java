@@ -35,7 +35,7 @@ public class MixTopicModelExample {
         Logger logger = MalletLogger.getLogger(MixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 3;
         int numIndependentTopics = 10;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -43,11 +43,11 @@ public class MixTopicModelExample {
         boolean calcSimilarities = false;
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
+        int numTopics = 70;
         int numIterations = 500;
-        int independentIterations = 20;
+        int independentIterations = 50;
         int burnIn = 100;
-        LabelType lblType = LabelType.Authors;
+        LabelType lblType = LabelType.DBLP;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -112,7 +112,8 @@ public class MixTopicModelExample {
                         "   select id, title||' '||abstract AS text, Authors, GROUP_CONCAT(prLinks.Target,',') as citations,  GROUP_CONCAT(prLinks.Counts,',') as citationsCnt from papers\n"
                         + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>200 \n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
-                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" //+ " LIMIT 200000"
+                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
+                        + " LIMIT 200000"
                         ;
             } else if (lblType == LabelType.PM_pdb) {
                 sql =

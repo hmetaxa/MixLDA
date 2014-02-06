@@ -442,147 +442,184 @@ public class MixWorkerRunnable implements Runnable {
 
         //		Initialize the topic count/beta sampling bucket
 
-        Arrays.fill(topicBetaMass, 0);
-        for (byte i = 0; i < numModalities; i++) {
-            Arrays.fill(cachedCoefficients[i], 0);
 
-        }
         // Initialize cached coefficients and the topic/beta 
         //  normalizing constant.
 
 
-        int topic = -1;
+        // int topic = -1;
 
 
-        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-
-            topic = localTopicIndex[denseIndex];
-            for (byte m = 0; m < numModalities; m++) {
-
-                if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                    for (byte j = 0; j < numModalities; j++) {
-                        if (docLength[j] > 0) {
-
-
-                            //	initialize the normalization constant for the (B * n_{t|d}) term
-                            double normSumN = p[m][j] * localTopicCounts[j][topic]
-                                    / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
-
-                            topicBetaMass[m] += beta[m] * normSumN;
-                            //	update the coefficients for the non-zero topics
-                            cachedCoefficients[m][topic] += normSumN;
-
-                        }
-                    }
-                }
-
-            }
-        }
+//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+//
+//            topic = localTopicIndex[denseIndex];
+//            for (byte m = 0; m < numModalities; m++) {
+//
+//                if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+//                    for (byte j = 0; j < numModalities; j++) {
+//                        if (docLength[j] > 0) {
+//
+//
+//                            //	initialize the normalization constant for the (B * n_{t|d}) term
+//                            double normSumN = p[m][j] * localTopicCounts[j][topic]
+//                                    / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
+//
+//                            topicBetaMass[m] += beta[m] * normSumN;
+//                            //	update the coefficients for the non-zero topics
+//                            cachedCoefficients[m][topic] += normSumN;
+//
+//                        }
+//                    }
+//                }
+//
+//            }
+//        }
         return nonZeroTopics;
     }
 
     protected int removeOldTopicContribution(
+            //double[][] cachedCoefficients,
+            int[][] localTopicCounts,
+            int[] localTopicIndex,
+            //double[] topicBetaMass,
+            int oldTopic,
+            int nonZeroTopics,
+            // final int[] docLength,
+            byte m //modality
+            //double[][] p
+            ) {
+
+        // if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
+        //	Remove this token from all counts. 
+
+        // Remove this topic's contribution to the 
+        //  normalizing constants
+        smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
+                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+
+//        for (byte i = 0; i < numModalities; i++) {
+//            for (byte j = 0; j < numModalities; j++) {
+//                // if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+//                if (docLength[j] > 0) {
+//
+//                    double normSumN = p[i][j] * localTopicCounts[j][oldTopic]
+//                            / (docLength[j] * (tokensPerTopic[i][oldTopic] + betaSum[i]));
+//
+//                    /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+//                    topicBetaMass[i] -= beta[i] * normSumN;
+//                    cachedCoefficients[i][oldTopic] -= normSumN;
+//                }
+//                //  }
+//            }
+//        }
+        // Decrement the local doc/topic counts
+
+        localTopicCounts[m][oldTopic]--;
+
+        // Decrement the global topic count totals
+        tokensPerTopic[m][oldTopic]--;
+        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
+
+
+        // Add the old topic's contribution back into the
+        //  normalizing constants.
+        smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
+                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+
+        smoothOnlyCachedCoefficients[m][oldTopic] = alpha[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+
+//        for (byte i = 0; i < numModalities; i++) {
+//            for (byte j = 0; j < numModalities; j++) {
+//                //  if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+//                if (docLength[j] > 0) {
+//                    double normSumN = p[i][j] * localTopicCounts[j][oldTopic]
+//                            / (docLength[j] * (tokensPerTopic[i][oldTopic] + betaSum[i]));
+//
+//                    topicBetaMass[i] += beta[i] * normSumN;
+//
+//                    cachedCoefficients[i][oldTopic] += normSumN;
+//                }
+//                // }
+//            }
+//        }
+
+
+        // Maintain the dense index, if we are deleting
+        //  the old topic
+        boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
+        byte jj = 0;
+        while (isDeletedTopic && jj < numModalities) {
+            // if (jj != m) { //do not check m twice
+            isDeletedTopic = localTopicCounts[jj][oldTopic] == 0;
+            // }
+            jj++;
+        }
+
+        //isDeletedTopic = false;//todo omiros test
+        if (isDeletedTopic) {
+
+            // First get to the dense location associated with
+            //  the old topic.
+
+            int denseIndex = 0;
+
+            // We know it's in there somewhere, so we don't 
+            //  need bounds checking.
+            while (localTopicIndex[denseIndex] != oldTopic) {
+                denseIndex++;
+            }
+
+            // shift all remaining dense indices to the left.
+            while (denseIndex < nonZeroTopics) {
+                if (denseIndex < localTopicIndex.length - 1) {
+                    localTopicIndex[denseIndex] =
+                            localTopicIndex[denseIndex + 1];
+                }
+                denseIndex++;
+            }
+
+            nonZeroTopics--;
+        }
+
+        //omiors test ... recalc all beta 
+
+
+
+        return nonZeroTopics;
+
+    }
+
+    //TODO: I recalc them every time because sometimes I had a sampling error in FindTopicIn Beta Mass.. 
+    //I shouldn't need it, thus I should check it again
+    protected void recalcBetaAndCachedCoefficients(
             double[][] cachedCoefficients,
             int[][] localTopicCounts,
             int[] localTopicIndex,
             double[] topicBetaMass,
-            int oldTopic,
             int nonZeroTopics,
             final int[] docLength,
             byte m, //modality
             double[][] p) {
-
-        if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-            //	Remove this token from all counts. 
-
-            // Remove this topic's contribution to the 
-            //  normalizing constants
-            smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
-                    / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-
-            for (byte j = 0; j < numModalities; j++) {
-                // if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                if (docLength[j] > 0) {
-
-                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic]
-                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-
-                    /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
-                    topicBetaMass[m] -= beta[m] * normSumN;
-                    cachedCoefficients[m][oldTopic] -= normSumN;
-                }
-                //  }
-            }
-            // Decrement the local doc/topic counts
-
-            localTopicCounts[m][oldTopic]--;
-
-            // Decrement the global topic count totals
-            tokensPerTopic[m][oldTopic]--;
-            assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-
-
-            // Add the old topic's contribution back into the
-            //  normalizing constants.
-            smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
-                    / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-
-            smoothOnlyCachedCoefficients[m][oldTopic] = alpha[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-
-            for (byte j = 0; j < numModalities; j++) {
-                //  if (oldTopic < numCommonTopics || (oldTopic >= numCommonTopics + m * numIndependentTopics && oldTopic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                if (docLength[j] > 0) {
-                    double normSumN = p[m][j] * localTopicCounts[j][oldTopic]
-                            / (docLength[j] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-
-                    topicBetaMass[m] += beta[m] * normSumN;
-
-                    cachedCoefficients[m][oldTopic] += normSumN;
-                }
-                // }
-            }
-
-            // Maintain the dense index, if we are deleting
-            //  the old topic
-            boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
-            byte jj = 0;
-            while (isDeletedTopic && jj < numModalities) {
-                // if (jj != m) { //do not check m twice
-                isDeletedTopic = localTopicCounts[jj][oldTopic] == 0;
-                // }
-                jj++;
-            }
-
-            //isDeletedTopic = false;//todo omiros test
-            if (isDeletedTopic) {
-
-                // First get to the dense location associated with
-                //  the old topic.
-
-                int denseIndex = 0;
-
-                // We know it's in there somewhere, so we don't 
-                //  need bounds checking.
-                while (localTopicIndex[denseIndex] != oldTopic) {
-                    denseIndex++;
-                }
-
-                // shift all remaining dense indices to the left.
-                while (denseIndex < nonZeroTopics) {
-                    if (denseIndex < localTopicIndex.length - 1) {
-                        localTopicIndex[denseIndex] =
-                                localTopicIndex[denseIndex + 1];
-                    }
-                    denseIndex++;
-                }
-
-                nonZeroTopics--;
-            }
-        } else {
-            System.err.println(" Remove Old Topic Contribution UNASSIGNED_TOPIC");
+        Arrays.fill(topicBetaMass, 0);
+        for (byte i = 0; i < numModalities; i++) {
+            Arrays.fill(cachedCoefficients[i], 0);
         }
-        return nonZeroTopics;
 
+        for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+            int topic = localTopicIndex[denseIndex];
+            if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                for (byte j = 0; j < numModalities; j++) {
+                    if (docLength[j] > 0) {
+                        double normSumN = p[m][j] * localTopicCounts[j][topic]
+                                / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
+
+                        topicBetaMass[m] += beta[m] * normSumN;
+                        cachedCoefficients[m][topic] += normSumN;
+                    }
+                }
+            }
+
+        }
     }
 
     protected double calcTopicScores(
@@ -949,17 +986,17 @@ public class MixWorkerRunnable implements Runnable {
             nonZeroTopics++;
         }
 
-
-        for (byte j = 0; j < numModalities; j++) {
-            if (docLength[j] > 0) {
-                double normSumN = p[m][j] * localTopicCounts[j][newTopic]
-                        / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-                /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
-                topicBetaMass[m] -= beta[m] * normSumN;
-                cachedCoefficients[m][newTopic] -= normSumN;
-            }
-        }
-
+//        for (byte i = 0; i < numModalities; i++) {
+//            for (byte j = 0; j < numModalities; j++) {
+//                if (docLength[j] > 0) {
+//                    double normSumN = p[i][j] * localTopicCounts[j][newTopic]
+//                            / (docLength[j] * (tokensPerTopic[i][newTopic] + betaSum[i]));
+//                    /// (tokensPerTopic[m][oldTopic] + betaSum[m]);
+//                    topicBetaMass[i] -= beta[i] * normSumN;
+//                    cachedCoefficients[i][newTopic] -= normSumN;
+//                }
+//            }
+//        }
         smoothingOnlyMass[m] -= alpha[newTopic] * beta[m]
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
@@ -974,17 +1011,17 @@ public class MixWorkerRunnable implements Runnable {
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         smoothOnlyCachedCoefficients[m][newTopic] = alpha[newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        for (byte j = 0; j < numModalities; j++) {
-            if (docLength[j] > 0) {
-                double normSumN = p[m][j] * localTopicCounts[j][newTopic]
-                        / (docLength[j] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-
-                topicBetaMass[m] += beta[m] * normSumN;
-                cachedCoefficients[m][newTopic] += normSumN;
-            }
-        }
-
+//        for (byte i = 0; i < numModalities; i++) {
+//            for (byte j = 0; j < numModalities; j++) {
+//                if (docLength[j] > 0) {
+//                    double normSumN = p[i][j] * localTopicCounts[j][newTopic]
+//                            / (docLength[j] * (tokensPerTopic[i][newTopic] + betaSum[i]));
+//
+//                    topicBetaMass[i] += beta[i] * normSumN;
+//                    cachedCoefficients[i][newTopic] += normSumN;
+//                }
+//            }
+//        }
 
         return nonZeroTopics;
     }
@@ -1060,16 +1097,26 @@ public class MixWorkerRunnable implements Runnable {
                 //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length-1);
 
                 nonZeroTopics = removeOldTopicContribution(
+                        //cachedCoefficients,
+                        localTopicCounts,
+                        localTopicIndex,
+                        //topicBetaMass,
+                        oldTopic,
+                        nonZeroTopics,
+                        // docLength,
+                        m);
+//,
+                //                      p);
+
+                recalcBetaAndCachedCoefficients(
                         cachedCoefficients,
                         localTopicCounts,
                         localTopicIndex,
                         topicBetaMass,
-                        oldTopic,
                         nonZeroTopics,
                         docLength,
                         m,
                         p);
-
 
 
                 double[] topicTermScores = new double[numTopics];
