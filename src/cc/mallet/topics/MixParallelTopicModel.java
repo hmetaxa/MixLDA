@@ -600,7 +600,7 @@ public class MixParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
 
-            for (int t = 0; t < numCommonTopics; t++) {
+            for (int t = 0; t < numTopics; t++) {
                 labelId = m + "_" + t;
                 topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
             }
@@ -629,10 +629,10 @@ public class MixParallelTopicModel implements Serializable {
                     int[] topics = topicSequence.getFeatures();
 
                     for (int position = 0; position < topics.length; position++) {
-                        if (topics[position] < numCommonTopics) {
-                            labelId = m + "_" + topics[position];
-                            topicEntitiesPerModality.get(labelId).adjustOrPutValue(entityId, 1, 1);
-                        }
+                        //if (topics[position] < numCommonTopics) {
+                        labelId = m + "_" + topics[position];
+                        topicEntitiesPerModality.get(labelId).adjustOrPutValue(entityId, 1, 1);
+                        // }
                     }
                     // }
                 }
@@ -641,42 +641,49 @@ public class MixParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
 
-            for (int t = 0; t < numCommonTopics; t++) {
-                labelId = m + "_" + t;
-                int[] entities = new int[data.size()];
-                double[] weights = new double[data.size()];
-                int cnt = 0;
-                int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
-                Arrays.sort(entityIds);
-                for (int entity : entityIds) {
-                    entities[cnt] = entity;//((String) entity).hashCode();
-                    weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
-                    cnt++;
-                }
+            for (int t = 0; t < numTopics; t++) {
+                if (t < numCommonTopics || (m > 0 && t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                    labelId = m + "_" + t;
+                    int[] entities = new int[data.size()];
+                    double[] weights = new double[data.size()];
+                    int cnt = 0;
+                    int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
+                    Arrays.sort(entityIds);
+                    for (int entity : entityIds) {
+                        entities[cnt] = entity;//((String) entity).hashCode();
+                        weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
+                        cnt++;
+                    }
 
-                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
+                    labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
+                }
             }
         }
 
         double similarity = 0;
         //double maxSimilarity = 0;
         String labelTextId;
-        int[][] topicMapping = new int[numModalities][numCommonTopics];
+        int[][] topicMapping = new int[numModalities][numTopics];
         //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
-        double[][] topicSimilarities = new double[numCommonTopics][numCommonTopics];
+        double[][] topicSimilarities = new double[numTopics][numTopics];
 
         for (Byte m = 1; m < numModalities; m++) {
-            for (int i = 0; i < numCommonTopics; i++) {
+            for (int i = 0; i < numTopics; i++) {
                 Arrays.fill(topicSimilarities[i], 0);
             }
             gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
             gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
-            for (int t = 0; t < numCommonTopics; t++) {
+            for (int t = 0; t < numTopics; t++) {
 
-                for (int t_text = 0; t_text < numCommonTopics; t_text++) {
+                for (int t_text = 0; t_text < numTopics; t_text++) {
                     labelId = m + "_" + t;
                     labelTextId = "0_" + t_text;
-                    similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(labelId), labelVectors.get(labelTextId))); // the function returns distance not similarity
+                    SparseVector source = labelVectors.get(labelId);
+                    SparseVector target = labelVectors.get(labelTextId);
+                    similarity = 0;
+                    if (source != null & target != null) {
+                        similarity = 1 - Math.abs(cosineSimilarity.distance(source, target)); // the function returns distance not similarity
+                    }
                     topicSimilarities[t][t_text] = similarity;
                 }
 
@@ -699,12 +706,14 @@ public class MixParallelTopicModel implements Serializable {
                 }
             }
 
-            for (int i = 0; i < numCommonTopics; i++) {
+            for (int i = 0; i < numTopics; i++) {
                 if (topicMapping[m][i] == 0 && usedTopics.contains(i)) {
                     topicMapping[m][i] = emptyTopics.get(0);
                     emptyTopics.remove(0);
                 }
             }
+
+
 
         }
 
@@ -720,7 +729,7 @@ public class MixParallelTopicModel implements Serializable {
 
                     for (int position = 0; position < topics.length; position++) {
                         int oldTopic = topics[position];
-                        if (oldTopic < numCommonTopics && topicMapping[m][oldTopic] != -1) {
+                        if (topicMapping[m][oldTopic] != -1) {
                             topics[position] = topicMapping[m][oldTopic];
                         }
 
@@ -733,6 +742,29 @@ public class MixParallelTopicModel implements Serializable {
 
         buildInitialTypeTopicCounts();
 
+    }
+
+    private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap) {
+        boolean found = false;
+        topicMap.from = 0;
+        topicMap.to = 0;
+        double maxSimilarity = 0;
+        for (int i = 0; i < numTopics; i++) {
+            for (int j = 0; j < numTopics; j++) {
+                if (topicSimilarities[i][j] != 0 && topicSimilarities[i][j] > maxSimilarity) {
+                    found = true;
+                    maxSimilarity = topicSimilarities[i][j];
+                    topicMap.from = i;
+                    topicMap.to = j;
+                    //Arrays.fill(topicSimilarities[i], 0);
+                    for (int k = 0; k < numCommonTopics; k++) {
+                        topicSimilarities[i][k] = 0;
+                        topicSimilarities[k][j] = 0;
+                    }
+                }
+            }
+        }
+        return found;
     }
 
     //fast sampling initialization: first p=0 --> sample every modality independently, then map topics based on cosine or symmetricKL simalrity
@@ -901,29 +933,6 @@ public class MixParallelTopicModel implements Serializable {
      buildInitialTypeTopicCounts();
      }
      */
-    private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap) {
-        boolean found = false;
-        topicMap.from = 0;
-        topicMap.to = 0;
-        double maxSimilarity = 0;
-        for (int i = 0; i < numCommonTopics; i++) {
-            for (int j = 0; j < numCommonTopics; j++) {
-                if (topicSimilarities[i][j] != 0 && topicSimilarities[i][j] > maxSimilarity) {
-                    found = true;
-                    maxSimilarity = topicSimilarities[i][j];
-                    topicMap.from = i;
-                    topicMap.to = j;
-                    //Arrays.fill(topicSimilarities[i], 0);
-                    for (int k = 0; k < numCommonTopics; k++) {
-                        topicSimilarities[i][k] = 0;
-                        topicSimilarities[k][j] = 0;
-                    }
-                }
-            }
-        }
-        return found;
-    }
-
     public void sumTypeTopicCounts(MixWorkerRunnable[] runnables, boolean calcSkew) {
 
 
