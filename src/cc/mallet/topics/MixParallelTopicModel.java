@@ -1001,7 +1001,8 @@ public class MixParallelTopicModel implements Serializable {
                         while (targetCounts[targetIndex] > 0 && currentTopic != topic) {
                             targetIndex++;
                             if (targetIndex == targetCounts.length) {
-                                logger.info("overflow in merging on type " + type);
+                                logger.info("overflow in merging on type " + type + " moodality: " + i+ " thread: " + thread);
+                                
                             }
                             currentTopic = targetCounts[targetIndex] & topicMask;
                         }

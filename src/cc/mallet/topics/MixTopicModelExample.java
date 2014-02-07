@@ -36,20 +36,20 @@ public class MixTopicModelExample {
         int topWords = 10;
         int topLabels = 10;
         byte numModalities = 3;
-        int numIndependentTopics = 10;
+        int numIndependentTopics = 5;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
         boolean calcSimilarities = false;
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 70;
+        int numTopics = 85;
         int numIterations = 500;
-        int independentIterations = 50;
-        int burnIn = 100;
+        int independentIterations = 100;
+        int burnIn = 150;
         LabelType lblType = LabelType.DBLP;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneLblCnt = 10;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
 
@@ -113,7 +113,7 @@ public class MixTopicModelExample {
                         + "left outer join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>200 \n"
                         + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
                         + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
-                        + " LIMIT 200000"
+                       // + " LIMIT 200000"
                         ;
             } else if (lblType == LabelType.PM_pdb) {
                 sql =
