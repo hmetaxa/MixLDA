@@ -703,7 +703,7 @@ public class iMixWorkerRunnable implements Runnable {
 
                 //add normalized smoothingOnly coefficient 
                 score =
-                        (cachedCoefficients[m].get(currentTopic) + (smoothOnlyCachedCoefficients[m][currentTopic] / docLength[m])) * currentValue * skewInx;
+                        (cachedCoefficients[m].get(currentTopic) + (smoothOnlyCachedCoefficients[m].get(currentTopic) / docLength[m])) * currentValue * skewInx;
 
                 topicTermMass += score;
                 topicTermScores[index] = score;
@@ -748,7 +748,7 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopicInBetaMass(
-            int[][] localTopicCounts,
+            gnu.trove.TIntArrayList[] localTopicCounts,
             int[] localTopicIndex,
             int nonZeroTopics,
             byte m,
@@ -768,8 +768,8 @@ public class iMixWorkerRunnable implements Runnable {
             if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
                 for (byte j = 0; j < numModalities; j++) {
                     if (docLength[j] > 0) {
-                        double normSumN = p[m][j] * localTopicCounts[j][topic]
-                                / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
+                        double normSumN = p[m][j] * localTopicCounts[j].get(topic)
+                                / (docLength[j] * (tokensPerTopic[m].get(topic) + betaSum[m]));
 
                         sample -= beta[m] * normSumN;
                         /// (tokensPerTopic[m][topic] + betaSum[m]);
@@ -798,8 +798,8 @@ public class iMixWorkerRunnable implements Runnable {
         int topic = 0;
 
         while (sample > 0.0 && topic < numCommonTopics) {
-            sample -= alpha[topic] * beta[m]
-                    / (tokensPerTopic[m][topic] + betaSum[m]);
+            sample -= alpha.get(topic) * beta[m]
+                    / (tokensPerTopic[m].get(topic) + betaSum[m]);
             if (sample <= 0.0) {
                 newTopic = topic;
             }
@@ -812,8 +812,8 @@ public class iMixWorkerRunnable implements Runnable {
         while (sample > 0.0 && topic < numIndependentTopics) {
 
             indTopic = numCommonTopics + m * numIndependentTopics + topic;
-            sample -= alpha[indTopic] * beta[m]
-                    / (tokensPerTopic[m][indTopic] + betaSum[m]);
+            sample -= alpha.get(indTopic) * beta[m]
+                    / (tokensPerTopic[m].get(indTopic) + betaSum[m]);
 
             if (sample <= 0.0) {
                 newTopic = indTopic;
@@ -833,14 +833,14 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopic(
-            int[][] localTopicCounts,
+            gnu.trove.TIntArrayList[] localTopicCounts,
             int[] localTopicIndex,
             double[] topicBetaMass,
             int nonZeroTopics,
             byte m,
             double topicTermMass,
             double[] topicTermScores,
-            int[] currentTypeTopicCounts,
+            gnu.trove.TIntArrayList currentTypeTopicCounts,
             int[] docLength,
             double sample,
             double[][] p,
@@ -897,7 +897,7 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected void rearrangeTypeTopicCounts(
-            int[] currentTypeTopicCounts,
+            gnu.trove.TIntArrayList currentTypeTopicCounts,
             int newTopic) {
 
         // Move to the position for the new topic,
@@ -905,14 +905,14 @@ public class iMixWorkerRunnable implements Runnable {
         //  is a new topic for this word.
 
         int index = 0;
-        while (currentTypeTopicCounts[index] > 0
-                && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
+        while (currentTypeTopicCounts.get(index) > 0
+                && (currentTypeTopicCounts.get(index) & topicMask) != newTopic) {
             index++;
-            if (index == currentTypeTopicCounts.length) {
+            if (index == currentTypeTopicCounts.size()) {
                 System.err.println("error in findind new poisition for topic: " + newTopic);
-                for (int k = 0; k < currentTypeTopicCounts.length; k++) {
-                    System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
-                            + (currentTypeTopicCounts[k] >> topicBits) + " ");
+                for (int k = 0; k < currentTypeTopicCounts.size(); k++) {
+                    System.err.print((currentTypeTopicCounts.get(k) & topicMask) + ":"
+                            + (currentTypeTopicCounts.get(k) >> topicBits) + " ");
                 }
                 System.err.println();
 
@@ -923,10 +923,10 @@ public class iMixWorkerRunnable implements Runnable {
         // index should now be set to the position of the new topic,
         //  which may be an empty cell at the end of the list.
         int currentValue;
-        if (currentTypeTopicCounts[index] == 0) {
+        if (currentTypeTopicCounts.get(index) == 0) {
             // inserting a new topic, guaranteed to be in
             //  order w.r.t. count, if not topic.
-            currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
+            currentTypeTopicCounts.set(index,(1 << topicBits) + newTopic);
         } else {
             currentValue = currentTypeTopicCounts[index] >> topicBits;
             currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;

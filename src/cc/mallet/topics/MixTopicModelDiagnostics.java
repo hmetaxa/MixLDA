@@ -44,7 +44,7 @@ public class MixTopicModelDiagnostics {
     int numTokens = 0;
 
     public MixTopicModelDiagnostics(MixParallelTopicModel model, int numTopWords) {
-        numTopics = model.getNumTopics();
+        numTopics =  model.getNumTopics() - (model.numModalities -1) * model.numIndependentTopics;
         this.numTopWords = numTopWords;
 
         this.model = model;
@@ -583,7 +583,7 @@ public class MixTopicModelDiagnostics {
                 bulkInsert.executeUpdate();
 
                 int p = 1;
-                while (p < model.perplexities[m].length && model.perplexities[m][p] > 0) //for (int p = 0; p < model.perplexities[m].length; p++) 
+                while (p < model.perplexities[m].length && model.perplexities[m][p] != 0) //for (int p = 0; p < model.perplexities[m].length; p++) 
                 {
                     bulkInsert.setString(1, experimentId);
                     bulkInsert.setString(2, String.format("%d", 10 * p));

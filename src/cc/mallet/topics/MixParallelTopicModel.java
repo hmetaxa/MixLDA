@@ -207,8 +207,8 @@ public class MixParallelTopicModel implements Serializable {
 
         this.tokensPerTopic = new int[numModalities][numTopics];
 
-        convergenceRates = new double[numModalities][100];
-        perplexities = new double[numModalities][100];
+        convergenceRates = new double[numModalities][201]; //~ 1499 iterations max
+        perplexities = new double[numModalities][201];
 
 
 
@@ -319,7 +319,7 @@ public class MixParallelTopicModel implements Serializable {
 //while(keySetIterator.hasNext()){
         gnu.trove.TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
 
-        for (Byte i = 0; i < numModalities; i++) {
+        for (byte i = 0; i < numModalities; i++) {
 
             Alphabet tmpAlphabet = training[i].getDataAlphabet();
             Integer tmpNumTypes = tmpAlphabet.size();
@@ -331,6 +331,7 @@ public class MixParallelTopicModel implements Serializable {
 
             typeTopicCounts[i] = new int[tmpNumTypes][];
             typeTotals[i] = new int[tmpNumTypes];
+            Arrays.fill(typeTotals[i], 0);
             typeSkewIndexes[i] = new double[tmpNumTypes];
 
 
@@ -353,6 +354,7 @@ public class MixParallelTopicModel implements Serializable {
                 int size = tokens.size();
 
                 int[] topics = new int[size]; //topicSequence.getFeatures();
+               // 
                 for (int position = 0; position < topics.length; position++) {
 
                     //int topic = random.nextInt(numTopics);
@@ -443,7 +445,7 @@ public class MixParallelTopicModel implements Serializable {
         fields = line.split(" ");
 
         for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte i = 0; i < numModalities; i++) {
+            for (byte i = 0; i < numModalities; i++) {
                 TopicAssignment document = entity.Assignments[i];
                 if (document != null) {
                     FeatureSequence tokens = (FeatureSequence) document.instance.getData();
@@ -478,7 +480,7 @@ public class MixParallelTopicModel implements Serializable {
 
     public void buildInitialTypeTopicCounts() {
 
-        for (Byte i = 0; i < numModalities; i++) {
+        for (byte i = 0; i < numModalities; i++) {
             // Clear the topic totals
             Arrays.fill(tokensPerTopic[i], 0);
 
@@ -504,7 +506,7 @@ public class MixParallelTopicModel implements Serializable {
         Arrays.fill(totalDocsPerModality, 0);
 
         for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte i = 0; i < numModalities; i++) {
+            for (byte i = 0; i < numModalities; i++) {
                 TopicAssignment document = entity.Assignments[i];
 
                 if (document != null) {
@@ -598,7 +600,7 @@ public class MixParallelTopicModel implements Serializable {
 
         HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
 
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
 
             for (int t = 0; t < numTopics; t++) {
                 labelId = m + "_" + t;
@@ -607,6 +609,8 @@ public class MixParallelTopicModel implements Serializable {
         }
         //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
         // topicEntitiesCnt.clear();
+
+        //calc entity distribution per topic / modality
         for (MixTopicModelTopicAssignment entity : data) {
 
             int entityId = entity.EntityId.hashCode();
@@ -617,7 +621,7 @@ public class MixParallelTopicModel implements Serializable {
                 // entityId = entity.EntityId.hashCode();
             }
 
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
 
                 //for (int t = 0; t < numCommonTopics; t++) {
                 TopicAssignment document = entity.Assignments[m];
@@ -639,10 +643,12 @@ public class MixParallelTopicModel implements Serializable {
             }
         }
 
-        for (Byte m = 0; m < numModalities; m++) {
+        // create related sparse vectors needed in cosine similarity
+        for (byte m = 0; m < numModalities; m++) {
 
             for (int t = 0; t < numTopics; t++) {
-                if (t < numCommonTopics || (m > 0 && t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                //m > 0 &&
+                if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
                     labelId = m + "_" + t;
                     int[] entities = new int[data.size()];
                     double[] weights = new double[data.size()];
@@ -660,6 +666,7 @@ public class MixParallelTopicModel implements Serializable {
             }
         }
 
+        //cosine similarity per every topics pair 
         double similarity = 0;
         //double maxSimilarity = 0;
         String labelTextId;
@@ -667,12 +674,26 @@ public class MixParallelTopicModel implements Serializable {
         //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
         double[][] topicSimilarities = new double[numTopics][numTopics];
 
-        for (Byte m = 1; m < numModalities; m++) {
+        Arrays.fill(topicMapping[0], -1);
+        gnu.trove.TIntArrayList invalidTopics = new gnu.trove.TIntArrayList();
+        gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
+        gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
+        gnu.trove.TIntArrayList textUsedTopics = new gnu.trove.TIntArrayList();
+
+
+        for (byte m = 1; m < numModalities; m++) {
             for (int i = 0; i < numTopics; i++) {
                 Arrays.fill(topicSimilarities[i], 0);
             }
-            gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
-            gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
+
+            emptyTopics.clear();
+            for (int i = 0; i < numTopics; i++) {
+                if (i < numCommonTopics || (i >= numCommonTopics + m * numIndependentTopics && i < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                    emptyTopics.add(i);
+                }
+            }
+            usedTopics.clear();
+
             for (int t = 0; t < numTopics; t++) {
 
                 for (int t_text = 0; t_text < numTopics; t_text++) {
@@ -689,36 +710,97 @@ public class MixParallelTopicModel implements Serializable {
 
             }
 
+            //allign topics based on similarities 
             Arrays.fill(topicMapping[m], -1);
             boolean found = true;
             TopicMapping topicMap = new TopicMapping();
-            while (found) {
+            int cnt = 0;
+            while (found && cnt < numCommonTopics) {
                 found = findNextMapping(topicSimilarities, topicMap);
-                if (found) {
-                    if (!usedTopics.contains(topicMap.from)) {
-                        emptyTopics.add(topicMap.from);
+
+                if (found && (m == 1 || textUsedTopics.contains(topicMap.to))) {
+                    if (topicMap.to >= numCommonTopics && !invalidTopics.contains(topicMap.to)) {
+                        invalidTopics.add(topicMap.to);
                     }
+
+//                    if (!usedTopics.contains(topicMap.from)) {
+//                        emptyTopics.add(topicMap.from);
+//                    }
                     topicMapping[m][topicMap.from] = topicMap.to;
-                    usedTopics.add(topicMap.to);
+                    if (!usedTopics.contains(topicMap.to)) {
+                        usedTopics.add(topicMap.to);
+                    }
                     if (emptyTopics.contains(topicMap.to)) {
                         emptyTopics.remove(emptyTopics.indexOf(topicMap.to));
                     }
+
+                    if (!textUsedTopics.contains(topicMap.to)) {
+                        textUsedTopics.add(topicMap.to);
+                    }
                 }
+                cnt++;
             }
 
+            //
             for (int i = 0; i < numTopics; i++) {
-                if (topicMapping[m][i] == 0 && usedTopics.contains(i)) {
-                    topicMapping[m][i] = emptyTopics.get(0);
-                    emptyTopics.remove(0);
+                if (i < numCommonTopics || (i >= numCommonTopics + m * numIndependentTopics && i < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                    if (topicMapping[m][i] == -1) {
+                        if (usedTopics.contains(i)) {
+                            int newTopic = emptyTopics.max();
+                            topicMapping[m][i] = newTopic;
+                            //if (!textUsedTopics.contains(newTopic)) {
+                            //    textUsedTopics.add(newTopic);
+                            //}
+                            //usedTopics.add(emptyTopics.get(0)); //inorder not to use it during invalid topic replacement
+                            emptyTopics.remove(emptyTopics.indexOf(newTopic));
+
+                        }
+                        //else { //remain the same -- no mapping thus this topic has been used 
+                        //   if (!textUsedTopics.contains(i)) {
+                        //       textUsedTopics.add(i);
+                        //  }
+                        // usedTopics.add(i); //inorder not to use it during invalid topic replacement
+                        // }
+                    }
                 }
             }
-
 
 
         }
+//        usedTopics.clear();
+//        for (byte m = 1; m < numModalities; m++) {
+//            for (int i = 0; i < numTopics; i++) {
+//                if (topicMapping[m][i] != -1 && !usedTopics.contains(i)) {
+//                    usedTopics.add(i);
+//                }
+//            }
+//        }
+        //replace "invalid" -independent- topics 
+        for (int i = 0;
+                i < invalidTopics.size();
+                i++) {
+            int topic = invalidTopics.get(i);
+            int j = 0;
+            while (j < numCommonTopics && textUsedTopics.contains(j)) {
+                j++;
+            }
+            textUsedTopics.add(j);
+            topicMapping[0][topic] = j;
+            topicMapping[0][j] = topic;
+            for (byte m = 1; m < numModalities; m++) {
+                int tt = 0;
+                while (tt < numTopics && topicMapping[m][tt] != topic) {
+                    tt++;
+                }
+                if (tt < numTopics) {
+                    topicMapping[m][tt] = j;
+                }
 
+            }
+
+        }
         for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte m = 1; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 TopicAssignment document = entity.Assignments[m];
 
                 if (document != null) {
@@ -741,7 +823,6 @@ public class MixParallelTopicModel implements Serializable {
         }
 
         buildInitialTypeTopicCounts();
-
     }
 
     private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap) {
@@ -757,11 +838,14 @@ public class MixParallelTopicModel implements Serializable {
                     topicMap.from = i;
                     topicMap.to = j;
                     //Arrays.fill(topicSimilarities[i], 0);
-                    for (int k = 0; k < numCommonTopics; k++) {
-                        topicSimilarities[i][k] = 0;
-                        topicSimilarities[k][j] = 0;
-                    }
+
                 }
+            }
+        }
+        if (found) {
+            for (int k = 0; k < numTopics; k++) {
+                topicSimilarities[topicMap.from][k] = 0;
+                topicSimilarities[k][topicMap.to] = 0;
             }
         }
         return found;
@@ -789,7 +873,7 @@ public class MixParallelTopicModel implements Serializable {
 
      HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
 
-     for (Byte m = 0; m < numModalities; m++) {
+     for (byte m = 0; m < numModalities; m++) {
 
      for (int t = 0; t < numTopics; t++) {
      if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
@@ -810,7 +894,7 @@ public class MixParallelTopicModel implements Serializable {
      // entityId = entity.EntityId.hashCode();
      }
 
-     for (Byte m = 0; m < numModalities; m++) {
+     for (byte m = 0; m < numModalities; m++) {
 
      //for (int t = 0; t < numCommonTopics; t++) {
      TopicAssignment document = entity.Assignments[m];
@@ -832,7 +916,7 @@ public class MixParallelTopicModel implements Serializable {
      }
 
 
-     for (Byte m = 0; m < numModalities; m++) {
+     for (byte m = 0; m < numModalities; m++) {
 
 
      for (int t = 0; t < numTopics; t++) {
@@ -860,7 +944,7 @@ public class MixParallelTopicModel implements Serializable {
      int[][] topicMapping = new int[numModalities][numTopics];
      //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
      double[][] topicSimilarities = new double[numTopics][numTopics];
-     for (Byte m = 1; m < numModalities; m++) {
+     for (byte m = 1; m < numModalities; m++) {
      for (int i = 0; i < numTopics; i++) {
      Arrays.fill(topicSimilarities[i], 0);
      }
@@ -908,7 +992,7 @@ public class MixParallelTopicModel implements Serializable {
 
      }
      for (MixTopicModelTopicAssignment entity : data) {
-     for (Byte m = 1; m < numModalities; m++) {
+     for (byte m = 1; m < numModalities; m++) {
      TopicAssignment document = entity.Assignments[m];
 
      if (document != null) {
@@ -939,9 +1023,9 @@ public class MixParallelTopicModel implements Serializable {
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
 
-        for (Byte i = 0; i < numModalities; i++) {
+        for (byte i = 0; i < numModalities; i++) {
 
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
 
                 Arrays.fill(pDistr_Mean[i][m], 0);
 
@@ -973,9 +1057,9 @@ public class MixParallelTopicModel implements Serializable {
 
             double[][][] distrP_Mean = runnables[thread].getPDistr_Mean();
 
-            for (Byte i = 0; i < numModalities; i++) {
+            for (byte i = 0; i < numModalities; i++) {
 
-                for (Byte m = 0; m < numModalities; m++) {
+                for (byte m = 0; m < numModalities; m++) {
                     for (int doc = 0; doc < pDistr_Mean[i][m].length; doc++) {
                         pDistr_Mean[i][m][doc] += distrP_Mean[i][m][doc];
 
@@ -1010,28 +1094,31 @@ public class MixParallelTopicModel implements Serializable {
                         while (targetCounts[targetIndex] > 0 && currentTopic != topic) {
                             targetIndex++;
                             if (targetIndex == targetCounts.length) {
-                                logger.info("overflow in merging on type " + type + " moodality: " + i+ " thread: " + thread);
-                                
+                                logger.info("overflow in merging on type " + type + " modality: " + i + " thread: " + thread);
+                                currentTopic = -1;
+                                break;
                             }
                             currentTopic = targetCounts[targetIndex] & topicMask;
                         }
-                        currentCount = targetCounts[targetIndex] >> topicBits;
 
-                        targetCounts[targetIndex] =
-                                ((currentCount + count) << topicBits) + topic;
+                        if (currentTopic != -1) {
+                            currentCount = targetCounts[targetIndex] >> topicBits;
+
+                            targetCounts[targetIndex] =
+                                    ((currentCount + count) << topicBits) + topic;
 
 
-                        // Now ensure that the array is still sorted by 
-                        //  bubbling this value up.
-                        while (targetIndex > 0
-                                && targetCounts[targetIndex] > targetCounts[targetIndex - 1]) {
-                            int temp = targetCounts[targetIndex];
-                            targetCounts[targetIndex] = targetCounts[targetIndex - 1];
-                            targetCounts[targetIndex - 1] = temp;
+                            // Now ensure that the array is still sorted by 
+                            //  bubbling this value up.
+                            while (targetIndex > 0
+                                    && targetCounts[targetIndex] > targetCounts[targetIndex - 1]) {
+                                int temp = targetCounts[targetIndex];
+                                targetCounts[targetIndex] = targetCounts[targetIndex - 1];
+                                targetCounts[targetIndex - 1] = temp;
 
-                            targetIndex--;
+                                targetIndex--;
+                            }
                         }
-
                         sourceIndex++;
                     }
                 }
@@ -1099,7 +1186,7 @@ public class MixParallelTopicModel implements Serializable {
 
 
         for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte i = 0; i < numModalities; i++) {
+            for (byte i = 0; i < numModalities; i++) {
                 int seqLen;
                 TopicAssignment document = entity.Assignments[i];
                 if (document != null) {
@@ -1123,7 +1210,7 @@ public class MixParallelTopicModel implements Serializable {
             //int maxSize = Math.max(maxLabels, maxTokens);
 
         }
-        for (Byte i = 0; i < numModalities; i++) {
+        for (byte i = 0; i < numModalities; i++) {
             logger.info(" modality: " + i + " max tokens: " + maxTotal[i]);
             logger.info(" modality: " + i + " total tokens: " + totalTokens[i]);
             maxTotalAllModalities += maxTotal[i];
@@ -1149,7 +1236,7 @@ public class MixParallelTopicModel implements Serializable {
 
 
             for (int count = 0; count < sourceLengthCounts.length; count++) {
-                // for (Byte i = 0; i < numModalities; i++) {
+                // for (byte i = 0; i < numModalities; i++) {
                 if (sourceLengthCounts[count] > 0) {
                     docLengthCounts[count] += sourceLengthCounts[count];
                     sourceLengthCounts[count] = 0;
@@ -1161,7 +1248,7 @@ public class MixParallelTopicModel implements Serializable {
 
                 if (!usingSymmetricAlpha) {
                     for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-                        //for (Byte i = 0; i < numModalities; i++) {
+                        //for (byte i = 0; i < numModalities; i++) {
                         if (sourceTopicCounts[topic][count] > 0) {
                             topicDocCounts[topic][count] += sourceTopicCounts[topic][count];
                             sourceTopicCounts[topic][count] = 0;
@@ -1178,7 +1265,7 @@ public class MixParallelTopicModel implements Serializable {
                     //  whether we are symmetric or not numTopics times, 
                     //  instead of numTopics * longest document length.
                     for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-                        //for (Byte i = 0; i < numModalities; i++) {
+                        //for (byte i = 0; i < numModalities; i++) {
                         if (sourceTopicCounts[topic][count] > 0) {
                             topicDocCounts[0][count] += sourceTopicCounts[topic][count];
                             //			 ^ the only change
@@ -1248,7 +1335,7 @@ public class MixParallelTopicModel implements Serializable {
         boolean converged = true;
 
         for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 TopicAssignment document = entity.Assignments[m];
 
                 if (document != null) {
@@ -1284,7 +1371,7 @@ public class MixParallelTopicModel implements Serializable {
 
             }
         }
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
             double rate = (double) totalConvergedTokens[m] / (double) totalModalityTokens[m];
             converged = converged && (rate < convergenceLimit);
             convergenceRates[m][iteration] = rate;
@@ -1301,8 +1388,8 @@ public class MixParallelTopicModel implements Serializable {
 //we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
         // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
 
-        for (Byte m = 0; m < numModalities; m++) {
-            for (Byte i = (byte) (m + 1); i < numModalities; i++) {
+        for (byte m = 0; m < numModalities; m++) {
+            for (byte i = (byte) (m + 1); i < numModalities; i++) {
                 //optimize based on mean & variance
                 double sum = 0;
                 for (int j = 0; j < pDistr_Mean[m][i].length; j++) {
@@ -1334,7 +1421,7 @@ public class MixParallelTopicModel implements Serializable {
 
     public void optimizeBeta(MixWorkerRunnable[] runnables) {
 
-        for (Byte i = 0; i < numModalities; i++) {
+        for (byte i = 0; i < numModalities; i++) {
 
             double prevBetaSum = betaSum[i];
             // The histogram starts at count 0, so if all of the
@@ -1417,7 +1504,7 @@ public class MixParallelTopicModel implements Serializable {
 
                 int[][][] runnableCounts = new int[numModalities][][];
 
-                for (Byte i = 0; i < numModalities; i++) {
+                for (byte i = 0; i < numModalities; i++) {
                     System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     runnableCounts[i] = new int[numTypes[i]][];
                     for (int type = 0; type < numTypes[i]; type++) {
@@ -1549,12 +1636,14 @@ public class MixParallelTopicModel implements Serializable {
                 //synchronize counts
                 if (iteration == independentIterations) {
                     logger.info("Topics alignment started");
+                    logger.info("\n" + displayTopWords(wordsPerTopic, lblsPerTopic, false));
                     alignTopicsInModalities();
                     for (byte i = 0; i < numModalities; i++) {
                         Arrays.fill(this.p_a[i], 5d);
                         Arrays.fill(this.p_b[i], 1d);
                     }
                     logger.info("Topics alignment finished");
+                    logger.info("\n" + displayTopWords(wordsPerTopic, lblsPerTopic, false));
                 } else {
                     sumTypeTopicCounts(runnables, iteration > burninPeriod);
                 }
@@ -1568,14 +1657,14 @@ public class MixParallelTopicModel implements Serializable {
                 for (int thread = 0; thread < numThreads; thread++) {
 
                     int[][] runnableTotals = runnables[thread].getTokensPerTopic();
-                    for (Byte i = 0; i < numModalities; i++) {
+                    for (byte i = 0; i < numModalities; i++) {
                         System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
 
                     runnables[thread].resetSkewWeight(skewWeight);
 
                     int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
-                    for (Byte i = 0; i < numModalities; i++) {
+                    for (byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
                             int[] targetCounts = runnableCounts[i][type];
                             int[] sourceCounts = typeTopicCounts[i][type];
@@ -1622,13 +1711,13 @@ public class MixParallelTopicModel implements Serializable {
                 optimizeP(runnables);
 
 
-                logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
+                logger.info("[Optimize hyperparams interval: " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
                     checkConvergence(0.8, 3, iteration / 10);
-                    for (Byte i = 0; i < numModalities; i++) {
+                    for (byte i = 0; i < numModalities; i++) {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
@@ -1700,18 +1789,18 @@ public class MixParallelTopicModel implements Serializable {
 
                     ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(4);
 
-                    for (Byte m = 0; m < numModalities; m++) {
+                    for (byte m = 0; m < numModalities; m++) {
                         topicSortedWords.add(getSortedWords(m));
                     }
 
                     for (int topic = 0; topic < numTopics; topic++) {
-                        for (Byte m = 0; m < numModalities; m++) {
+                        for (byte m = 0; m < numModalities; m++) {
                             TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
 
-                            int word = 1;
+                            int tokenNum = 1;
                             Iterator<IDSorter> iterator = sortedWords.iterator();
 
-                            while (iterator.hasNext() && word < 20) {
+                            while (iterator.hasNext() && ((m==0 && tokenNum < 40) || (m>0 && tokenNum<200))) {
                                 IDSorter info = iterator.next();
                                 bulkInsert.setInt(1, topic);
                                 bulkInsert.setInt(2, m);
@@ -1720,7 +1809,7 @@ public class MixParallelTopicModel implements Serializable {
                                 bulkInsert.setString(5, experimentId);
                                 bulkInsert.executeUpdate();
 
-                                word++;
+                                tokenNum++;
                             }
 
                         }
@@ -1910,13 +1999,13 @@ public class MixParallelTopicModel implements Serializable {
         StringBuilder out = new StringBuilder();
         ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(4);
 
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
             topicSortedWords.add(getSortedWords(m));
         }
         // Print results for each topic
 
         for (int topic = 0; topic < numTopics; topic++) {
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
 
                 int word = 1;
@@ -1950,13 +2039,13 @@ public class MixParallelTopicModel implements Serializable {
 
         ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(4);
 
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
             topicSortedWords.add(getSortedWords(m));
         }
         out.println("<?xml version='1.0' ?>");
         out.println("<topicModel>");
         for (int topic = 0; topic < numTopics; topic++) {
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 out.println("  <topic id='" + topic + "' alpha='" + alpha[topic] + "' modality='" + m
                         + "' totalTokens='" + tokensPerTopic[m][topic]
                         + "'>");
@@ -2134,7 +2223,7 @@ public class MixParallelTopicModel implements Serializable {
      */
     public void printTypeTopicCounts(File file) throws IOException {
         PrintWriter out = new PrintWriter(new FileWriter(file));
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
             for (int type = 0; type < numTypes[m]; type++) {
 
                 StringBuilder buffer = new StringBuilder();
@@ -2175,7 +2264,7 @@ public class MixParallelTopicModel implements Serializable {
         // Probably not the most efficient way to do this...
 
         for (int topic = 0; topic < numTopics; topic++) {
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 for (int type = 0; type < numTypes[m]; type++) {
 
                     int[] topicCounts = typeTopicCounts[m][type];
@@ -2310,7 +2399,7 @@ public class MixParallelTopicModel implements Serializable {
                     builder.append(docId);
                     builder.append("\t");
 
-                    for (Byte m = 0; m < cntEnd; m++) {
+                    for (byte m = 0; m < cntEnd; m++) {
                         if (data.get(doc).Assignments[m] != null) {
                             Arrays.fill(topicCounts[m], 0);
                             LabelSequence topicSequence = (LabelSequence) data.get(doc).Assignments[m].topicSequence;
@@ -2327,7 +2416,7 @@ public class MixParallelTopicModel implements Serializable {
                     // And normalize
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
-                        for (Byte m = 0; m < cntEnd; m++) {
+                        for (byte m = 0; m < cntEnd; m++) {
                             topicProportion += (double) topicCounts[m][topic] / docLen[m];
                         }
                         sortedTopics[topic].set(topic, (((double) alpha[topic] / alphaSum + topicProportion) / (cntEnd + 1)));
@@ -2433,7 +2522,7 @@ public class MixParallelTopicModel implements Serializable {
         out.println("#beta : " + beta);
 
         for (int doc = 0; doc < data.size(); doc++) {
-            for (Byte m = 0; m < numModalities; m++) {
+            for (byte m = 0; m < numModalities; m++) {
                 if (data.get(doc).Assignments[m] != null) {
                     FeatureSequence tokenSequence = (FeatureSequence) data.get(doc).Assignments[m].instance.getData();
                     LabelSequence topicSequence = (LabelSequence) data.get(doc).Assignments[m].topicSequence;
@@ -2487,7 +2576,7 @@ public class MixParallelTopicModel implements Serializable {
             topicLogGammas[ topic] = Dirichlet.logGammaStirling(alpha[topic]);
         }
 
-        for (Byte m = 0; m < numModalities; m++) {
+        for (byte m = 0; m < numModalities; m++) {
             int[] topicCounts = new int[numTopics];
 
             int modalityCnt = 0;

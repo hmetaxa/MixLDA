@@ -494,8 +494,8 @@ public class MixWorkerRunnable implements Runnable {
 
         // Remove this topic's contribution to the 
         //  normalizing constants
-        smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
-                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+   //     smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
+   //             / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
 //        for (byte i = 0; i < numModalities; i++) {
 //            for (byte j = 0; j < numModalities; j++) {
@@ -523,8 +523,8 @@ public class MixWorkerRunnable implements Runnable {
 
         // Add the old topic's contribution back into the
         //  normalizing constants.
-        smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
-                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+       // smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
+       //         / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         smoothOnlyCachedCoefficients[m][oldTopic] = alpha[oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
@@ -603,6 +603,12 @@ public class MixWorkerRunnable implements Runnable {
         Arrays.fill(topicBetaMass, 0);
         for (byte i = 0; i < numModalities; i++) {
             Arrays.fill(cachedCoefficients[i], 0);
+        }
+
+        Arrays.fill(smoothingOnlyMass, 0d);
+        for (int topic = 0; topic < numCommonTopics; topic++) {
+            smoothingOnlyMass[m] += alpha[topic] * beta[m] / (tokensPerTopic[m][topic] + betaSum[m]);
+            //smoothOnlyCachedCoefficients[i][topic] = alpha[topic] / (tokensPerTopic[i][topic] + betaSum[i]);
         }
 
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
@@ -816,10 +822,10 @@ public class MixWorkerRunnable implements Runnable {
         }
 
 
-        if (newTopic == -1) {
-            return -1;
+       // if (newTopic == -1) {
+       //     return -1;
             //          newTopic = numTopics - 1;
-        }
+       // }
 
         return newTopic;
     }
@@ -901,7 +907,7 @@ public class MixWorkerRunnable implements Runnable {
                 && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
             index++;
             if (index == currentTypeTopicCounts.length) {
-                System.err.println("error in findind new poisition for topic: " + newTopic);
+                System.err.println("error in findind new position for topic: " + newTopic);
                 for (int k = 0; k < currentTypeTopicCounts.length; k++) {
                     System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
                             + (currentTypeTopicCounts[k] >> topicBits) + " ");
@@ -997,8 +1003,8 @@ public class MixWorkerRunnable implements Runnable {
 //                }
 //            }
 //        }
-        smoothingOnlyMass[m] -= alpha[newTopic] * beta[m]
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
+      //  smoothingOnlyMass[m] -= alpha[newTopic] * beta[m]
+      //          / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         // }
 
@@ -1007,8 +1013,8 @@ public class MixWorkerRunnable implements Runnable {
         tokensPerTopic[m][newTopic]++;
 
         //	update the coefficients for the non-zero topics
-        smoothingOnlyMass[m] += alpha[newTopic] * beta[m]
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
+        //smoothingOnlyMass[m] += alpha[newTopic] * beta[m]
+        //        / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         smoothOnlyCachedCoefficients[m][newTopic] = alpha[newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
 //        for (byte i = 0; i < numModalities; i++) {
