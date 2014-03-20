@@ -484,7 +484,8 @@ public class iMixParallelTopicModel implements Serializable {
 
         for (Byte i = 0; i < numModalities; i++) {
             // Clear the topic totals
-            tokensPerTopic[i].reset();
+            //tokensPerTopic[i].clear();
+            tokensPerTopic[i].fill(0);
             //Arrays.fill(tokensPerTopic[i], 0);
 
             // Clear the type/topic counts, only 
@@ -493,7 +494,7 @@ public class iMixParallelTopicModel implements Serializable {
             for (int type = 0; type < numTypes[i]; type++) {
 
                 typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
-                typeTopicCounts[i][type].reset();
+                typeTopicCounts[i][type].fill(0);
 
 //                int[] topicCounts = typeTopicCounts[i][type];
 //
@@ -527,7 +528,9 @@ public class iMixParallelTopicModel implements Serializable {
                             continue;
                         }
 
-                        tokensPerTopic[i].set(topic, tokensPerTopic[i].get(topic) + 1);
+                        gnu.trove.TIntArrayList tmplist = tokensPerTopic[i];
+                        int tmp = tmplist.get(topic);
+                        tokensPerTopic[i].set(topic, tmp + 1);
                         //tokensPerTopic[i][topic]++;
 
                         // The format for these arrays is 
