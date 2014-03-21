@@ -27,6 +27,9 @@ import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
 import gnu.trove.list.array.TDoubleArrayList;
 import gnu.trove.list.array.TIntArrayList;
+import gnu.trove.map.hash.TIntIntHashMap;
+import gnu.trove.map.hash.TIntObjectHashMap;
+import gnu.trove.map.hash.TObjectIntHashMap;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -206,7 +209,7 @@ public class iMixParallelTopicModel implements Serializable {
         this.skewOn = skewnOn;
         this.alphaSum = alphaSum;
         this.alpha = new TDoubleArrayList(numTopics);
-        this.alpha.fill(alphaSum / numTopics);
+        this.alpha.fill(0, numTopics, alphaSum / numTopics);
 
         this.beta = beta;
 
@@ -488,7 +491,8 @@ public class iMixParallelTopicModel implements Serializable {
         for (Byte i = 0; i < numModalities; i++) {
             // Clear the topic totals
             //tokensPerTopic[i].clear();
-            tokensPerTopic[i].fill(0);
+            tokensPerTopic[i].fill(0, numTopics, 0);
+            //tokensPerTopic[i].reset();
             //Arrays.fill(tokensPerTopic[i], 0);
 
             // Clear the type/topic counts, only 
@@ -497,7 +501,8 @@ public class iMixParallelTopicModel implements Serializable {
             for (int type = 0; type < numTypes[i]; type++) {
 
                 typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
-                typeTopicCounts[i][type].fill(0);
+                //tokensPerTopic[i].fill(0, numTopics, 0);
+                typeTopicCounts[i][type].fill(0, numTopics, 0);
 
 //                int[] topicCounts = typeTopicCounts[i][type];
 //
@@ -532,6 +537,7 @@ public class iMixParallelTopicModel implements Serializable {
                         }
 
                         TIntArrayList tmplist = tokensPerTopic[i];
+                        
                         int tmp = tmplist.get(topic);
                         tokensPerTopic[i].set(topic, tmp + 1);
                         //tokensPerTopic[i][topic]++;
@@ -1006,7 +1012,7 @@ public class iMixParallelTopicModel implements Serializable {
                     // Here the source is the individual thread counts,
                     //  and the target is the global counts.
 
-                    int[] sourceCounts = sourceTypeTopicCounts[i][type].toNativeArray();
+                    int[] sourceCounts = sourceTypeTopicCounts[i][type].toArray();
                     TIntArrayList targetCounts = typeTopicCounts[i][type];
 
                     int sourceIndex = 0;
@@ -1065,7 +1071,7 @@ public class iMixParallelTopicModel implements Serializable {
                         int totalTypeCounts = 0;
                         typeSkewIndexes[i][type] = 0;
 
-                        int[] targetCounts = typeTopicCounts[i][type].toNativeArray();
+                        int[] targetCounts = typeTopicCounts[i][type].toArray();
 
                         int index = 0;
                         int count = 0;
@@ -1214,7 +1220,7 @@ public class iMixParallelTopicModel implements Serializable {
                 alpha.set(topic, alphaSum / numTopics);
             }
         } else {
-            double[] alphaTmp = alpha.toNativeArray();
+            double[] alphaTmp = alpha.toArray();
 
             alphaSum = Dirichlet.learnParameters(alphaTmp, topicDocCounts, docLengthCounts, 1.001, 1.0, 1);
             alpha.reset();
@@ -1434,13 +1440,13 @@ public class iMixParallelTopicModel implements Serializable {
                 TIntArrayList[][] runnableCounts = new TIntArrayList[numModalities][];
 
                 for (Byte i = 0; i < numModalities; i++) {
-                    runnableTotals[i] = (TIntArrayList) tokensPerTopic[i].clone();
+                    runnableTotals[i] = new  TIntArrayList (tokensPerTopic[i]);
                     //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     runnableCounts[i] = new TIntArrayList[numTypes[i]];
                     for (int type = 0; type < numTypes[i]; type++) {
                         //int[] counts = new int[typeTopicCounts[i][type].clo.length];
                         //System.arraycopy(typeTopicCounts[i][type], 0, counts, 0, counts.length);
-                        runnableCounts[i][type] = (TIntArrayList) typeTopicCounts[i][type].clone();
+                        runnableCounts[i][type] = new TIntArrayList (typeTopicCounts[i][type]);
                     }
                 }
                 // some docs may be missing at the end due to integer division
@@ -1587,7 +1593,7 @@ public class iMixParallelTopicModel implements Serializable {
                     
                     for (Byte i = 0; i < numModalities; i++) {
                         runnables[thread].getTokensPerTopic()[i].reset();
-                        runnables[thread].getTokensPerTopic()[i].set(0, tokensPerTopic[i].toNativeArray());
+                        runnables[thread].getTokensPerTopic()[i].set(0, tokensPerTopic[i].toArray());
                         
                         //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
@@ -1598,10 +1604,10 @@ public class iMixParallelTopicModel implements Serializable {
                     for (Byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
                             runnables[thread].getTypeTopicCounts()[i][type].reset();
-                            runnables[thread].getTypeTopicCounts()[i][type].set(0, typeTopicCounts[i][type].toNativeArray());
+                            runnables[thread].getTypeTopicCounts()[i][type].set(0, typeTopicCounts[i][type].toArray());
                             //runnables[thread].getTypeTopicCounts()[i][type] = (TIntArrayList) typeTopicCounts[i][type].clone();
 //                            int[] targetCounts = runnables[thread].getTypeTopicCounts()[i][type];
-//                            int[] sourceCounts = typeTopicCounts[i][type].toNativeArray();
+//                            int[] sourceCounts = typeTopicCounts[i][type].toArray();
 //
 //                            int index = 0;
 //                            while (index < sourceCounts.length) {
@@ -1759,7 +1765,7 @@ public class iMixParallelTopicModel implements Serializable {
 
                         // Print phrases
                         Object[] keys = phrases[ti].keys();
-                        int[] values = phrases[ti].getValues();
+                        int[] values = phrases[ti].values();
                         double counts[] = new double[keys.length];
                         for (int i = 0; i < counts.length; i++) {
                             counts[i] = values[i];
@@ -1865,7 +1871,7 @@ public class iMixParallelTopicModel implements Serializable {
         // Collect counts
         for (int type = 0; type < numTypes[modality]; type++) {
 
-            int[] topicCounts = typeTopicCounts[modality][type].toNativeArray();
+            int[] topicCounts = typeTopicCounts[modality][type].toArray();
 
             int index = 0;
             while (index < topicCounts.length
@@ -2111,7 +2117,7 @@ public class iMixParallelTopicModel implements Serializable {
 
             // Print phrases
             Object[] keys = phrases[ti].keys();
-            int[] values = phrases[ti].getValues();
+            int[] values = phrases[ti].values();
             double counts[] = new double[keys.length];
             for (int i = 0; i < counts.length; i++) {
                 counts[i] = values[i];
@@ -2164,7 +2170,7 @@ public class iMixParallelTopicModel implements Serializable {
 
                 buffer.append(type + " " + alphabet[m].lookupObject(type));
 
-                int[] topicCounts = typeTopicCounts[m][type].toNativeArray();
+                int[] topicCounts = typeTopicCounts[m][type].toArray();
 
                 int index = 0;
                 while (index < topicCounts.length
@@ -2201,7 +2207,7 @@ public class iMixParallelTopicModel implements Serializable {
             for (Byte m = 0; m < numModalities; m++) {
                 for (int type = 0; type < numTypes[m]; type++) {
 
-                    int[] topicCounts = typeTopicCounts[m][type].toNativeArray();
+                    int[] topicCounts = typeTopicCounts[m][type].toArray();
 
                     double weight = beta[m];
 
@@ -2551,7 +2557,7 @@ public class iMixParallelTopicModel implements Serializable {
             for (int type = 0; type < numTypes[m]; type++) {
                 // reuse this array as a pointer
 
-                topicCounts = typeTopicCounts[m][type].toNativeArray();
+                topicCounts = typeTopicCounts[m][type].toArray();
 
                 int index = 0;
                 while (index < topicCounts.length
@@ -2620,9 +2626,9 @@ public class iMixParallelTopicModel implements Serializable {
      * //TODO: build a MixTopicInferencer
      */
 //    public TopicInferencer getInferencer() {
-////        return new TopicInferencer(typeTopicCounts[0], tokensPerTopic[0].toNativeArray(),
+////        return new TopicInferencer(typeTopicCounts[0], tokensPerTopic[0].toArray(),
 ////                data.get(0).Assignments[0].instance.getDataAlphabet(),
-////                alpha.toNativeArray(), beta[0], betaSum[0]);
+////                alpha.toArray(), beta[0], betaSum[0]);
 //    }
 
     /**
@@ -2630,8 +2636,8 @@ public class iMixParallelTopicModel implements Serializable {
      * under this model //TODO: build a MixMarginalProbEstimator
      */
 //    public MarginalProbEstimator getProbEstimator() {
-////        return new MarginalProbEstimator(numTopics, alpha.toNativeArray(), alphaSum, beta[0],
-////                typeTopicCounts[0], tokensPerTopic[0].toNativeArray());
+////        return new MarginalProbEstimator(numTopics, alpha.toArray(), alphaSum, beta[0],
+////                typeTopicCounts[0], tokensPerTopic[0].toArray());
 //    }
     // Serialization
     private static final long serialVersionUID = 1;

@@ -375,7 +375,7 @@ public class MixTopicModelExample {
 
         InstanceList[] trainingInstances = new InstanceList[numModalities];
 
-        TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
+        TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
         int index = 0;
         for (byte m = 0; m < numModalities; m++) {
             Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());

@@ -11,6 +11,9 @@ import java.util.ArrayList;
 
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
+import gnu.trove.list.array.TDoubleArrayList;
+import gnu.trove.list.array.TIntArrayList;
+import gnu.trove.map.hash.TIntObjectHashMap;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -49,21 +52,21 @@ public class iMixWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-    protected gnu.trove.TDoubleArrayList alpha;
+    protected TDoubleArrayList alpha;
     protected double alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
     protected double[] betaSum;
     public static final double DEFAULT_BETA = 0.01;
     //homer 
     protected double[] smoothingOnlyMass;// = 0.0;
-    protected gnu.trove.TDoubleArrayList[] smoothOnlyCachedCoefficients;
-    protected gnu.trove.TIntArrayList[][] typeTopicCounts; //per modality // indexed by <modalityIndex, feature index, topic index>
-    protected gnu.trove.TIntArrayList[] tokensPerTopic; //per modality// indexed by <modalityIndex,topic index>
+    protected TDoubleArrayList[] smoothOnlyCachedCoefficients;
+    protected TIntArrayList[][] typeTopicCounts; //per modality // indexed by <modalityIndex, feature index, topic index>
+    protected TIntArrayList[] tokensPerTopic; //per modality// indexed by <modalityIndex,topic index>
     //protected int[][][] typeTopicCounts; // indexed by <modality index, feature index, topic index>
     //protected int[][] tokensPerTopic; // indexed by <modality index, topic index>
     // for dirichlet estimation
     protected int[] docLengthCounts; // histogram of document sizes
-    protected gnu.trove.TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
+    protected TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
     protected Randoms random;
@@ -78,11 +81,11 @@ public class iMixWorkerRunnable implements Runnable {
     //double avgSkew = 0;
 
     public iMixWorkerRunnable(int numTopics, int numIndependentTopics,
-            gnu.trove.TDoubleArrayList alpha, double alphaSum,
+            TDoubleArrayList alpha, double alphaSum,
             double[] beta, Randoms random,
             final ArrayList<MixTopicModelTopicAssignment> data,
-            gnu.trove.TIntArrayList[][] typeTopicCounts,
-            gnu.trove.TIntArrayList[] tokensPerTopic,
+            TIntArrayList[][] typeTopicCounts,
+            TIntArrayList[] tokensPerTopic,
             int startDoc, int numDocs, boolean ignoreLabels, byte numModalities,
             double[][] typeSkewIndexes, iMixParallelTopicModel.SkewType skewOn, double[] skewWeight, double[][] p_a, double[][] p_b) {
 
@@ -98,14 +101,15 @@ public class iMixWorkerRunnable implements Runnable {
         this.p_a = p_a;  //new double[numModalities][numModalities];
         this.p_b = p_b;
         this.smoothingOnlyMass = new double[numModalities];
-        this.smoothOnlyCachedCoefficients = new gnu.trove.TDoubleArrayList[numModalities];
+        this.smoothOnlyCachedCoefficients = new TDoubleArrayList[numModalities];
         this.typeSkewIndexes = typeSkewIndexes;
 
 
         for (byte i = 0; i < numModalities; i++) {
             this.numTypes[i] = typeTopicCounts[i].length;
             this.betaSum[i] = beta[i] * numTypes[i];
-            this.smoothOnlyCachedCoefficients[i] = new gnu.trove.TDoubleArrayList(numTopics);
+            this.smoothOnlyCachedCoefficients[i] = new TDoubleArrayList(numTopics);
+            this.smoothOnlyCachedCoefficients[i].fill(0,numTopics,0);
 
             //Arrays.fill(this.p[i], 1d);
         }
@@ -152,11 +156,11 @@ public class iMixWorkerRunnable implements Runnable {
         shouldBuildLocalCounts = false;
     }
 
-    public gnu.trove.TIntArrayList[] getTokensPerTopic() {
+    public TIntArrayList[] getTokensPerTopic() {
         return tokensPerTopic;
     }
 
-    public gnu.trove.TIntArrayList[][] getTypeTopicCounts() {
+    public TIntArrayList[][] getTypeTopicCounts() {
         return typeTopicCounts;
     }
 
@@ -164,7 +168,7 @@ public class iMixWorkerRunnable implements Runnable {
         return docLengthCounts;
     }
 
-    public gnu.trove.TIntObjectHashMap<int[]> getTopicDocCounts() {
+    public TIntObjectHashMap<int[]> getTopicDocCounts() {
         return topicDocCounts;
     }
 
@@ -177,7 +181,7 @@ public class iMixWorkerRunnable implements Runnable {
 //    }
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[size];
-        topicDocCounts = new gnu.trove.TIntObjectHashMap<int[]>(numTopics);
+        topicDocCounts = new TIntObjectHashMap<int[]>(numTopics);
         for (int topic = 0; topic < topicDocCounts.size(); topic++) {
             topicDocCounts.put(topic, new int[docLengthCounts.length]);
         }
@@ -273,7 +277,7 @@ public class iMixWorkerRunnable implements Runnable {
 
                         int type = tokens.getIndexAtPosition(position);
 
-                        gnu.trove.TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][type];
+                        TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][type];
 
                         // Start by assuming that the array is either empty
                         //  or is in sorted (descending) order.
@@ -398,18 +402,22 @@ public class iMixWorkerRunnable implements Runnable {
 
     protected int initSampling(
             MixTopicModelTopicAssignment doc,
-            gnu.trove.TDoubleArrayList[] cachedCoefficients,
+            TDoubleArrayList[] cachedCoefficients,
             int[][] oneDocTopics,
             FeatureSequence[] tokenSequence,
             int[] docLength,
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             double[] topicBetaMass,
             double[][] p) {
 
+        
         for (byte i = 0; i < numModalities; i++) {
             docLength[i] = 0;
-            cachedCoefficients[i] = new gnu.trove.TDoubleArrayList();
+            cachedCoefficients[i] = new TDoubleArrayList();
+            localTopicCounts[i] = new TIntArrayList();
+            localTopicCounts[i].fill(0,numTopics,0);
+            
             if (doc.Assignments[i] != null) {
                 oneDocTopics[i] = doc.Assignments[i].topicSequence.getFeatures();
 
@@ -491,8 +499,8 @@ public class iMixWorkerRunnable implements Runnable {
 
     protected int removeOldTopicContribution(
             //double[][] cachedCoefficients,
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             //double[] topicBetaMass,
             int oldTopic,
             int nonZeroTopics,
@@ -604,9 +612,9 @@ public class iMixWorkerRunnable implements Runnable {
     //TODO: I recalc them every time because sometimes I had a sampling error in FindTopicIn Beta Mass.. 
     //I shouldn't need it, thus I should check it again
     protected void recalcBetaAndCachedCoefficients(
-            gnu.trove.TDoubleArrayList[] cachedCoefficients,
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TDoubleArrayList[] cachedCoefficients,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             double[] topicBetaMass,
             int nonZeroTopics,
             final int[] docLength,
@@ -615,7 +623,7 @@ public class iMixWorkerRunnable implements Runnable {
 
         Arrays.fill(topicBetaMass, 0);
         for (byte i = 0; i < numModalities; i++) {
-            cachedCoefficients[i].reset();
+            cachedCoefficients[i].fill(0,numTopics,0);
             //Arrays.fill(cachedCoefficients[i], 0);
         }
 
@@ -637,11 +645,11 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected double calcTopicScores(
-            gnu.trove.TDoubleArrayList[] cachedCoefficients,
+            TDoubleArrayList[] cachedCoefficients,
             int oldTopic,
             byte m,
-            gnu.trove.TDoubleArrayList topicTermScores,
-            gnu.trove.TIntArrayList currentTypeTopicCounts,
+            TDoubleArrayList topicTermScores,
+            TIntArrayList currentTypeTopicCounts,
             int[] docLength,
             double termSkew) {
         // Now go over the type/topic counts, decrementing
@@ -722,8 +730,8 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopicInTopicTermMass(
-            gnu.trove.TDoubleArrayList topicTermScores,
-            gnu.trove.TIntArrayList currentTypeTopicCounts,
+            TDoubleArrayList topicTermScores,
+            TIntArrayList currentTypeTopicCounts,
             double sample) {
 
         int newTopic = -1;
@@ -754,8 +762,8 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopicInBetaMass(
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             int nonZeroTopics,
             byte m,
             final int[] docLength,
@@ -839,14 +847,14 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected int findNewTopic(
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             double[] topicBetaMass,
             int nonZeroTopics,
             byte m,
             double topicTermMass,
-            gnu.trove.TDoubleArrayList topicTermScores,
-            gnu.trove.TIntArrayList currentTypeTopicCounts,
+            TDoubleArrayList topicTermScores,
+            TIntArrayList currentTypeTopicCounts,
             int[] docLength,
             double sample,
             double[][] p,
@@ -903,7 +911,7 @@ public class iMixWorkerRunnable implements Runnable {
     }
 
     protected void rearrangeTypeTopicCounts(
-            gnu.trove.TIntArrayList currentTypeTopicCounts,
+            TIntArrayList currentTypeTopicCounts,
             int newTopic) {
 
         // Move to the position for the new topic,
@@ -955,9 +963,9 @@ public class iMixWorkerRunnable implements Runnable {
             int[][] oneDocTopics,
             int position,
             int newTopic,
-            gnu.trove.TDoubleArrayList[] cachedCoefficients,
-            gnu.trove.TIntArrayList[] localTopicCounts,
-            gnu.trove.TIntArrayList localTopicIndex,
+            TDoubleArrayList[] cachedCoefficients,
+            TIntArrayList[] localTopicCounts,
+            TIntArrayList localTopicIndex,
             double[] topicBetaMass,
             int nonZeroTopics,
             final int[] docLength,
@@ -1043,20 +1051,21 @@ public class iMixWorkerRunnable implements Runnable {
     protected void sampleTopicsForOneDoc(int docCnt) {
 
         MixTopicModelTopicAssignment doc = data.get(docCnt);
-        gnu.trove.TDoubleArrayList[] cachedCoefficients = new gnu.trove.TDoubleArrayList[numModalities];
+        TDoubleArrayList[] cachedCoefficients = new TDoubleArrayList[numModalities];
         //cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
         int[][] oneDocTopics = new int[numModalities][]; //token topics sequence for document
         FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
 
         int[] docLength = new int[numModalities];
-        gnu.trove.TIntArrayList[] localTopicCounts = new gnu.trove.TIntArrayList[numModalities];
-        gnu.trove.TIntArrayList localTopicIndex = new gnu.trove.TIntArrayList(numTopics); //dense topic index for all modalities
+        TIntArrayList[] localTopicCounts = new TIntArrayList[numModalities];
+        TIntArrayList localTopicIndex = new TIntArrayList(numTopics); //dense topic index for all modalities
+        localTopicIndex.fill(0,numTopics,0);
         int type, oldTopic, newTopic;
         double[] topicBetaMass = new double[numModalities];
 
-        //gnu.trove.TObjectIntHashMap<Long> topicPerPrvTopic = new gnu.trove.TObjectIntHashMap<Long>();
+        //TObjectIntHashMap<Long> topicPerPrvTopic = new TObjectIntHashMap<Long>();
 
-        //gnu.trove.TObjectIntHashMap<MassValue> similarGroups = new gnu.trove.TObjectIntHashMap<Integer>();
+        //TObjectIntHashMap<MassValue> similarGroups = new TObjectIntHashMap<Integer>();
 
 
 
@@ -1106,7 +1115,7 @@ public class iMixWorkerRunnable implements Runnable {
 
                 oldTopic = oneDocTopics[m][position];
 
-                gnu.trove.TIntArrayList currentTypeTopicCounts = typeTopicCounts[m][type];
+                TIntArrayList currentTypeTopicCounts = typeTopicCounts[m][type];
                 //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
                 //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length-1);
 
@@ -1133,7 +1142,8 @@ public class iMixWorkerRunnable implements Runnable {
                         p);
 
 
-                gnu.trove.TDoubleArrayList topicTermScores = new gnu.trove.TDoubleArrayList(numTopics);
+                TDoubleArrayList topicTermScores = new TDoubleArrayList(numTopics);
+                topicTermScores.fill(0, numTopics, 0);
                 double termSkew = typeSkewIndexes[m][type];
 
                 double topicTermMass = calcTopicScores(
