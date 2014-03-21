@@ -25,6 +25,8 @@ import cc.mallet.types.*;
 import cc.mallet.topics.TopicAssignment;
 import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
+import gnu.trove.list.array.TDoubleArrayList;
+import gnu.trove.list.array.TIntArrayList;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -75,7 +77,8 @@ public class iMixParallelTopicModel implements Serializable {
     public int[] totalTokens; //per modality
     public int[] totalDocsPerModality; //number of docs containing this modality 
     //public int totalLabels;
-    public gnu.trove.TDoubleArrayList alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    
+    public TDoubleArrayList alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     public double alphaSum;
     public double[] beta;   // Prior on per-topic multinomial distribution over token types (per modality) 
     public double[] betaSum; // per modality
@@ -84,15 +87,15 @@ public class iMixParallelTopicModel implements Serializable {
     //protected double gamma;   // Prior on per-topic multinomial distribution over labels
     //protected double gammaSum;
     //public static final double DEFAULT_GAMMA = 0.1;
-    public gnu.trove.TIntArrayList[][] typeTopicCounts; //per modality // indexed by <modalityIndex, feature index, topic index>
-    public gnu.trove.TIntArrayList[] tokensPerTopic; //per modality// indexed by <modalityIndex,topic index>
+    public TIntArrayList[][] typeTopicCounts; //per modality // indexed by <modalityIndex, feature index, topic index>
+    public TIntArrayList[] tokensPerTopic; //per modality// indexed by <modalityIndex,topic index>
     //public int[][] typeTopicCounts; // indexed by <feature index, topic index>
     //public int[] tokensPerTopic; // indexed by <topic index>
     //protected int[][] lbltypeTopicCounts; // indexed by <label index, topic index>
     //protected int[] labelsPerTopic; // indexed by <topic index>
     // for dirichlet estimation
     //public int[] docLengthCounts; // histogram of document sizes taking into consideration (summing up) all modalities
-    //public gnu.trove.TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
+    //public TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
     public int numIterations = 1000;
     public int burninPeriod = 200;
     public int independentIterations = 50;
@@ -131,8 +134,8 @@ public class iMixParallelTopicModel implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
-    public double[][] convergenceRates;//= new gnu.trove.TObjectIntHashMap<Double>(); 
-    public double[][] perplexities;//= new gnu.trove.TObjectIntHashMap<Double>(); 
+    public double[][] convergenceRates;//= new TObjectIntHashMap<Double>(); 
+    public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     public int numIndependentTopics; //= 5;
     private int numCommonTopics;
     private int histogramSize = 0;
@@ -171,8 +174,8 @@ public class iMixParallelTopicModel implements Serializable {
         this.betaSum = new double[numModalities];
         this.totalDocsPerModality = new int[numModalities];
 
-        this.typeTopicCounts = new gnu.trove.TIntArrayList[numModalities][];
-        this.tokensPerTopic = new gnu.trove.TIntArrayList[numModalities];
+        this.typeTopicCounts = new TIntArrayList[numModalities][];
+        this.tokensPerTopic = new TIntArrayList[numModalities];
         //this.docLengthCounts = new int[numModalities][];
         //this.topicDocCounts = new int[numModalities][][];
         this.typeTotals = new int[numModalities][];
@@ -202,12 +205,12 @@ public class iMixParallelTopicModel implements Serializable {
         this.ignoreLabels = ignoreLabels;
         this.skewOn = skewnOn;
         this.alphaSum = alphaSum;
-        this.alpha = new gnu.trove.TDoubleArrayList(numTopics);
+        this.alpha = new TDoubleArrayList(numTopics);
         this.alpha.fill(alphaSum / numTopics);
 
         this.beta = beta;
 
-        //this.tokensPerTopic = new  gnu.trove.TIntArrayList[numModalities];
+        //this.tokensPerTopic = new  TIntArrayList[numModalities];
 
         convergenceRates = new double[numModalities][100];
         perplexities = new double[numModalities][100];
@@ -319,7 +322,7 @@ public class iMixParallelTopicModel implements Serializable {
         //    Iterator<Integer> keySetIterator = map.keySet().iterator();
 
 //while(keySetIterator.hasNext()){
-        gnu.trove.TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
+        TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
 
         for (Byte i = 0; i < numModalities; i++) {
 
@@ -331,8 +334,8 @@ public class iMixParallelTopicModel implements Serializable {
             numTypes[i] = tmpNumTypes;
             betaSum[i] = beta[i] * tmpNumTypes;
 
-            typeTopicCounts[i] = new gnu.trove.TIntArrayList[tmpNumTypes];
-            tokensPerTopic[i] = new gnu.trove.TIntArrayList(numTopics);
+            typeTopicCounts[i] = new TIntArrayList[tmpNumTypes];
+            tokensPerTopic[i] = new TIntArrayList(numTopics);
 
             typeTotals[i] = new int[tmpNumTypes];
             typeSkewIndexes[i] = new double[tmpNumTypes];
@@ -421,7 +424,7 @@ public class iMixParallelTopicModel implements Serializable {
                 if (typeTotals[i][type] > maxTypeCount[i]) {
                     maxTypeCount[i] = typeTotals[i][type];
                 }
-                typeTopicCounts[i][type] = new gnu.trove.TIntArrayList(Math.min(numTopics, typeTotals[i][type]));
+                typeTopicCounts[i][type] = new TIntArrayList(Math.min(numTopics, typeTotals[i][type]));
             }
 
         }
@@ -528,7 +531,7 @@ public class iMixParallelTopicModel implements Serializable {
                             continue;
                         }
 
-                        gnu.trove.TIntArrayList tmplist = tokensPerTopic[i];
+                        TIntArrayList tmplist = tokensPerTopic[i];
                         int tmp = tmplist.get(topic);
                         tokensPerTopic[i].set(topic, tmp + 1);
                         //tokensPerTopic[i][topic]++;
@@ -541,7 +544,7 @@ public class iMixParallelTopicModel implements Serializable {
                         //  higher counts will be before the lower counts.
 
                         int type = tokens.getIndexAtPosition(position);
-                        gnu.trove.TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][ type];
+                        TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][ type];
 
                         // Start by assuming that the array is either empty
                         //  or is in sorted (descending) order.
@@ -603,18 +606,18 @@ public class iMixParallelTopicModel implements Serializable {
         HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
         String labelId = "";
         NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
-        //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+        //TObjectIntHashMap<String> topicEntitiesCnt = new TObjectIntHashMap<String>();
 
-        HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
+        HashMap<String, TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, TIntIntHashMap>();
 
         for (Byte m = 0; m < numModalities; m++) {
 
             for (int t = 0; t < numTopics; t++) {
                 labelId = m + "_" + t;
-                topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
+                topicEntitiesPerModality.put(labelId, new TIntIntHashMap());
             }
         }
-        //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+        //TObjectIntHashMap<String> topicEntitiesCnt = new TObjectIntHashMap<String>();
         // topicEntitiesCnt.clear();
         for (MixTopicModelTopicAssignment entity : data) {
 
@@ -673,15 +676,15 @@ public class iMixParallelTopicModel implements Serializable {
         //double maxSimilarity = 0;
         String labelTextId;
         int[][] topicMapping = new int[numModalities][numTopics];
-        //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
+        //TObjectDoubleHashMap<String> topicSimilarities = new TObjectDoubleHashMap<String>();
         double[][] topicSimilarities = new double[numTopics][numTopics];
 
         for (Byte m = 1; m < numModalities; m++) {
             for (int i = 0; i < numTopics; i++) {
                 Arrays.fill(topicSimilarities[i], 0);
             }
-            gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
-            gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
+            TIntArrayList usedTopics = new TIntArrayList();
+            TIntArrayList emptyTopics = new TIntArrayList();
             for (int t = 0; t < numTopics; t++) {
 
                 for (int t_text = 0; t_text < numTopics; t_text++) {
@@ -794,20 +797,20 @@ public class iMixParallelTopicModel implements Serializable {
      HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
      String labelId = "";
      NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
-     //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+     //TObjectIntHashMap<String> topicEntitiesCnt = new TObjectIntHashMap<String>();
 
-     HashMap<String, gnu.trove.TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, gnu.trove.TIntIntHashMap>();
+     HashMap<String, TIntIntHashMap> topicEntitiesPerModality = new HashMap<String, TIntIntHashMap>();
 
      for (Byte m = 0; m < numModalities; m++) {
 
      for (int t = 0; t < numTopics; t++) {
      if (t < numCommonTopics || (t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
      labelId = m + "_" + t;
-     topicEntitiesPerModality.put(labelId, new gnu.trove.TIntIntHashMap());
+     topicEntitiesPerModality.put(labelId, new TIntIntHashMap());
      }
      }
      }
-     //gnu.trove.TObjectIntHashMap<String> topicEntitiesCnt = new gnu.trove.TObjectIntHashMap<String>();
+     //TObjectIntHashMap<String> topicEntitiesCnt = new TObjectIntHashMap<String>();
      // topicEntitiesCnt.clear();
      for (MixTopicModelTopicAssignment entity : data) {
 
@@ -867,14 +870,14 @@ public class iMixParallelTopicModel implements Serializable {
      //double maxSimilarity = 0;
      String labelTextId;
      int[][] topicMapping = new int[numModalities][numTopics];
-     //gnu.trove.TObjectDoubleHashMap<String> topicSimilarities = new gnu.trove.TObjectDoubleHashMap<String>();
+     //TObjectDoubleHashMap<String> topicSimilarities = new TObjectDoubleHashMap<String>();
      double[][] topicSimilarities = new double[numTopics][numTopics];
      for (Byte m = 1; m < numModalities; m++) {
      for (int i = 0; i < numTopics; i++) {
      Arrays.fill(topicSimilarities[i], 0);
      }
-     gnu.trove.TIntArrayList usedTopics = new gnu.trove.TIntArrayList();
-     gnu.trove.TIntArrayList emptyTopics = new gnu.trove.TIntArrayList();
+     TIntArrayList usedTopics = new TIntArrayList();
+     TIntArrayList emptyTopics = new TIntArrayList();
      for (int t = 0; t < numTopics; t++) {
 
      for (int t_text = 0; t_text < numTopics; t_text++) {
@@ -978,8 +981,8 @@ public class iMixParallelTopicModel implements Serializable {
 
             // Handle the total-tokens-per-topic array
 
-            gnu.trove.TIntArrayList[] sourceTotals = runnables[thread].getTokensPerTopic();
-            gnu.trove.TIntArrayList[][] sourceTypeTopicCounts =
+            TIntArrayList[] sourceTotals = runnables[thread].getTokensPerTopic();
+            TIntArrayList[][] sourceTypeTopicCounts =
                     runnables[thread].getTypeTopicCounts();
 
             double[][][] distrP_Mean = runnables[thread].getPDistr_Mean();
@@ -1004,7 +1007,7 @@ public class iMixParallelTopicModel implements Serializable {
                     //  and the target is the global counts.
 
                     int[] sourceCounts = sourceTypeTopicCounts[i][type].toNativeArray();
-                    gnu.trove.TIntArrayList targetCounts = typeTopicCounts[i][type];
+                    TIntArrayList targetCounts = typeTopicCounts[i][type];
 
                     int sourceIndex = 0;
 
@@ -1143,7 +1146,7 @@ public class iMixParallelTopicModel implements Serializable {
         histogramSize = maxTotalAllModalities + 1;
         //not needed
 //        docLengthCounts = new int[maxTotalAllModalities + 1];
-//        topicDocCounts = new gnu.trove.TIntObjectHashMap<int[]>(numTopics); //[maxTotalAllModalities + 1];
+//        topicDocCounts = new TIntObjectHashMap<int[]>(numTopics); //[maxTotalAllModalities + 1];
 //        for (int topic = 0; topic < topicDocCounts.size(); topic++) {
 //            topicDocCounts.put(topic, new int[docLengthCounts.length]);
 //        }
@@ -1157,7 +1160,7 @@ public class iMixParallelTopicModel implements Serializable {
         
         for (int thread = 0; thread < numThreads; thread++) {
             int[] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-            gnu.trove.TIntObjectHashMap<int[]> sourceTopicCounts = runnables[thread].getTopicDocCounts();
+            TIntObjectHashMap<int[]> sourceTopicCounts = runnables[thread].getTopicDocCounts();
 
 
             for (int count = 0; count < sourceLengthCounts.length; count++) {
@@ -1363,7 +1366,7 @@ public class iMixParallelTopicModel implements Serializable {
 
             int index;
             for (int type = 0; type < numTypes[i]; type++) {
-                gnu.trove.TIntArrayList counts = typeTopicCounts[i][type];
+                TIntArrayList counts = typeTopicCounts[i][type];
                 index = 0;
                 while (index < counts.size() && counts.get(index) > 0) {
                     int count = counts.get(index) >> topicBits;
@@ -1427,17 +1430,17 @@ public class iMixParallelTopicModel implements Serializable {
         if (numThreads > 1) {
 
             for (int thread = 0; thread < numThreads; thread++) {
-                gnu.trove.TIntArrayList[] runnableTotals = new gnu.trove.TIntArrayList[numModalities];
-                gnu.trove.TIntArrayList[][] runnableCounts = new gnu.trove.TIntArrayList[numModalities][];
+                TIntArrayList[] runnableTotals = new TIntArrayList[numModalities];
+                TIntArrayList[][] runnableCounts = new TIntArrayList[numModalities][];
 
                 for (Byte i = 0; i < numModalities; i++) {
-                    runnableTotals[i] = (gnu.trove.TIntArrayList) tokensPerTopic[i].clone();
+                    runnableTotals[i] = (TIntArrayList) tokensPerTopic[i].clone();
                     //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
-                    runnableCounts[i] = new gnu.trove.TIntArrayList[numTypes[i]];
+                    runnableCounts[i] = new TIntArrayList[numTypes[i]];
                     for (int type = 0; type < numTypes[i]; type++) {
                         //int[] counts = new int[typeTopicCounts[i][type].clo.length];
                         //System.arraycopy(typeTopicCounts[i][type], 0, counts, 0, counts.length);
-                        runnableCounts[i][type] = (gnu.trove.TIntArrayList) typeTopicCounts[i][type].clone();
+                        runnableCounts[i][type] = (TIntArrayList) typeTopicCounts[i][type].clone();
                     }
                 }
                 // some docs may be missing at the end due to integer division
@@ -1596,7 +1599,7 @@ public class iMixParallelTopicModel implements Serializable {
                         for (int type = 0; type < numTypes[i]; type++) {
                             runnables[thread].getTypeTopicCounts()[i][type].reset();
                             runnables[thread].getTypeTopicCounts()[i][type].set(0, typeTopicCounts[i][type].toNativeArray());
-                            //runnables[thread].getTypeTopicCounts()[i][type] = (gnu.trove.TIntArrayList) typeTopicCounts[i][type].clone();
+                            //runnables[thread].getTypeTopicCounts()[i][type] = (TIntArrayList) typeTopicCounts[i][type].clone();
 //                            int[] targetCounts = runnables[thread].getTypeTopicCounts()[i][type];
 //                            int[] sourceCounts = typeTopicCounts[i][type].toNativeArray();
 //
@@ -1750,7 +1753,7 @@ public class iMixParallelTopicModel implements Serializable {
                     }
 
                     // also find and write phrases 
-                    gnu.trove.TObjectIntHashMap<String>[] phrases = findTopicPhrases();
+                    TObjectIntHashMap<String>[] phrases = findTopicPhrases();
 
                     for (int ti = 0; ti < numTopics; ti++) {
 
@@ -1996,16 +1999,16 @@ public class iMixParallelTopicModel implements Serializable {
         out.println("</topicModel>");
     }
 
-    public gnu.trove.TObjectIntHashMap<String>[] findTopicPhrases() {
+    public TObjectIntHashMap<String>[] findTopicPhrases() {
         int numTopics = this.getNumTopics();
 
-        gnu.trove.TObjectIntHashMap<String>[] phrases = new gnu.trove.TObjectIntHashMap[numTopics];
+        TObjectIntHashMap<String>[] phrases = new TObjectIntHashMap[numTopics];
         Alphabet alphabet = this.getAlphabet()[0];
 
         // Get counts of phrases in topics
         // Search bigrams within corpus to see if they have been assigned to the same topic, adding them to topic phrases
         for (int ti = 0; ti < numTopics; ti++) {
-            phrases[ti] = new gnu.trove.TObjectIntHashMap<String>();
+            phrases[ti] = new TObjectIntHashMap<String>();
         }
         for (int di = 0; di < this.getData().size(); di++) {
 
@@ -2059,7 +2062,7 @@ public class iMixParallelTopicModel implements Serializable {
         int numTopics = this.getNumTopics();
         Alphabet alphabet = this.getAlphabet()[0];
 
-        gnu.trove.TObjectIntHashMap<String>[] phrases = findTopicPhrases();
+        TObjectIntHashMap<String>[] phrases = findTopicPhrases();
         // phrases[] now filled with counts
 
         // Now start printing the XML
@@ -2698,14 +2701,14 @@ public class iMixParallelTopicModel implements Serializable {
 
         numTypes = (int[]) in.readObject();
 
-        alpha = (gnu.trove.TDoubleArrayList) in.readObject();
+        alpha = (TDoubleArrayList) in.readObject();
         alphaSum = in.readDouble();
         beta = (double[]) in.readObject();
         betaSum = (double[]) in.readObject();
 
 
-        typeTopicCounts = (gnu.trove.TIntArrayList[][]) in.readObject();
-        tokensPerTopic = (gnu.trove.TIntArrayList[]) in.readObject();
+        typeTopicCounts = (TIntArrayList[][]) in.readObject();
+        tokensPerTopic = (TIntArrayList[]) in.readObject();
 
 
         //docLengthCounts = (int[]) in.readObject();

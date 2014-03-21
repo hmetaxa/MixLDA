@@ -8,6 +8,7 @@ import cc.mallet.pipe.*;
 import cc.mallet.pipe.iterator.*;
 import cc.mallet.topics.*;
 import cc.mallet.util.Maths;
+import gnu.trove.map.hash.TObjectIntHashMap;
 
 import java.util.*;
 import java.util.regex.*;
@@ -374,7 +375,7 @@ public class MixTopicModelExample {
 
         InstanceList[] trainingInstances = new InstanceList[numModalities];
 
-        gnu.trove.TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
+        TObjectIntHashMap<String> entityPosition = new gnu.trove.TObjectIntHashMap<String>();
         int index = 0;
         for (byte m = 0; m < numModalities; m++) {
             Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
