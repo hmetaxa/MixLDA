@@ -228,12 +228,13 @@ public class iMixWorkerRunnable implements Runnable {
         for (byte i = 0; i < numModalities; i++) {
 
             // Clear the topic totals
-            tokensPerTopic[i].reset();
+            //tokensPerTopic[i].reset();
+            tokensPerTopic[i].fill(0, numTopics, 0);
             //Arrays.fill(tokensPerTopic[i], 0);
 
             for (int type = 0; type < typeTopicCounts[i].length; type++) {
 
-                typeTopicCounts[i][type].reset();
+                typeTopicCounts[i][type].fill(0, numTopics, 0);//.reset();
 //                int[] topicCounts = typeTopicCounts[i][type];
 //
 //                int position = 0;
@@ -435,7 +436,7 @@ public class iMixWorkerRunnable implements Runnable {
                         System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                         continue;
                     }
-                    localTopicCounts[i].set(oneDocTopics[i][position], localTopicCounts[i].get(oneDocTopics[i][position] + 1));
+                    localTopicCounts[i].set(oneDocTopics[i][position], localTopicCounts[i].get(oneDocTopics[i][position]) + 1);
 
 
                 }

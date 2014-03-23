@@ -965,12 +965,13 @@ public class iMixParallelTopicModel implements Serializable {
 
             }
             // Clear the topic totals
-            tokensPerTopic[i].reset();
+            //tokensPerTopic[i].reset();
+            tokensPerTopic[i].fill(0, numTopics, 0);
             //Arrays.fill(tokensPerTopic[i], 0);
 
             for (int type = 0; type < numTypes[i]; type++) {
 
-                typeTopicCounts[i][type].reset();
+                typeTopicCounts[i][type].fill(0, numTopics, 0);//.reset();
 //                int[] targetCounts = typeTopicCounts[i][type];
 //
 //                int position = 0;
@@ -1593,7 +1594,7 @@ public class iMixParallelTopicModel implements Serializable {
                     
                     for (Byte i = 0; i < numModalities; i++) {
                         runnables[thread].getTokensPerTopic()[i].reset();
-                        runnables[thread].getTokensPerTopic()[i].set(0, tokensPerTopic[i].toArray());
+                        runnables[thread].getTokensPerTopic()[i].add(tokensPerTopic[i].toArray());
                         
                         //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
@@ -1604,7 +1605,7 @@ public class iMixParallelTopicModel implements Serializable {
                     for (Byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
                             runnables[thread].getTypeTopicCounts()[i][type].reset();
-                            runnables[thread].getTypeTopicCounts()[i][type].set(0, typeTopicCounts[i][type].toArray());
+                            runnables[thread].getTypeTopicCounts()[i][type].add( typeTopicCounts[i][type].toArray());
                             //runnables[thread].getTypeTopicCounts()[i][type] = (TIntArrayList) typeTopicCounts[i][type].clone();
 //                            int[] targetCounts = runnables[thread].getTypeTopicCounts()[i][type];
 //                            int[] sourceCounts = typeTopicCounts[i][type].toArray();
