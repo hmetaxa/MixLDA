@@ -50,12 +50,12 @@ public class iMixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 50;
         int numIterations = 700;
-        int independentIterations = 50;
-        int burnIn = 100;
+        int independentIterations = 0;
+        int burnIn = 50;
         LabelType lblType = LabelType.Authors;
         int pruneCnt = 10; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
-        double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        double pruneMaxPerc = 0.95;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
         String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "IIT_" + independentIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
@@ -267,16 +267,38 @@ public class iMixTopicModelExample {
         // Pipes: lowercase, tokenize, remove stopwords, map to features
         pipeListText.add(new Input2CharSequence(false)); //homer
         pipeListText.add(new CharSequenceLowercase());
-        //SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
-        //GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, false);
-        // pipeListText.add(tokenizer);
-        pipeListText.add(new CharSequence2TokenSequence(Pattern.compile("\\p{L}[\\p{L}\\p{P}]+\\p{L}")));// Original --> replaced by simpletokenizer in order to use prunedStopiList
-        pipeListText.add(new TokenSequenceRemoveStopwords(new File("stoplists/en.txt"), "UTF-8", false, false, false)); //Original --> replaced by simpletokenizer
+        
+        
+        SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
+        GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, false);
+        pipeListText.add(tokenizer);
+        Alphabet alphabet = new Alphabet();
+        pipeListText.add(new StringList2FeatureSequence(alphabet));
 
-        //Alphabet alphabet = new Alphabet();
-        //pipeListText.add(new StringList2FeatureSequence(alphabet));
+        
+        /*
+         Alphabet alphabet = new Alphabet();
+        CharSequenceLowercase csl = new CharSequenceLowercase();
+        StringList2FeatureSequence sl2fs = new StringList2FeatureSequence(alphabet);
+        if (!preserveCase.value) {
+            pipes.add(csl);
+        }
+        pipes.add(prunedTokenizer);
+        pipes.add(sl2fs);
 
-        pipeListText.add(new TokenSequence2FeatureSequence()); //Original
+        Pipe serialPipe = new SerialPipes(pipes);
+
+        InstanceList instances = new InstanceList(serialPipe);
+        instances.addThruPipe(reader);
+        
+        */
+        
+        /* orig
+         pipeListText.add(new CharSequence2TokenSequence(Pattern.compile("\\p{L}[\\p{L}\\p{P}]+\\p{L}")));// Original --> replaced by simpletokenizer in order to use prunedStopiList
+         pipeListText.add(new TokenSequenceRemoveStopwords(new File("stoplists/en.txt"), "UTF-8", false, false, false)); //Original --> replaced by simpletokenizer
+         pipeListText.add(new TokenSequence2FeatureSequence()); 
+        */
+        
 
 
 
@@ -287,6 +309,8 @@ public class iMixTopicModelExample {
         } else {
             pipeListCSV.add(new CSV2FeatureSequence());
         }
+        
+        
         InstanceList[] instances = new InstanceList[numModalities];
 
 
@@ -301,7 +325,7 @@ public class iMixTopicModelExample {
 
         logger.info(" instances added through pipe");
 // pruning for all other modalities no text
-        for (byte m = 0; m < numModalities; m++) {
+        for (byte m = 1; m < numModalities; m++) {
             if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
 
                 // Check which type of data element the instances contain
