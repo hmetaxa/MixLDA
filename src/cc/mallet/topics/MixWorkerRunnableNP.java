@@ -495,7 +495,7 @@ public class MixWorkerRunnableNP implements Runnable {
 
         for (int t = 0; t <= maxTopic; t++) {
 
-            //direct assignment scheme: one table per topic per doc per modality
+            //minimal path assignment scheme: one table per topic per doc per modality
             if (tablesPerTopic[t] >= 0) {
                 mk[t] = (double) tablesPerTopic[t];
                 tt[t] = ((double) tablesPerTopic[t] / (totalTables + gamma));

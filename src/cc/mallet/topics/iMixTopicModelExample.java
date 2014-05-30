@@ -48,7 +48,7 @@ public class iMixTopicModelExample {
         boolean calcSimilarities = false;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 50;
         int numIterations = 700;
         int independentIterations = 50;
         int burnIn = 100;
