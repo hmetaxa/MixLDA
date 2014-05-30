@@ -37,25 +37,25 @@ public class MixTopicModelExample {
         Logger logger = MalletLogger.getLogger(MixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 3;
+        byte numModalities = 2;
         int numIndependentTopics = 2;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        boolean calcSimilarities = false;
+        boolean calcSimilarities = true;
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
-        int numIterations = 700;
+        int numTopics = 200;
+        int numIterations = 650;
         int independentIterations = 50;
         int burnIn = 100;
-        LabelType lblType = LabelType.ACM;
-        int pruneCnt = 10; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 7;
+        LabelType lblType = LabelType.Grants;
+        int pruneCnt = 20; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
-        String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "IIT_" + independentIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
+        String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "I_" + independentIterations + "IIT_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
