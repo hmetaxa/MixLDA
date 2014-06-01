@@ -49,7 +49,7 @@ public class MixTopicModelExample {
         int numIterations = 650;
         int independentIterations = 50;
         int burnIn = 100;
-        LabelType lblType = LabelType.Grants;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.

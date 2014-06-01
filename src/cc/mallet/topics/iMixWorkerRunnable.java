@@ -182,7 +182,7 @@ public class iMixWorkerRunnable implements Runnable {
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[size];
         topicDocCounts = new TIntObjectHashMap<int[]>(numTopics);
-        for (int topic = 0; topic < topicDocCounts.size(); topic++) {
+        for (int topic = 0; topic < numTopics; topic++) {
             topicDocCounts.put(topic, new int[docLengthCounts.length]);
         }
         //  [size];
