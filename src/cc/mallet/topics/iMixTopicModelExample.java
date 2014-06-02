@@ -52,10 +52,10 @@ public class iMixTopicModelExample {
         int numIterations = 700;
         int independentIterations = 50;
         int burnIn = 100;
-        LabelType lblType = LabelType.Grants;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
-        double pruneMaxPerc = 0.40;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
         String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "IIT_" + independentIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();

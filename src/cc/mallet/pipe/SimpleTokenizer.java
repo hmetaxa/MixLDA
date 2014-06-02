@@ -74,8 +74,8 @@ public class SimpleTokenizer extends Pipe {
         stoplist = new HashSet<String>();
 
         try {
-            BufferedReader in =
-                    new BufferedReader(new InputStreamReader(new FileInputStream(stopfile), "UTF-8"));
+            BufferedReader in
+                    = new BufferedReader(new InputStreamReader(new FileInputStream(stopfile), "UTF-8"));
 
             String word = null;
             while ((word = in.readLine()) != null) {
@@ -116,7 +116,6 @@ public class SimpleTokenizer extends Pipe {
             // Using code points instead of chars allows us
             //  to support extended Unicode, and has no significant
             //  efficiency costs.
-
             int totalCodePoints = Character.codePointCount(characters, 0, characters.length());
 
             for (int i = 0; i < totalCodePoints; i++) {
@@ -127,7 +126,7 @@ public class SimpleTokenizer extends Pipe {
                 if ((codePointType == Character.LOWERCASE_LETTER
                         || codePointType == Character.UPPERCASE_LETTER) && length < 999) { //omiros
                     length++;
-                    
+
                     tokenBuffer[length] = codePoint;
 
                 } else if (codePointType == Character.SPACE_SEPARATOR
@@ -142,14 +141,17 @@ public class SimpleTokenizer extends Pipe {
                         || codePointType == Character.OTHER_PUNCTUATION) {
 
                     // Things that delimit words
-                    if (length > 0) { //omiros old !=-1
+                    if (length > 1) { //omiros old !=-1
                         String token = new String(tokenBuffer, 0, length + 1);
                         if (!stoplist.contains(token)) {
-                            System.out.println(token);
+                            if (length == 1) {
+                                System.out.println(token);
+                            }
                             tokens.add(token);
                         }
-                        length = -1;
+
                     }
+                    length = -1;
                 } else if (codePointType == Character.COMBINING_SPACING_MARK
                         || codePointType == Character.ENCLOSING_MARK
                         || codePointType == Character.NON_SPACING_MARK
@@ -164,7 +166,7 @@ public class SimpleTokenizer extends Pipe {
                 } else {
                     if (length >= 990) {
                         String token = new String(tokenBuffer, 0, length + 1);
-                       // System.out.println(token);
+                        // System.out.println(token);
                     }
                     // Character.DECIMAL_DIGIT_NUMBER
                     // Character.CONTROL
