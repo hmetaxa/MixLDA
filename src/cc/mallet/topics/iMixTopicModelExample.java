@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -69,14 +69,13 @@ public class iMixTopicModelExample {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/europepmc.db";
         } else if (lblType == LabelType.DBLP_ACM) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db";
-        }
-         else if (lblType == LabelType.ACM) {
-            SQLLitedb = "jdbc:sqlite:E:/OpenAIRE_DS/acmdata1.db";
+        } else if (lblType == LabelType.ACM) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/acmdata1.db";
         }
         Connection connection = null;
 
-        createRefACMTables(SQLLitedb);
-        
+        //createRefACMTables(SQLLitedb);
+
         // create a database connection
         //Reader fileReader = new InputStreamReader(new FileInputStream(new File(args[0])), "UTF-8");
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
@@ -101,8 +100,7 @@ public class iMixTopicModelExample {
             String sql = "";
 
             if (lblType == LabelType.Grants) {
-                sql
-                        = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+                sql = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
                         + " from Doc inner join "
                         + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
                         //  + " where  "
@@ -110,8 +108,7 @@ public class iMixTopicModelExample {
                         //  + " grantPerDoc.grantId like '" + grantType + "' "
                         + " Group By Doc.DocId, Doc.text";
             } else if (lblType == LabelType.Authors) {
-                sql
-                        = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
+                sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                         + "from Doc \n"
                         + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
                         + "Where \n"
@@ -136,35 +133,28 @@ public class iMixTopicModelExample {
 //                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
                 // + " LIMIT 200000"
             } else if (lblType == LabelType.PM_pdb) {
-                sql
-                        = " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
+                sql = " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
                         + "                        from pubdoc  inner join \n"
                         + "                        pdblink on pdblink.pmcId=pubdoc.pmcId \n"
                         + "                    Group By pubdoc.pmcId, pubdoc.abstract, pubdoc.body";
             } else if (lblType == LabelType.DBLP_ACM) {
-                sql
-                        = " select id, title||' '||abstract AS text, Authors, \n"
+                sql = " select id, title||' '||abstract AS text, Authors, \n"
                         + "  ref_id as citations\n"
                         + "  from papers\n"
                         + "  WHERE \n"
                         + " (abstract IS NOT NULL) AND (abstract<>'') \n " //+" AND ref_Id IS NOT NULL AND ref_id<>''  \n" 
                         // + " LIMIT 20000"
                         ;
-                
+            } else if (lblType == LabelType.ACM) {
+                sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
+                        + "                          ref_objid as citations, primarycategory||','||othercategory AS categories \n"
+                        + "                          from ACMData1 \n";
+                        //+ " LIMIT 1000";
+
 
             }
-            else if (lblType == LabelType.ACM) {
-                sql
-                        = "  select    articleid as id, title||' '||abstract||' '||Body AS text, authors_id AS Authors, \n" +
-"                          ref_objid as citations, primarycategory||','||othercategory AS categories \n" +
-"                          from ACMData1 \n"
-                         + " LIMIT 1000"
-                        ;
-                
 
-            }
-            
-            
+
 
             // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
             Statement statement = connection.createStatement();
@@ -250,18 +240,19 @@ public class iMixTopicModelExample {
                             instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
                         }
                         break;
-                     case ACM:
+                    case ACM:
                         instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
                         if (numModalities > 1) {
-                            instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "author"));
+                            String tmpAuthorsStr = rs.getString("Authors").replace("\t", ",");
+                            instanceBuffer.get(1).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                         }
 
                         if (numModalities > 2) {
                             String tmpStr = rs.getString("Citations").replace("\t", ",");
                             instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
                         }
-                        
+
                         if (numModalities > 3) {
                             String tmpStr = rs.getString("Categories").replace("\t", ",");
                             instanceBuffer.get(3).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
@@ -325,7 +316,7 @@ public class iMixTopicModelExample {
          */
         // Other Modalities
         ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-        if (lblType == LabelType.DBLP || lblType == LabelType.DBLP_ACM) {
+        if (lblType == LabelType.DBLP || lblType == LabelType.DBLP_ACM || lblType == LabelType.ACM) {
             pipeListCSV.add(new CSV2FeatureSequence(","));
         } else {
             pipeListCSV.add(new CSV2FeatureSequence());
@@ -985,7 +976,7 @@ public class iMixTopicModelExample {
             statement.executeUpdate("create table if not exists Category (Category TEXT) ");
             deleteSQL = String.format("Delete from Category ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement = connection.createStatement();
             statement.executeUpdate("create table if not exists PubAuthor (PubId nvarchar(50), AuthorId nvarchar(50)) ");
             deleteSQL = String.format("Delete from PubAuthor ");
@@ -1002,7 +993,7 @@ public class iMixTopicModelExample {
             PreparedStatement authorBulkInsert = null;
             PreparedStatement citationBulkInsert = null;
             PreparedStatement categoryBulkInsert = null;
-            
+
             PreparedStatement pubAuthorBulkInsert = null;
             PreparedStatement pubCitationBulkInsert = null;
             PreparedStatement pubCategoryBulkInsert = null;
@@ -1015,7 +1006,7 @@ public class iMixTopicModelExample {
             String pubCitationInsertsql = "insert into pubCitation values(?,?);";
             String pubCategoryInsertsql = "insert into pubCategory values(?,?);";
 
-            
+
             TObjectIntHashMap<String> authorsLst = new TObjectIntHashMap<String>();
             TObjectIntHashMap<String> citationsLst = new TObjectIntHashMap<String>();
             TObjectIntHashMap<String> categorysLst = new TObjectIntHashMap<String>();
@@ -1026,15 +1017,15 @@ public class iMixTopicModelExample {
                 authorBulkInsert = connection.prepareStatement(authorInsertsql);
                 citationBulkInsert = connection.prepareStatement(citationInsertsql);
                 categoryBulkInsert = connection.prepareStatement(categoryInsertsql);
-                
+
                 pubAuthorBulkInsert = connection.prepareStatement(pubAuthorInsertsql);
                 pubCitationBulkInsert = connection.prepareStatement(pubCitationInsertsql);
                 pubCategoryBulkInsert = connection.prepareStatement(pubCategoryInsertsql);
 
                 String sql = "	Select articleid,authors_id,authors_firstname,authors_lastname,authors_middlename,authors_affiliation,authors_role, \n"
                         + "			ref_objid,reftext,primarycategory,othercategory \n"
-                        + "			 from ACMData1 \n"
-                        + "			  LIMIT 10";
+                        + "			 from ACMData1 \n";
+                       // + "			  LIMIT 10";
 
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
@@ -1077,6 +1068,7 @@ public class iMixTopicModelExample {
                         }
                         pubAuthorBulkInsert.setString(1, Id);
                         pubAuthorBulkInsert.setString(2, authorId);
+                        pubAuthorBulkInsert.executeUpdate();
 
                     }
 
@@ -1098,7 +1090,7 @@ public class iMixTopicModelExample {
                         }
                         pubCitationBulkInsert.setString(1, Id);
                         pubCitationBulkInsert.setString(2, citationId);
-
+                        pubCitationBulkInsert.executeUpdate();
                     }
 
                     String prCategoriesStr = rs.getString("primarycategory");
@@ -1116,9 +1108,9 @@ public class iMixTopicModelExample {
                         }
                         pubCategoryBulkInsert.setString(1, Id);
                         pubCategoryBulkInsert.setString(2, category);
-
+                        pubCategoryBulkInsert.executeUpdate();
                     }
-                    
+
                     for (int i = 0; i < categories.length - 1; i++) {
                         String category = categories[i];
                         if (!categorysLst.containsKey(category)) {
@@ -1126,11 +1118,12 @@ public class iMixTopicModelExample {
                             categoryBulkInsert.setString(1, category);
                             categoryBulkInsert.executeUpdate();
                         }
-                        
+
                         pubCategoryBulkInsert.setString(1, Id);
                         pubCategoryBulkInsert.setString(2, category);
+                        pubCategoryBulkInsert.executeUpdate();
                     }
-                    
+
                 }
 
                 connection.commit();
@@ -1159,37 +1152,26 @@ public class iMixTopicModelExample {
                 connection.setAutoCommit(true);
             }
 
-    }
-    catch (SQLException e
-
-    
-        ) {
+        } catch (SQLException e) {
             // if the error message is "out of memory", 
             // it probably means no database file is found
             System.err.println(e.getMessage());
-    }
-    catch (Exception e
-
-    
-        ) {
+        } catch (Exception e) {
             System.err.println("File input error");
-    }
-
-    
-        finally {
+        } finally {
             try {
-            if (connection != null) {
-                connection.close();
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
             }
-        } catch (SQLException e) {
-            // connection close failed.
-            System.err.println(e);
         }
+
     }
 
-}
-
-public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
         Class.forName("org.sqlite.JDBC");
         iMixTopicModelExample trainer = new iMixTopicModelExample();
 
