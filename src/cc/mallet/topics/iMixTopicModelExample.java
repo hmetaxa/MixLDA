@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 3;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -244,13 +244,13 @@ public class iMixTopicModelExample {
                         instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
                         if (numModalities > 1) {
-                            String tmpAuthorsStr = rs.getString("Authors").replace("\t", ",");
-                            instanceBuffer.get(1).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
-                        }
-
-                        if (numModalities > 2) {
                             String tmpStr = rs.getString("Citations").replace("\t", ",");
-                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
+                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
+                        }
+                        
+                        if (numModalities > 2) {
+                            String tmpAuthorsStr = rs.getString("Authors").replace("\t", ",");
+                            instanceBuffer.get(2).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                         }
 
                         if (numModalities > 3) {

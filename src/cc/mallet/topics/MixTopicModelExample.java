@@ -29,7 +29,9 @@ public class MixTopicModelExample {
         Grants,
         DBLP,
         PM_pdb,
+        ACM_DBLP,
         ACM
+
     }
 
     public MixTopicModelExample() throws IOException {
@@ -37,21 +39,21 @@ public class MixTopicModelExample {
         Logger logger = MalletLogger.getLogger(MixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         int numIndependentTopics = 2;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        boolean calcSimilarities = true;
+        boolean calcSimilarities = false;
         MixParallelTopicModel.SkewType skewOn = MixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 200;
         int numIterations = 650;
         int independentIterations = 50;
         int burnIn = 100;
-        LabelType lblType = LabelType.Authors;
+        LabelType lblType = LabelType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneLblCnt = 7;
         double pruneMaxPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
@@ -63,14 +65,14 @@ public class MixTopicModelExample {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/citation-network2.db";
         } else if (lblType == LabelType.PM_pdb) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/europepmc.db";
-        } else if (lblType == LabelType.ACM) {
+        } else if (lblType == LabelType.ACM_DBLP) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db";
+        } else if (lblType == LabelType.ACM) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/acmdata1.db";
         }
         Connection connection = null;
 
         // create a database connection
-
-
         //Reader fileReader = new InputStreamReader(new FileInputStream(new File(args[0])), "UTF-8");
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
         //3, 2, 1)); // data, label, name fields
@@ -78,7 +80,6 @@ public class MixTopicModelExample {
         ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
 
         //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
-
         for (byte m = 0; m < numModalities; m++) {
             instanceBuffer.add(new ArrayList<Instance>());
 
@@ -95,8 +96,8 @@ public class MixTopicModelExample {
             String sql = "";
 
             if (lblType == LabelType.Grants) {
-                sql =
-                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+                sql
+                        = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
                         + " from Doc inner join "
                         + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
                         //  + " where  "
@@ -104,8 +105,8 @@ public class MixTopicModelExample {
                         //  + " grantPerDoc.grantId like '" + grantType + "' "
                         + " Group By Doc.DocId, Doc.text";
             } else if (lblType == LabelType.Authors) {
-                sql =
-                        " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
+                sql
+                        = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                         + "from Doc \n"
                         + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
                         + "Where \n"
@@ -129,23 +130,27 @@ public class MixTopicModelExample {
 //                        + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
 //                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
                 // + " LIMIT 200000"
-
             } else if (lblType == LabelType.PM_pdb) {
-                sql =
-                        " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
+                sql
+                        = " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
                         + "                        from pubdoc  inner join \n"
                         + "                        pdblink on pdblink.pmcId=pubdoc.pmcId \n"
                         + "                    Group By pubdoc.pmcId, pubdoc.abstract, pubdoc.body";
-            } else if (lblType == LabelType.ACM) {
-                sql =
-                        " select id, title||' '||abstract AS text, Authors, \n"
+            } else if (lblType == LabelType.ACM_DBLP) {
+                sql
+                        = " select id, title||' '||abstract AS text, Authors, \n"
                         + "  ref_id as citations\n"
                         + "  from papers\n"
                         + "  WHERE \n"
-                        + " (abstract IS NOT NULL) AND (abstract<>'') \n "
-                        //+" AND ref_Id IS NOT NULL AND ref_id<>''  \n" 
+                        + " (abstract IS NOT NULL) AND (abstract<>'') \n " //+" AND ref_Id IS NOT NULL AND ref_id<>''  \n" 
                         // + " LIMIT 20000"
                         ;
+
+            } else if (lblType == LabelType.ACM) {
+                sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
+                        + "                          ref_objid as citations, primarycategory||','||othercategory AS categories \n"
+                        + "                          from ACMData1 \n";
+                //+ " LIMIT 1000";
 
             }
 
@@ -221,17 +226,35 @@ public class MixTopicModelExample {
                             instanceBuffer.get(1).add(new Instance(rs.getString("pbdCodes"), null, rs.getString("pmcId"), "pbdCode"));
                         }
                         break;
-                    case ACM:
-                         instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                    case ACM_DBLP:
+                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
                         if (numModalities > 1) {
-                             instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "author"));
+                            instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "author"));
+                        }
+
+                        if (numModalities > 2) {
+                            String tmpStr = rs.getString("Citations").replace("\t", ",");
+                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
+                        }
+                        break;
+                    case ACM:
+                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                     
+                        if (numModalities > 2) {
+                            String tmpStr = rs.getString("Citations").replace("\t", ",");
+                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
                         }
                         
-                         if (numModalities > 2) {
-                             String tmpStr = rs.getString("Citations").replace("\t", ",");
-                             instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
-                         }
+                        if (numModalities > 3) {
+                            String tmpAuthorsStr = rs.getString("Authors").replace("\t", ",");
+                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
+                        }
+
+                        if (numModalities > 1) {
+                            String tmpStr = rs.getString("Categories").replace("\t", ",");
+                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                        }
                         break;
                     default:
                 }
@@ -252,40 +275,36 @@ public class MixTopicModelExample {
             }
         }
 
-
         logger.info("Read " + instanceBuffer.get(0).size() + " instances modality 0");
 
-
         //numModalities = 2;
-
         // Begin by importing documents from text to feature sequences
         ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
 
         // Pipes: lowercase, tokenize, remove stopwords, map to features
         pipeListText.add(new Input2CharSequence(false)); //homer
         pipeListText.add(new CharSequenceLowercase());
-        //SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
-        //GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, false);
-        // pipeListText.add(tokenizer);
-        pipeListText.add(new CharSequence2TokenSequence(Pattern.compile("\\p{L}[\\p{L}\\p{P}]+\\p{L}")));// Original --> replaced by simpletokenizer in order to use prunedStopiList
-        pipeListText.add(new TokenSequenceRemoveStopwords(new File("stoplists/en.txt"), "UTF-8", false, false, false)); //Original --> replaced by simpletokenizer
 
-        //Alphabet alphabet = new Alphabet();
-        //pipeListText.add(new StringList2FeatureSequence(alphabet));
+        SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
+        GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, false);
+        pipeListText.add(tokenizer);
+        Alphabet alphabet = new Alphabet();
+        pipeListText.add(new StringList2FeatureSequence(alphabet));
 
-        pipeListText.add(new TokenSequence2FeatureSequence()); //Original
-
-
-
+        /*ORIG        
+         pipeListText.add(new CharSequence2TokenSequence(Pattern.compile("\\p{L}[\\p{L}\\p{P}]+\\p{L}")));// Original --> replaced by simpletokenizer in order to use prunedStopiList
+         pipeListText.add(new TokenSequenceRemoveStopwords(new File("stoplists/en.txt"), "UTF-8", false, false, false)); //Original --> replaced by simpletokenizer
+         pipeListText.add(new TokenSequence2FeatureSequence()); //Original
+         */
+        
         // Other Modalities
         ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-        if (lblType == LabelType.DBLP || lblType == LabelType.ACM) {
+        if (lblType == LabelType.DBLP || lblType == LabelType.ACM_DBLP || lblType == LabelType.ACM) {
             pipeListCSV.add(new CSV2FeatureSequence(","));
         } else {
             pipeListCSV.add(new CSV2FeatureSequence());
         }
         InstanceList[] instances = new InstanceList[numModalities];
-
 
         instances[0] = new InstanceList(new SerialPipes(pipeListText));
         instances[0].addThruPipe(instanceBuffer.get(0).iterator());
@@ -298,7 +317,7 @@ public class MixTopicModelExample {
 
         logger.info(" instances added through pipe");
 // pruning for all other modalities no text
-        for (byte m = 0; m < numModalities; m++) {
+        for (byte m = 1; m < numModalities; m++) {
             if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
 
                 // Check which type of data element the instances contain
@@ -335,7 +354,6 @@ public class MixTopicModelExample {
 
                         fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
 
-
                         newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
                                 instance.getName(),
                                 instance.getSource())));
@@ -344,10 +362,8 @@ public class MixTopicModelExample {
 
 //                logger.info("features: " + oldAlphabet.size()
                     //                       + " -> " + newAlphabet.size());
-
                     // Make the new list the official list.
                     instances[m] = newInstanceList;
-
 
                 } else {
                     throw new UnsupportedOperationException("Pruning features from "
@@ -360,18 +376,14 @@ public class MixTopicModelExample {
 
         logger.info(" instances pruned");
 
-
         //instances.addThruPipe(new FileIterator(inputDir));
-
         //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
         //
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
-
         // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
         //  Note that the first parameter is passed as the sum over topics, while
         //  the second is 
         InstanceList[] testInstances = new InstanceList[numModalities];
-
 
         InstanceList[] trainingInstances = new InstanceList[numModalities];
 
@@ -467,8 +479,6 @@ public class MixTopicModelExample {
 
             modelOrig.addInstances(instances[0]);
 
-
-
             // Use two parallel samplers, which each look at one half the corpus and combine
             //  statistics after every iteration.
             modelOrig.setNumThreads(4);
@@ -503,7 +513,6 @@ public class MixTopicModelExample {
         //model.optimizeInterval = 0;
         //model.burninPeriod = 0;
         //model.saveModelInterval=250;
-
         model.estimate();
 
         logger.info("model estimated");
@@ -551,7 +560,6 @@ public class MixTopicModelExample {
 //            // it probably means no database file is found
 //            System.err.println(e.getMessage());
 //        }
-
         if (modelEvaluationFile != null) {
             try {
 
@@ -613,9 +621,7 @@ public class MixTopicModelExample {
                     default:
                 }
 
-
                 // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
-
                 ResultSet rs = statement.executeQuery(sql);
 
                 HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
@@ -656,15 +662,12 @@ public class MixTopicModelExample {
                     weights[cnt] = rs.getDouble("Weight");
                     cnt++;
 
-
                 }
 
                 cnt = 0;
                 double similarity = 0;
                 double similarityThreshold = 0.1;
                 NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
-
-
 
                 statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
                 String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s'", experimentId);
@@ -677,7 +680,6 @@ public class MixTopicModelExample {
 
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-
 
                     for (String fromGrantId : labelVectors.keySet()) {
                         boolean startCalc = false;
@@ -719,8 +721,6 @@ public class MixTopicModelExample {
                     connection.setAutoCommit(true);
                 }
 
-
-
             } catch (SQLException e) {
                 // if the error message is "out of memory", 
                 // it probably means no database file is found
@@ -735,7 +735,6 @@ public class MixTopicModelExample {
                     System.err.println(e);
                 }
             }
-
 
             logger.info("similarities calculation finished");
         }
@@ -885,7 +884,6 @@ public class MixTopicModelExample {
 
         }
 
-
     }
 
     public void createCitationGraphFile(String outputCsv, String SQLLitedb) {
@@ -901,7 +899,6 @@ public class MixTopicModelExample {
             out.write(header);
 
             connection = DriverManager.getConnection(SQLLitedb);
-
 
             String sql = "select id, ref_id from papers where ref_num >0 ";
             Statement statement = connection.createStatement();
