@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 3;
+        byte numModalities = 4;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -51,8 +51,8 @@ public class iMixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 200;
         int numIterations = 700;
-        int independentIterations = 50;
-        int burnIn = 100;
+        int independentIterations = 0;
+        int burnIn = 10;
         LabelType lblType = LabelType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;

@@ -49,8 +49,8 @@ public class MixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 200;
         int numIterations = 650;
-        int independentIterations = 50;
-        int burnIn = 100;
+        int independentIterations = 0;
+        int burnIn = 10;
         LabelType lblType = LabelType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
@@ -506,7 +506,7 @@ public class MixTopicModelExample {
 
         // Use two parallel samplers, which each look at one half the corpus and combine
         //  statistics after every iteration.
-        model.setNumThreads(4);
+        model.setNumThreads(1);
         // Run the model for 50 iterations and stop (this is for testing only, 
         //  for real applications, use 1000 to 2000 iterations)
 

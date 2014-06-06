@@ -998,7 +998,7 @@ public class iMixParallelTopicModel implements Serializable {
 
                 for (Byte m = 0; m < numModalities; m++) {
                     for (int doc = 0; doc < pDistr_Mean[i][m].length; doc++) {
-                        pDistr_Mean[i][m][doc] += distrP_Mean[i][m][doc];
+                        pDistr_Mean[i][m][doc] += distrP_Mean[i][m][doc]; //TODO: Omiros check if each thread has its own range... 
 
                     }
                 }
@@ -1030,12 +1030,13 @@ public class iMixParallelTopicModel implements Serializable {
 
                         while (targetCounts.get(targetIndex) > 0 && currentTopic != topic) {
                             targetIndex++;
-                            if (targetIndex == targetCounts.size()) {
+                            if (targetCounts.get(targetIndex) == 0) {
                                 logger.info("overflow in merging on type " + type + " moodality: " + i + " thread: " + thread);
 
                             }
                             currentTopic = targetCounts.get(targetIndex) & topicMask;
                         }
+                                                
                         currentCount = targetCounts.get(targetIndex) >> topicBits;
 
                         targetCounts.set(targetIndex,
@@ -1441,13 +1442,13 @@ public class iMixParallelTopicModel implements Serializable {
                 TIntArrayList[][] runnableCounts = new TIntArrayList[numModalities][];
 
                 for (Byte i = 0; i < numModalities; i++) {
-                    runnableTotals[i] = new  TIntArrayList (tokensPerTopic[i]);
+                    runnableTotals[i] = new  TIntArrayList (tokensPerTopic[i].toArray());
                     //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     runnableCounts[i] = new TIntArrayList[numTypes[i]];
                     for (int type = 0; type < numTypes[i]; type++) {
                         //int[] counts = new int[typeTopicCounts[i][type].clo.length];
                         //System.arraycopy(typeTopicCounts[i][type], 0, counts, 0, counts.length);
-                        runnableCounts[i][type] = new TIntArrayList (typeTopicCounts[i][type]);
+                        runnableCounts[i][type] = new TIntArrayList (typeTopicCounts[i][type].toArray());
                     }
                 }
                 // some docs may be missing at the end due to integer division
