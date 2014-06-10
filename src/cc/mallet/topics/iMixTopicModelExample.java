@@ -46,13 +46,13 @@ public class iMixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         boolean ignoreLabels = true;
-        boolean calcSimilarities = true;
+        boolean calcSimilarities = false;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 200;
-        int numIterations = 700;
-        int independentIterations = 0;
-        int burnIn = 10;
+        int numIterations = 500;
+        int independentIterations = 10;
+        int burnIn = 20;
         LabelType lblType = LabelType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
@@ -147,7 +147,7 @@ public class iMixTopicModelExample {
                         ;
             } else if (lblType == LabelType.ACM) {
                 sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
-                        + "                          ref_objid as citations, primarycategory||','||othercategory AS categories \n"
+                            + "                          ref_objid as citations, primarycategory||'\t'||othercategory AS categories \n"
                         + "                          from ACMData1 \n";
                         //+ " LIMIT 1000";
 
@@ -244,18 +244,18 @@ public class iMixTopicModelExample {
                         instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
                         if (numModalities > 1) {
-                            String tmpStr = rs.getString("Citations").replace("\t", ",");
+                            String tmpStr = rs.getString("Citations");//.replace("\t", ",");
                             instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
                         }
                         
-                        if (numModalities > 2) {
-                            String tmpAuthorsStr = rs.getString("Authors").replace("\t", ",");
-                            instanceBuffer.get(2).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
+                        if (numModalities > 3) {
+                            String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
+                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                         }
 
-                        if (numModalities > 3) {
-                            String tmpStr = rs.getString("Categories").replace("\t", ",");
-                            instanceBuffer.get(3).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                        if (numModalities > 2) {
+                            String tmpStr = rs.getString("Categories");//.replace("\t", ",");
+                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
                         }
                         break;
                     default:
@@ -316,7 +316,7 @@ public class iMixTopicModelExample {
          */
         // Other Modalities
         ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-        if (lblType == LabelType.DBLP || lblType == LabelType.DBLP_ACM || lblType == LabelType.ACM) {
+        if (lblType == LabelType.DBLP || lblType == LabelType.DBLP_ACM ) {
             pipeListCSV.add(new CSV2FeatureSequence(","));
         } else {
             pipeListCSV.add(new CSV2FeatureSequence());
