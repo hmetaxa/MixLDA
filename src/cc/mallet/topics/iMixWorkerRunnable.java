@@ -387,8 +387,7 @@ public class iMixWorkerRunnable implements Runnable {
             FeatureSequence[] tokenSequence,
             int[] docLength,
             TIntArrayList[] localTopicCounts,
-            TIntArrayList localTopicIndex
-    ) {
+            TIntArrayList localTopicIndex) {
 
         for (byte i = 0; i < numModalities; i++) {
             docLength[i] = 0;
@@ -417,15 +416,15 @@ public class iMixWorkerRunnable implements Runnable {
                 }
             }
 
-            for (int topic = 0; topic < numCommonTopics; topic++) {
-                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
-                        / (docLength[i] + alphaSum));
-            }
-
-            for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
-                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
-                        / (docLength[i] + alphaSum));
-            }
+//            for (int topic = 0; topic < numCommonTopics; topic++) {
+//                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
+//                        / (docLength[i] + alphaSum));
+//            }
+//
+//            for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
+//                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
+//                        / (docLength[i] + alphaSum));
+//            }
         }
         // Build an array that densely lists the topics that
         //  have non-zero counts.
@@ -488,26 +487,35 @@ public class iMixWorkerRunnable implements Runnable {
         totalMassOtherModalities.fill(0, numTopics, 0);
         int topic = -1;
 
-        for (byte i = 0; i < numModalities; i++) {
-        for ( topic = 0; topic < numCommonTopics; topic++) {
-            
-            if (i != m) {
-                    totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * totalMassPerModalityAndTopic[i].get(topic));
-                }
-                
-            }
-        }
-        
+//        for (topic = 0; topic < numCommonTopics; topic++) {
+//
+//            for (byte i = 0; i < numModalities; i++) {
+//
+//                if (i != m) {
+//                    totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * totalMassPerModalityAndTopic[i].get(topic));
+//                }
+//
+//
+//                totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum));
+//            }
+//        }
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
             topic = localTopicIndex.get(denseIndex);
             //totalMassOtherModalities.set(topic, 0);
 
 
-            totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum));
+
 
             if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
 
+                for (byte i = 0; i < numModalities; i++) {
+                    if (i != m && docLength[i] != 0) {
+                        totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * localTopicCounts[i].get(topic) / docLength[i]);
+                    }
+                }
+
+                totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum));
                 //	initialize the normalization constant for the (B * n_{t|d}) term
                 double normSumN = (localTopicCounts[m].get(topic) + totalMassOtherModalities.get(topic))
                         / (tokensPerTopic[m].get(topic) + betaSum[m]);
@@ -531,8 +539,8 @@ public class iMixWorkerRunnable implements Runnable {
             int nonZeroTopics,
             // final int[] docLength,
             byte m //modality
-    //double[][] p
-    ) {
+            //double[][] p
+            ) {
 
         // if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
         //	Remove this token from all counts. 
@@ -713,8 +721,7 @@ public class iMixWorkerRunnable implements Runnable {
                 // }
 
                 //add normalized smoothingOnly coefficient 
-                score
-                        = (cachedCoefficients.get(currentTopic) + smoothOnlyCachedCoefficients[m].get(currentTopic)) * currentValue * skewInx;
+                score = (cachedCoefficients.get(currentTopic) + smoothOnlyCachedCoefficients[m].get(currentTopic)) * currentValue * skewInx;
 
                 topicTermMass += score;
                 topicTermScores.set(index, score);
@@ -1062,8 +1069,7 @@ public class iMixWorkerRunnable implements Runnable {
                 tokenSequence,
                 docLength,
                 localTopicCounts,
-                localTopicIndex
-        );
+                localTopicIndex);
 
         //int[] topicTermIndices;
         //int[] topicTermValues;
@@ -1149,22 +1155,21 @@ public class iMixWorkerRunnable implements Runnable {
 //                }
                 //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
                 //double origSample = sample;
-                newTopic
-                        = //random.nextInt(numTopics);
+                newTopic = //random.nextInt(numTopics);
                         findNewTopic(
-                                localTopicCounts,
-                                localTopicIndex,
-                                totalMassOtherModalities,
-                                topicBetaMass,
-                                nonZeroTopics,
-                                m,
-                                topicTermMass,
-                                topicTermScores,
-                                currentTypeTopicCounts,
-                                docLength,
-                                sample,
-                                p,
-                                oldTopic);
+                        localTopicCounts,
+                        localTopicIndex,
+                        totalMassOtherModalities,
+                        topicBetaMass,
+                        nonZeroTopics,
+                        m,
+                        topicTermMass,
+                        topicTermScores,
+                        currentTypeTopicCounts,
+                        docLength,
+                        sample,
+                        p,
+                        oldTopic);
 
                 long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
                 tmpPreviousTopics = tmpPreviousTopics >> topicBits;

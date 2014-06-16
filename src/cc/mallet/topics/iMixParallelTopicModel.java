@@ -1720,14 +1720,14 @@ public class iMixParallelTopicModel implements Serializable {
                         for (int i = 0; i < counts.length; i++) {
                             counts[i] = values[i];
                         }
-                        double countssum = MatrixOps.sum(counts);
+                       // double countssum = MatrixOps.sum(counts);
                         Alphabet alph = new Alphabet(keys);
                         RankedFeatureVector rfv = new RankedFeatureVector(alph, counts);
                         int max = rfv.numLocations() < 20 ? rfv.numLocations() : 20;
                         for (int ri = 0; ri < max; ri++) {
                             int fi = rfv.getIndexAtRank(ri);
 
-                            double count = counts[fi] / countssum;
+                            double count = counts[fi];// / countssum;
                             String phraseStr = alph.lookupObject(fi).toString();
 
                             bulkInsert.setInt(1, ti);

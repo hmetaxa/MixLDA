@@ -49,13 +49,13 @@ public class iMixTopicModelExample {
         boolean calcSimilarities = false;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 200;
-        int numIterations = 500;
-        int independentIterations = 10;
-        int burnIn = 20;
-        LabelType lblType = LabelType.Authors;
+        int numTopics = 250;
+        int numIterations = 600;
+        int independentIterations = 30;
+        int burnIn = 100;
+        LabelType lblType = LabelType.Grants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 7;
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
