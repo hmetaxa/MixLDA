@@ -691,6 +691,7 @@ public class iMixWorkerRunnable implements Runnable {
                 //  look at this cell in the array again.
                 currentValue--;
                 if (currentValue == 0) {
+                    //Maybe better?? currentTypeTopicCounts.removeAt(index);
                     currentTypeTopicCounts.set(index, 0);
                 } else {
                     currentTypeTopicCounts.set(index,
