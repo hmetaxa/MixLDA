@@ -213,8 +213,8 @@ public class iMixParallelTopicModel implements Serializable {
         this.beta = beta;
 
         //this.tokensPerTopic = new  TIntArrayList[numModalities];
-        convergenceRates = new double[numModalities][100];
-        perplexities = new double[numModalities][100];
+        convergenceRates = new double[numModalities][120];
+        perplexities = new double[numModalities][120];
 
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
