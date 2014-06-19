@@ -105,7 +105,7 @@ public class iMixTopicModelExample {
                 String sql = "";
 
                 if (lblType == LabelType.Grants) {
-                    sql = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+                    sql = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds, Doc.Source  "
                             + " from Doc inner join "
                             + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
                             //  + " where  "
@@ -764,6 +764,8 @@ public class iMixTopicModelExample {
             logger.info("similarities calculation finished");
         }
 
+        
+        
 //        if (modelDiagnosticsFile
 //                != null) {
 //            PrintWriter out = new PrintWriter(modelDiagnosticsFile);
@@ -831,6 +833,8 @@ public class iMixTopicModelExample {
          */
     }
 
+ 
+       
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionCutoff, boolean preserveCase)
             throws IOException {
 
