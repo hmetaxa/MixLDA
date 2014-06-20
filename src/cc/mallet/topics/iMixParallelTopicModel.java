@@ -1037,12 +1037,12 @@ public class iMixParallelTopicModel implements Serializable {
         double skewSum = 0;
         int nonZeroSkewCnt = 1;
         byte initModality = 0;
-       // if (skewOn == SkewType.LabelsOnly) {
-       //     initModality = 1;
-       // }
+        if (skewOn == SkewType.LabelsOnly) {
+            initModality = 1;
+        }
 
         for (Byte i = 0; i < numModalities; i++) {
-            //if (skewOn != SkewType.None &&  i >= initModality) {
+            if (skewOn != SkewType.None &&  i >= initModality) {
 
                 for (int type = 0; type < numTypes[i]; type++) {
 
@@ -1074,7 +1074,7 @@ public class iMixParallelTopicModel implements Serializable {
 
                 skewWeight[i] = (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
 
-           //}
+            }
         }
     }
 
