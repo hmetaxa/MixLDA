@@ -681,8 +681,7 @@ public class iMixWorkerRunnable implements Runnable {
             currentTopic = currentTypeTopicCounts.get(index) & topicMask;
             currentValue = currentTypeTopicCounts.get(index) >> topicBits;
 
-            if (!alreadyDecremented
-                    && currentTopic == oldTopic) {
+            if (!alreadyDecremented && currentTopic == oldTopic) {
 
                 // We're decrementing and adding up the 
                 //  sampling weights at the same time, but
@@ -703,7 +702,7 @@ public class iMixWorkerRunnable implements Runnable {
                         && currentTypeTopicCounts.get(subIndex) < currentTypeTopicCounts.get(subIndex + 1)) {
                     int temp = currentTypeTopicCounts.get(subIndex);
                     currentTypeTopicCounts.set(subIndex, currentTypeTopicCounts.get(subIndex + 1));
-                    currentTypeTopicCounts.set(subIndex, temp);
+                    currentTypeTopicCounts.set(subIndex+1, temp);
 
                     subIndex++;
                 }
@@ -918,7 +917,7 @@ public class iMixWorkerRunnable implements Runnable {
         while (currentTypeTopicCounts.get(index) > 0
                 && (currentTypeTopicCounts.get(index) & topicMask) != newTopic) {
             index++;
-            if (index == currentTypeTopicCounts.size()) {
+            if (index == currentTypeTopicCounts.size()) { //TODO: Size is it OK
                 System.err.println("error in findind new poisition for topic: " + newTopic);
                 for (int k = 0; k < currentTypeTopicCounts.size(); k++) {
                     System.err.print((currentTypeTopicCounts.get(k) & topicMask) + ":"

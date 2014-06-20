@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -49,9 +49,9 @@ public class iMixTopicModelExample {
         boolean calcSimilarities = false;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 250;
-        int numIterations = 600;
-        int independentIterations = 30;
+        int numTopics = 150;
+        int numIterations = 1000;
+        int independentIterations = 50;
         int burnIn = 100;
         LabelType lblType = LabelType.Grants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
@@ -95,18 +95,26 @@ public class iMixTopicModelExample {
             //String docSource = "pubmed";
             String docSource = "arxiv";
 
-            String grantType = "ec%";
+            String grantType = "FP7";
 
             String sql = "";
 
             if (lblType == LabelType.Grants) {
-                sql = " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
-                        + " from Doc inner join "
-                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-                        //  + " where  "
-                        //  + " Doc.source='" + docSource + "' and "
-                        //  + " grantPerDoc.grantId like '" + grantType + "' "
-                        + " Group By Doc.DocId, Doc.text";
+                sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.funding_lvl2,'\t') as Areas, Doc.Source  \n" +
+"                         from Doc inner join \n" +
+"                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n" +
+"			 INNER JOIN Grant on Grant.GrantId= GrantPerDoc.GrantId\n" +
+"                         where \n" +
+"                        Grant.funding_lvl0='" + grantType + "'\n" +
+"                         Group By Doc.DocId, Doc.text";
+                        
+//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+//                        + " from Doc inner join "
+//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
+//                        //  + " where  "
+//                        //  + " Doc.source='" + docSource + "' and "
+//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
+//                        + " Group By Doc.DocId, Doc.text";
             } else if (lblType == LabelType.Authors) {
                 sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                         + "from Doc \n"
@@ -173,6 +181,12 @@ public class iMixTopicModelExample {
                         if (numModalities > 1) {
                             instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                         }
+                        if (numModalities > 2) {
+                            instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
+                        };
+                         if (numModalities > 3) {
+                            instanceBuffer.get(3).add(new Instance(rs.getString("Source"), null, rs.getString("DocId"), "source"));
+                        };
                         break;
                     case Authors:
                         instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
