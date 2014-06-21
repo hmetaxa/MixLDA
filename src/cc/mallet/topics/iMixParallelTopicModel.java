@@ -98,7 +98,7 @@ public class iMixParallelTopicModel implements Serializable {
     // for dirichlet estimation
     //public int[] docLengthCounts; // histogram of document sizes taking into consideration (summing up) all modalities
     //public TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
-    public int numIterations = 1000;
+    public int numIterations = 990;
     public int burninPeriod = 200;
     public int independentIterations = 50;
     public int saveSampleInterval = 10;
@@ -1668,12 +1668,12 @@ public class iMixParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50), DiscrWeight) ");
                 String deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into TopicAnalysis values(?,?,?,?,? );";
+                String sql = "insert into TopicAnalysis values(?,?,?,?,?,? );";
 
                 try {
                     connection.setAutoCommit(false);
@@ -1699,6 +1699,7 @@ public class iMixParallelTopicModel implements Serializable {
                                 bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
                                 bulkInsert.setDouble(4, info.getWeight());
                                 bulkInsert.setString(5, experimentId);
+                                bulkInsert.setDouble(6, 1);
                                 bulkInsert.executeUpdate();
 
                                 word++;
@@ -1735,6 +1736,7 @@ public class iMixParallelTopicModel implements Serializable {
                             bulkInsert.setString(3, phraseStr);
                             bulkInsert.setDouble(4, count);
                             bulkInsert.setString(5, experimentId);
+                            bulkInsert.setDouble(6, 1);
                             bulkInsert.executeUpdate();
                         }
 
