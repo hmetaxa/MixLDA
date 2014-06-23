@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 2;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -51,10 +51,10 @@ public class iMixTopicModelExample {
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 150;
-        int numIterations = 950;
-        int independentIterations = 50;
-        int burnIn = 100;
-        LabelType lblType = LabelType.Grants;
+        int numIterations = 150;
+        int independentIterations = 20;
+        int burnIn = 50;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -504,9 +504,11 @@ public class iMixTopicModelExample {
 
             }
             double[] beta = new double[numModalities];
+            double[] alphaSum = new double[numModalities];
+            Arrays.fill(alphaSum, 1);
 
-            Arrays.fill(beta,
-                    0.01);
+
+            Arrays.fill(beta, 0.01);
 
             boolean runOrigParallelModel = false;
             if (runOrigParallelModel) {
@@ -527,7 +529,7 @@ public class iMixTopicModelExample {
                 //model.saveModelInterval=250;
                 modelOrig.estimate();
             }
-            iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, 1.0, beta, ignoreLabels, skewOn);
+            iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
