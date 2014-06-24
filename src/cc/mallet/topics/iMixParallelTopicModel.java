@@ -6,38 +6,36 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.TreeSet;
-import java.util.Iterator;
-import java.util.Formatter;
-import java.util.Locale;
-
-import java.util.concurrent.*;
-import java.util.logging.*;
-import java.util.zip.*;
-
-import java.io.*;
-import java.text.NumberFormat;
-
-import cc.mallet.types.*;
 import cc.mallet.topics.TopicAssignment;
-import cc.mallet.util.Randoms;
+import cc.mallet.types.*;
 import cc.mallet.util.MalletLogger;
+import cc.mallet.util.Randoms;
 import gnu.trove.list.array.TDoubleArrayList;
 import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.map.hash.TIntIntHashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
-
+import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Formatter;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
+
+import java.util.concurrent.*;
+import java.util.logging.*;
+import java.util.zip.*;
 
 /**
  * Mix Parallel semi supervised, multi modal topic modal based on MALLET
@@ -146,6 +144,7 @@ public class iMixParallelTopicModel implements Serializable {
     public iMixParallelTopicModel(int numberOfTopics, byte numModalities) {
         this(numberOfTopics, 5, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities), false, SkewType.LabelsOnly);
     }
+
     public iMixParallelTopicModel(int numberOfTopics, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
         this(newLabelAlphabet(numberOfTopics + numberOfIndependentTopics * numModalities), numberOfIndependentTopics, numModalities, alphaSum, defaultBeta(numModalities), ignoreLabels, skewnOn);
     }
@@ -163,8 +162,8 @@ public class iMixParallelTopicModel implements Serializable {
         Arrays.fill(ret, DEFAULT_BETA);
         return ret;
     }
-    
-       private static double[] defaultAlphaSum(int numModalities) {
+
+    private static double[] defaultAlphaSum(int numModalities) {
         double[] ret = new double[numModalities];
         Arrays.fill(ret, 1);
         return ret;
@@ -213,7 +212,6 @@ public class iMixParallelTopicModel implements Serializable {
         this.skewOn = skewnOn;
         this.alphaSum = alphaSum;
         this.alpha = new TDoubleArrayList[numModalities];
-
 
         this.beta = beta;
 
@@ -584,6 +582,117 @@ public class iMixParallelTopicModel implements Serializable {
         }
     }
 
+    public void mergeSimilarTopics(int numWords, Set modalities, double mergeSimilarity) {
+
+        // consider similarity on top numWords
+        HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
+        String labelId = "";
+        NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+
+        int[] topicMapping = new int[numTopics];
+        int previousVocabularySize = 0;
+        for (int topic = 0; topic < numTopics; topic++) {
+            labelId = Integer.toString(topic);
+            int[] wordTypes = new int[numWords * modalities.size()];
+            double[] weights = new double[numWords * modalities.size()];
+
+            for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
+
+                ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(m);
+                TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+                Iterator<IDSorter> iterator = sortedWords.iterator();
+
+                int wordCnt = 0;
+                while (iterator.hasNext() && wordCnt < numWords) {
+
+                    IDSorter info = iterator.next();
+                    wordTypes[wordCnt] = previousVocabularySize+info.getID();//((String) entity).hashCode();
+                    weights[wordCnt] = info.getWeight();
+                    wordCnt++;
+                }
+
+                previousVocabularySize += maxTypeCount[m];
+            }
+
+            labelVectors.put(labelId, new SparseVector(wordTypes, weights, numWords, numWords, true, false, true));
+        }
+
+        double similarity = 0;
+        //double maxSimilarity = 0;
+        String labelTextId;
+
+        //TObjectDoubleHashMap<String> topicSimilarities = new TObjectDoubleHashMap<String>();
+        double[][] topicSimilarities = new double[numTopics][numTopics];
+
+        for (int i = 0; i < numTopics; i++) {
+            Arrays.fill(topicSimilarities[i], 0);
+        }
+        TIntArrayList usedTopics = new TIntArrayList();
+        TIntArrayList emptyTopics = new TIntArrayList();
+        for (int t = 0; t < numTopics; t++) {
+
+            for (int t_text = 0; t_text < numTopics; t_text++) {
+                labelId = Integer.toString(t);
+                labelTextId = "0_" + t_text;
+                SparseVector source = labelVectors.get(labelId);
+                SparseVector target = labelVectors.get(labelTextId);
+                similarity = 0;
+                if (source != null & target != null) {
+                    similarity = 1 - Math.abs(cosineSimilarity.distance(source, target)); // the function returns distance not similarity
+                }
+                topicSimilarities[t][t_text] = similarity;
+            }
+
+        }
+
+        Arrays.fill(topicMapping, -1);
+        boolean found = true;
+        TopicMapping topicMap = new TopicMapping();
+        while (found) {
+            found = findNextMapping(topicSimilarities, topicMap, mergeSimilarity);
+            if (found) {
+                if (!usedTopics.contains(topicMap.from)) {
+                    emptyTopics.add(topicMap.from);
+                }
+                topicMapping[topicMap.from] = topicMap.to;
+                usedTopics.add(topicMap.to);
+                if (emptyTopics.contains(topicMap.to)) {
+                    emptyTopics.remove(emptyTopics.indexOf(topicMap.to));
+                }
+            }
+        }
+
+        for (int i = 0; i < numTopics; i++) {
+            if (topicMapping[i] == 0 && usedTopics.contains(i)) {
+                topicMapping[i] = emptyTopics.get(0);
+                emptyTopics.remove(0);
+            }
+        }
+
+        for (MixTopicModelTopicAssignment entity : data) {
+            for (Byte m = 0; m < numModalities; m++) {
+                TopicAssignment document = entity.Assignments[m];
+
+                if (document != null) {
+
+                    //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                    FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+                    int[] topics = topicSequence.getFeatures();
+
+                    for (int position = 0; position < topics.length; position++) {
+                        int oldTopic = topics[position];
+                        if (topicMapping[oldTopic] != -1) {
+                            topics[position] = topicMapping[oldTopic];
+                        }
+
+                    }
+                }
+            }
+        }
+        buildInitialTypeTopicCounts();
+
+    }
+
     public void alignTopicsInModalities() {
 //        int[] totalModalityTokens = new int[numModalities];
 //        int[] totalConvergedTokens = new int[numModalities];
@@ -694,7 +803,7 @@ public class iMixParallelTopicModel implements Serializable {
             boolean found = true;
             TopicMapping topicMap = new TopicMapping();
             while (found) {
-                found = findNextMapping(topicSimilarities, topicMap);
+                found = findNextMapping(topicSimilarities, topicMap,0);
                 if (found) {
                     if (!usedTopics.contains(topicMap.from)) {
                         emptyTopics.add(topicMap.from);
@@ -742,11 +851,11 @@ public class iMixParallelTopicModel implements Serializable {
 
     }
 
-    private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap) {
+    private boolean findNextMapping(double[][] topicSimilarities, TopicMapping topicMap, double maxSimilarity) {
         boolean found = false;
         topicMap.from = 0;
         topicMap.to = 0;
-        double maxSimilarity = 0;
+        //double maxSimilarity = 0;
         for (int i = 0; i < numTopics; i++) {
             for (int j = 0; j < numTopics; j++) {
                 if (topicSimilarities[i][j] != 0 && topicSimilarities[i][j] > maxSimilarity) {
@@ -1689,7 +1798,7 @@ public class iMixParallelTopicModel implements Serializable {
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
 
-                    ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(4);
+                    ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
 
                     for (Byte m = 0; m < numModalities; m++) {
                         topicSortedWords.add(getSortedWords(m));
@@ -2446,8 +2555,6 @@ public class iMixParallelTopicModel implements Serializable {
         // Do the documents first
         double[] topicLogGammas = new double[numTopics];
         int[] docTopics;
-
-
 
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
