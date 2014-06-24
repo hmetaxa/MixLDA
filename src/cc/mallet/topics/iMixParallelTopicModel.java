@@ -1146,7 +1146,7 @@ public class iMixParallelTopicModel implements Serializable {
                 int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
                 TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
 
-                for (int count = 0; count < sourceLengthCounts.length; count++) {
+                for (int count = 0; count < sourceLengthCounts[m].length; count++) {
                     // for (Byte i = 0; i < numModalities; i++) {
                     if (sourceLengthCounts[m][count] > 0) {
                         docLengthCounts[m][count] += sourceLengthCounts[m][count];

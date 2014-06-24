@@ -50,10 +50,10 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 150;
+        int numTopics = 50;
         int numIterations = 150;
-        int independentIterations = 20;
-        int burnIn = 50;
+        int independentIterations = 10;
+        int burnIn = 20;
         LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
