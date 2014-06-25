@@ -10,6 +10,7 @@ import cc.mallet.topics.TopicAssignment;
 import cc.mallet.types.*;
 import cc.mallet.util.MalletLogger;
 import cc.mallet.util.Randoms;
+import gnu.trove.TByteArrayList;
 import gnu.trove.list.array.TDoubleArrayList;
 import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.map.hash.TIntIntHashMap;
@@ -136,8 +137,8 @@ public class iMixParallelTopicModel implements Serializable {
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     public double[][] convergenceRates;//= new TObjectIntHashMap<Double>(); 
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
-    public int numIndependentTopics; //= 5;
-    private int numCommonTopics;
+    //public int numIndependentTopics; //= 5;
+    //private int numCommonTopics;
     private int histogramSize = 0;
 
     //double lblSkewWeight = 1;
@@ -172,7 +173,7 @@ public class iMixParallelTopicModel implements Serializable {
     public iMixParallelTopicModel(LabelAlphabet topicAlphabet, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
 
         this.numModalities = numModalities;
-        this.numIndependentTopics = numberOfIndependentTopics;
+        //this.numIndependentTopics = numberOfIndependentTopics;
 
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
         this.numTypes = new int[numModalities];
@@ -194,7 +195,7 @@ public class iMixParallelTopicModel implements Serializable {
 
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
-        this.numCommonTopics = this.numTopics - numModalities * numberOfIndependentTopics;
+        //this.numCommonTopics = this.numTopics - numModalities * numberOfIndependentTopics;
 
         this.alphabet = new Alphabet[numModalities];
 
@@ -366,11 +367,11 @@ public class iMixParallelTopicModel implements Serializable {
                     int type = tokens.getIndexAtPosition(position);
                     typeTotals[i][ type]++;
 
-                    int topic = ThreadLocalRandom.current().nextInt(numCommonTopics + numIndependentTopics);//random.nextInt(numTopics);
-                    if (topic >= numCommonTopics) {
-                        topic = topic - numCommonTopics + 1;
-                        topic = numCommonTopics - 1 + numIndependentTopics * i + topic;
-                    }
+                    int topic = ThreadLocalRandom.current().nextInt(numTopics);//nextInt(numCommonTopics + numIndependentTopics);
+//                    if (topic >= numCommonTopics) {
+//                        topic = topic - numCommonTopics + 1;
+//                        topic = numCommonTopics - 1 + numIndependentTopics * i + topic;
+//                    }
                     topics[position] = topic;
                 }
 
@@ -582,32 +583,36 @@ public class iMixParallelTopicModel implements Serializable {
         }
     }
 
-    public void mergeSimilarTopics(int numWords, Set modalities, double mergeSimilarity) {
+    public void mergeSimilarTopics(int numWords, TByteArrayList modalities, double mergeSimilarity) {
 
         // consider similarity on top numWords
         HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
         String labelId = "";
         NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+        //int[] topicMapping = new int[numTopics];
+        ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
 
-        int[] topicMapping = new int[numTopics];
-        int previousVocabularySize = 0;
+        for (Byte m = 0; m < numModalities; m++) {
+            topicSortedWords.add(getSortedWords(m));
+        }
+
         for (int topic = 0; topic < numTopics; topic++) {
+            int previousVocabularySize = 0;
             labelId = Integer.toString(topic);
             int[] wordTypes = new int[numWords * modalities.size()];
             double[] weights = new double[numWords * modalities.size()];
 
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
-                ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(m);
-                TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+                TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
                 int wordCnt = 0;
                 while (iterator.hasNext() && wordCnt < numWords) {
 
                     IDSorter info = iterator.next();
-                    wordTypes[wordCnt] = previousVocabularySize+info.getID();//((String) entity).hashCode();
-                    weights[wordCnt] = info.getWeight();
+                    wordTypes[wordCnt] = previousVocabularySize + info.getID();//((String) entity).hashCode();
+                    weights[wordCnt] = info.getWeight() / tokensPerTopic[m].get(topic);
                     wordCnt++;
                 }
 
@@ -622,51 +627,31 @@ public class iMixParallelTopicModel implements Serializable {
         String labelTextId;
 
         //TObjectDoubleHashMap<String> topicSimilarities = new TObjectDoubleHashMap<String>();
-        double[][] topicSimilarities = new double[numTopics][numTopics];
+//        double[][] topicSimilarities = new double[numTopics][numTopics];
+//
+//        for (int i = 0; i < numTopics; i++) {
+//            Arrays.fill(topicSimilarities[i], 0);
+//        }
+        TIntIntHashMap mergedTopics = new TIntIntHashMap();
 
-        for (int i = 0; i < numTopics; i++) {
-            Arrays.fill(topicSimilarities[i], 0);
-        }
-        TIntArrayList usedTopics = new TIntArrayList();
-        TIntArrayList emptyTopics = new TIntArrayList();
         for (int t = 0; t < numTopics; t++) {
 
-            for (int t_text = 0; t_text < numTopics; t_text++) {
+            for (int t_text = t + 1; t_text < numTopics; t_text++) {
                 labelId = Integer.toString(t);
-                labelTextId = "0_" + t_text;
+                labelTextId = Integer.toString(t_text);
                 SparseVector source = labelVectors.get(labelId);
                 SparseVector target = labelVectors.get(labelTextId);
                 similarity = 0;
                 if (source != null & target != null) {
                     similarity = 1 - Math.abs(cosineSimilarity.distance(source, target)); // the function returns distance not similarity
                 }
-                topicSimilarities[t][t_text] = similarity;
-            }
-
-        }
-
-        Arrays.fill(topicMapping, -1);
-        boolean found = true;
-        TopicMapping topicMap = new TopicMapping();
-        while (found) {
-            found = findNextMapping(topicSimilarities, topicMap, mergeSimilarity);
-            if (found) {
-                if (!usedTopics.contains(topicMap.from)) {
-                    emptyTopics.add(topicMap.from);
+                if (similarity > mergeSimilarity) {
+                    mergedTopics.put(t, t_text);
                 }
-                topicMapping[topicMap.from] = topicMap.to;
-                usedTopics.add(topicMap.to);
-                if (emptyTopics.contains(topicMap.to)) {
-                    emptyTopics.remove(emptyTopics.indexOf(topicMap.to));
-                }
-            }
-        }
 
-        for (int i = 0; i < numTopics; i++) {
-            if (topicMapping[i] == 0 && usedTopics.contains(i)) {
-                topicMapping[i] = emptyTopics.get(0);
-                emptyTopics.remove(0);
+                //topicSimilarities[t][t_text] = similarity;
             }
+
         }
 
         for (MixTopicModelTopicAssignment entity : data) {
@@ -681,8 +666,8 @@ public class iMixParallelTopicModel implements Serializable {
 
                     for (int position = 0; position < topics.length; position++) {
                         int oldTopic = topics[position];
-                        if (topicMapping[oldTopic] != -1) {
-                            topics[position] = topicMapping[oldTopic];
+                        if (mergedTopics.containsKey(oldTopic)) {
+                            topics[position] = mergedTopics.get(oldTopic);
                         }
 
                     }
@@ -752,21 +737,22 @@ public class iMixParallelTopicModel implements Serializable {
         for (Byte m = 0; m < numModalities; m++) {
 
             for (int t = 0; t < numTopics; t++) {
-                if (t < numCommonTopics || (m > 0 && t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                    labelId = m + "_" + t;
-                    int[] entities = new int[data.size()];
-                    double[] weights = new double[data.size()];
-                    int cnt = 0;
-                    int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
-                    Arrays.sort(entityIds);
-                    for (int entity : entityIds) {
-                        entities[cnt] = entity;//((String) entity).hashCode();
-                        weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
-                        cnt++;
-                    }
-
-                    labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
+                //if (t < numCommonTopics || (m > 0 && t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                //if (t < numCommonTopics || (m > 0 && t >= numCommonTopics + m * numIndependentTopics && t < numCommonTopics + (m + 1) * numIndependentTopics)) {
+                labelId = m + "_" + t;
+                int[] entities = new int[data.size()];
+                double[] weights = new double[data.size()];
+                int cnt = 0;
+                int[] entityIds = topicEntitiesPerModality.get(labelId).keys();
+                Arrays.sort(entityIds);
+                for (int entity : entityIds) {
+                    entities[cnt] = entity;//((String) entity).hashCode();
+                    weights[cnt] = topicEntitiesPerModality.get(labelId).get(entity);
+                    cnt++;
                 }
+
+                labelVectors.put(labelId, new SparseVector(entities, weights, entities.length, entities.length, true, false, true));
+                // }
             }
         }
 
@@ -803,7 +789,7 @@ public class iMixParallelTopicModel implements Serializable {
             boolean found = true;
             TopicMapping topicMap = new TopicMapping();
             while (found) {
-                found = findNextMapping(topicSimilarities, topicMap,0);
+                found = findNextMapping(topicSimilarities, topicMap, 0);
                 if (found) {
                     if (!usedTopics.contains(topicMap.from)) {
                         emptyTopics.add(topicMap.from);
@@ -864,7 +850,8 @@ public class iMixParallelTopicModel implements Serializable {
                     topicMap.from = i;
                     topicMap.to = j;
                     //Arrays.fill(topicSimilarities[i], 0);
-                    for (int k = 0; k < numCommonTopics; k++) {
+                    //for (int k = 0; k < numCommonTopics; k++) {
+                    for (int k = 0; k < numTopics; k++) {
                         topicSimilarities[i][k] = 0;
                         topicSimilarities[k][j] = 0;
                     }
@@ -1544,7 +1531,7 @@ public class iMixParallelTopicModel implements Serializable {
                     random = new Randoms(randomSeed);
                 }
 
-                runnables[thread] = new iMixWorkerRunnable(numTopics, numIndependentTopics,
+                runnables[thread] = new iMixWorkerRunnable(numTopics, 0, //numIndependentTopics,
                         alpha, alphaSum, beta,
                         random, data,
                         runnableCounts, runnableTotals,
@@ -1568,7 +1555,7 @@ public class iMixParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new iMixWorkerRunnable(numTopics, numIndependentTopics,
+            runnables[0] = new iMixWorkerRunnable(numTopics, 0, //numIndependentTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
@@ -1657,6 +1644,13 @@ public class iMixParallelTopicModel implements Serializable {
                     logger.info("Topics alignment finished");
                 } else {
                     sumTypeTopicCounts(runnables, iteration > burninPeriod);
+                }
+
+                if (iteration > burninPeriod && optimizeInterval != 0
+                        && iteration % saveSampleInterval == 0) {
+                    TByteArrayList modalities = new TByteArrayList();
+                    modalities.add((byte) 0);
+                    mergeSimilarTopics(30, modalities, 0.7);
                 }
 
                 //sumTypeTopicCounts(runnables, iteration > burninPeriod);

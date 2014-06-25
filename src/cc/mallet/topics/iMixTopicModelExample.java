@@ -50,10 +50,11 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
-        int numIterations = 150;
-        int independentIterations = 10;
-        int burnIn = 20;
+        int numTopics = 100;
+        int numIterations = 550;
+        int independentIterations = 50;
+        int burnIn = 100;
+        int optimizeInterval = 50;
         LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -534,7 +535,7 @@ public class iMixTopicModelExample {
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
             model.setIndependentIterations(independentIterations);
-            model.optimizeInterval = 50;
+            model.optimizeInterval = optimizeInterval;
             model.burninPeriod = burnIn;
 
             model.addInstances(instances);//trainingInstances);//instances);

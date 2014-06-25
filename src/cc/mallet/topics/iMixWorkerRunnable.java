@@ -38,9 +38,9 @@ public class iMixWorkerRunnable implements Runnable {
     ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
     protected int numTopics; // Number of topics to be fit
-    protected int numCommonTopics;
+    //protected int numCommonTopics;
     protected byte numModalities;
-    protected int numIndependentTopics;
+    //protected int numIndependentTopics;
     // These values are used to encode type/topic counts as
     //  count/topic pairs in a single int.
     protected int topicMask;
@@ -90,9 +90,9 @@ public class iMixWorkerRunnable implements Runnable {
         this.data = data;
 
         this.numTopics = numTopics;
-        this.numIndependentTopics = numIndependentTopics;
+        //this.numIndependentTopics = numIndependentTopics;
         this.numModalities = numModalities;
-        this.numCommonTopics = numTopics - numIndependentTopics * numModalities;
+        //this.numCommonTopics = numTopics - numIndependentTopics * numModalities;
         this.numTypes = new int[numModalities];
         this.betaSum = new double[numModalities];
         this.skewWeight = skewWeight;
@@ -335,16 +335,17 @@ public class iMixWorkerRunnable implements Runnable {
                 // Initialize the cached coefficients, using only smoothing.
                 //  These values will be selectively replaced in documents with
                 //  non-zero counts in particular topics.
-                for (int topic = 0; topic < numCommonTopics; topic++) {
+                //for (int topic = 0; topic < numCommonTopics; topic++) {
+                for (int topic = 0; topic < numTopics; topic++) {
                     smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
                     smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
                 }
 
-                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
-
-                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
-                }
+//                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
+//
+//                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+//                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
+//                }
             }
 
             for (int doc = startDoc;
@@ -507,16 +508,13 @@ public class iMixWorkerRunnable implements Runnable {
             topic = localTopicIndex.get(denseIndex);
             //totalMassOtherModalities.set(topic, 0);
 
-
-
-
-            if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-
-                for (byte i = 0; i < numModalities; i++) {
-                    if (i != m && docLength[i] != 0) {
-                        totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * localTopicCounts[i].get(topic) / docLength[i]);
-                    }
+//if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+            //if (topic < numTopics) {
+            for (byte i = 0; i < numModalities; i++) {
+                if (i != m && docLength[i] != 0) {
+                    totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * localTopicCounts[i].get(topic) / docLength[i]);
                 }
+                //  }
 
                 totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum[m]));
                 //	initialize the normalization constant for the (B * n_{t|d}) term
@@ -542,8 +540,8 @@ public class iMixWorkerRunnable implements Runnable {
             int nonZeroTopics,
             // final int[] docLength,
             byte m //modality
-            //double[][] p
-            ) {
+    //double[][] p
+    ) {
 
         // if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
         //	Remove this token from all counts. 
@@ -639,17 +637,18 @@ public class iMixWorkerRunnable implements Runnable {
 
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
             int topic = localTopicIndex.get(denseIndex);
-            if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-                for (byte j = 0; j < numModalities; j++) {
-                    if (docLength[j] > 0) {
-                        double normSumN = p[m][j] * localTopicCounts[j].get(topic)
-                                / (docLength[j] * (tokensPerTopic[m].get(topic) + betaSum[m]));
+            //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
 
-                        topicBetaMass[m] += beta[m] * normSumN;
-                        cachedCoefficients[m].set(topic, cachedCoefficients[m].get(topic) + normSumN);
-                    }
+            for (byte j = 0; j < numModalities; j++) {
+                if (docLength[j] > 0) {
+                    double normSumN = p[m][j] * localTopicCounts[j].get(topic)
+                            / (docLength[j] * (tokensPerTopic[m].get(topic) + betaSum[m]));
+
+                    topicBetaMass[m] += beta[m] * normSumN;
+                    cachedCoefficients[m].set(topic, cachedCoefficients[m].get(topic) + normSumN);
                 }
             }
+            //}
 
         }
     }
@@ -782,14 +781,14 @@ public class iMixWorkerRunnable implements Runnable {
 
         while (denseIndex < nonZeroTopics && sample > 0) {
             topic = localTopicIndex.get(denseIndex);
-            if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+            //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
 
-                double normSumN = (localTopicCounts[m].get(topic) + totalMassOtherModalities.get(topic))
-                        / (tokensPerTopic[m].get(topic) + betaSum[m]);
+            double normSumN = (localTopicCounts[m].get(topic) + totalMassOtherModalities.get(topic))
+                    / (tokensPerTopic[m].get(topic) + betaSum[m]);
 
-                sample -= normSumN;
+            sample -= normSumN;
 
-            }
+            //}
             denseIndex++;
         }
 //       
@@ -810,7 +809,8 @@ public class iMixWorkerRunnable implements Runnable {
 
         int topic = 0;
 
-        while (sample > 0.0 && topic < numCommonTopics) {
+        //while (sample > 0.0 && topic < numCommonTopics) {
+        while (sample > 0.0 && topic < numTopics) {
             sample -= alpha[m].get(topic) * beta[m]
                     / (tokensPerTopic[m].get(topic) + betaSum[m]);
             if (sample <= 0.0) {
@@ -819,22 +819,22 @@ public class iMixWorkerRunnable implements Runnable {
             topic++;
         }
 
-        //search independent topics
-        topic = 0;
-        int indTopic = 0;
-        while (sample > 0.0 && topic < numIndependentTopics) {
-
-            indTopic = numCommonTopics + m * numIndependentTopics + topic;
-            sample -= alpha[m].get(indTopic) * beta[m]
-                    / (tokensPerTopic[m].get(indTopic) + betaSum[m]);
-
-            if (sample <= 0.0) {
-                newTopic = indTopic;
-
-            }
-
-            topic++;
-        }
+//        //search independent topics
+//        topic = 0;
+//        int indTopic = 0;
+//        while (sample > 0.0 && topic < numIndependentTopics) {
+//
+//            indTopic = numCommonTopics + m * numIndependentTopics + topic;
+//            sample -= alpha[m].get(indTopic) * beta[m]
+//                    / (tokensPerTopic[m].get(indTopic) + betaSum[m]);
+//
+//            if (sample <= 0.0) {
+//                newTopic = indTopic;
+//
+//            }
+//
+//            topic++;
+//        }
 
         if (newTopic == -1) {
             return -1;
@@ -1159,19 +1159,19 @@ public class iMixWorkerRunnable implements Runnable {
                 //double origSample = sample;
                 newTopic = //random.nextInt(numTopics);
                         findNewTopic(
-                        localTopicCounts,
-                        localTopicIndex,
-                        totalMassOtherModalities,
-                        topicBetaMass,
-                        nonZeroTopics,
-                        m,
-                        topicTermMass,
-                        topicTermScores,
-                        currentTypeTopicCounts,
-                        docLength,
-                        sample,
-                        p,
-                        oldTopic);
+                                localTopicCounts,
+                                localTopicIndex,
+                                totalMassOtherModalities,
+                                topicBetaMass,
+                                nonZeroTopics,
+                                m,
+                                topicTermMass,
+                                topicTermScores,
+                                currentTypeTopicCounts,
+                                docLength,
+                                sample,
+                                p,
+                                oldTopic);
 
                 long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
                 tmpPreviousTopics = tmpPreviousTopics >> topicBits;
