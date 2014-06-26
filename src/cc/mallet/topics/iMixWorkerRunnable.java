@@ -509,23 +509,22 @@ public class iMixWorkerRunnable implements Runnable {
             //totalMassOtherModalities.set(topic, 0);
 
 //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-            //if (topic < numTopics) {
+            //  if (topic < numTopics) {
             for (byte i = 0; i < numModalities; i++) {
                 if (i != m && docLength[i] != 0) {
                     totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) + p[m][i] * localTopicCounts[i].get(topic) / docLength[i]);
                 }
-                //  }
-
-                totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum[m]));
-                //	initialize the normalization constant for the (B * n_{t|d}) term
-                double normSumN = (localTopicCounts[m].get(topic) + totalMassOtherModalities.get(topic))
-                        / (tokensPerTopic[m].get(topic) + betaSum[m]);
-
-                topicBetaMass[m] += beta[m] * normSumN;
-                cachedCoefficients.set(topic, normSumN);
-
             }
 
+            totalMassOtherModalities.set(topic, totalMassOtherModalities.get(topic) * (docLength[m] + alphaSum[m]));
+            //	initialize the normalization constant for the (B * n_{t|d}) term
+            double normSumN = (localTopicCounts[m].get(topic) + totalMassOtherModalities.get(topic))
+                    / (tokensPerTopic[m].get(topic) + betaSum[m]);
+
+            topicBetaMass[m] += beta[m] * normSumN;
+            cachedCoefficients.set(topic, normSumN);
+
+           // }
         }
 
     }
@@ -835,7 +834,6 @@ public class iMixWorkerRunnable implements Runnable {
 //
 //            topic++;
 //        }
-
         if (newTopic == -1) {
             return -1;
             //          newTopic = numTopics - 1;
