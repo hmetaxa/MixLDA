@@ -79,6 +79,8 @@ public class iMixParallelTopicModel implements Serializable {
     public int[] totalTokens; //per modality
     public int[] totalDocsPerModality; //number of docs containing this modality 
     //public int totalLabels;
+    protected double[] gamma;
+    protected double gammaRoot;
     public TDoubleArrayList[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     public double[] alphaSum;
     public double[] beta;   // Prior on per-topic multinomial distribution over token types (per modality) 
@@ -505,6 +507,9 @@ public class iMixParallelTopicModel implements Serializable {
         }
 
         Arrays.fill(totalDocsPerModality, 0);
+//        Alphabet alphabet = this.getAlphabet()[0]; //Just looking for cid
+//        int cidCnt = 0;
+//        TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
 
         for (MixTopicModelTopicAssignment entity : data) {
             for (Byte i = 0; i < numModalities; i++) {
@@ -537,6 +542,24 @@ public class iMixParallelTopicModel implements Serializable {
                         //  by the numeric value of the int guarantees that
                         //  higher counts will be before the lower counts.
                         int type = tokens.getIndexAtPosition(position);
+
+//                        if (i == 0) {//Cid word cnt remember to remark it
+//                            String entityId = (String) document.instance.getName();
+//                            String tmpStr = (String) alphabet.lookupObject(type);
+//                            int tmpCnt;
+//                            if (tmpStr.equals("cid")) {
+//                                cidCnt++;
+//                                if (entityPosition.containsKey(entityId)) {
+//
+//                                    tmpCnt = entityPosition.get(entityId) + 1;
+//                                    entityPosition.adjustValue(entityId, tmpCnt);
+//
+//                                } else {
+//                                    entityPosition.put(entityId, 1);
+//                                }
+//                            }
+//                        }
+
                         TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][ type];
 
                         // Start by assuming that the array is either empty
@@ -581,6 +604,18 @@ public class iMixParallelTopicModel implements Serializable {
                 }
             }
         }
+
+//        ArrayList<String> docs = new ArrayList<String>();
+//        for (String key : entityPosition.keySet()) {
+//            if (entityPosition.get(key) >3) {
+//                docs.add(key);
+//            }
+//
+//        }
+//        String remarkIt = "aaa";
+        //entityPosistion
+
+        //entityPosition.forEachKey(cidCnt)
     }
 
     public void mergeSimilarTopics(int numWords, TByteArrayList modalities, double mergeSimilarity) {
@@ -1537,7 +1572,7 @@ public class iMixParallelTopicModel implements Serializable {
                         runnableCounts, runnableTotals,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
-                        typeSkewIndexes, skewOn, skewWeight, p_a, p_b);
+                        typeSkewIndexes, skewOn, skewWeight, p_a, p_b,gamma);
 
                 runnables[thread].initializeAlphaStatistics(histogramSize);
 
@@ -1561,7 +1596,7 @@ public class iMixParallelTopicModel implements Serializable {
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread,
                     ignoreLabels, numModalities,
-                    typeSkewIndexes, skewOn, skewWeight, p_a, p_b);
+                    typeSkewIndexes, skewOn, skewWeight, p_a, p_b,gamma);
 
             runnables[0].initializeAlphaStatistics(histogramSize);
 

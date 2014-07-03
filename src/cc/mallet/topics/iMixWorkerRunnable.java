@@ -50,6 +50,9 @@ public class iMixWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+
+    protected double[] gamma;
+
     protected TDoubleArrayList[] alpha;
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
@@ -85,7 +88,7 @@ public class iMixWorkerRunnable implements Runnable {
             TIntArrayList[][] typeTopicCounts,
             TIntArrayList[] tokensPerTopic,
             int startDoc, int numDocs, boolean ignoreLabels, byte numModalities,
-            double[][] typeSkewIndexes, iMixParallelTopicModel.SkewType skewOn, double[] skewWeight, double[][] p_a, double[][] p_b) {
+            double[][] typeSkewIndexes, iMixParallelTopicModel.SkewType skewOn, double[] skewWeight, double[][] p_a, double[][] p_b, double[] gamma) {
 
         this.data = data;
 
@@ -101,6 +104,7 @@ public class iMixWorkerRunnable implements Runnable {
         this.smoothingOnlyMass = new double[numModalities];
         this.smoothOnlyCachedCoefficients = new TDoubleArrayList[numModalities];
         this.typeSkewIndexes = typeSkewIndexes;
+        this.gamma = gamma;
 
         for (byte i = 0; i < numModalities; i++) {
             this.numTypes[i] = typeTopicCounts[i].length;
@@ -201,6 +205,10 @@ public class iMixWorkerRunnable implements Runnable {
 
     public void resetSkewWeight(double[] skewWeight) {
         this.skewWeight = skewWeight;
+    }
+
+    public void resetGamma(double[] gamma) {
+        this.gamma = gamma;
     }
 
     public void resetFastSampling(boolean fastSampling) {
@@ -337,8 +345,8 @@ public class iMixWorkerRunnable implements Runnable {
                 //  non-zero counts in particular topics.
                 //for (int topic = 0; topic < numCommonTopics; topic++) {
                 for (int topic = 0; topic < numTopics; topic++) {
-                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
+                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+                    smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
                 }
 
 //                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
@@ -384,6 +392,20 @@ public class iMixWorkerRunnable implements Runnable {
         }
     }
 
+//    protected void addNewTopicAndUpdateSmoothing() {
+//
+//        //newTopics++;
+//        for (byte m = 0; m < numModalities; m++) {
+//            // Initialize the cached coefficients, using only smoothing.
+//            //  These values will be selectively replaced in documents with
+//            //  non-zero counts in particular topics.
+//            alpha[m].set(numTopics, alpha[m].get(numTopics - 1));
+//            smoothingOnlyMass[m] += gamma[m] * alpha[m].get(numTopics) * beta[m] / (tokensPerTopic[m].get(numTopics) + betaSum[m]);
+//            smoothOnlyCachedCoefficients[m].set(numTopics, gamma[m] * alpha[m].get(numTopics) / (tokensPerTopic[m].get(numTopics) + betaSum[m]));
+//
+//        }
+//        numTopics++;
+//    }
     protected int initSampling(
             MixTopicModelTopicAssignment doc,
             TDoubleArrayList[] totalMassPerModalityAndTopic,
@@ -524,7 +546,7 @@ public class iMixWorkerRunnable implements Runnable {
             topicBetaMass[m] += beta[m] * normSumN;
             cachedCoefficients.set(topic, normSumN);
 
-           // }
+            // }
         }
 
     }
@@ -546,7 +568,7 @@ public class iMixWorkerRunnable implements Runnable {
         //	Remove this token from all counts. 
         // Remove this topic's contribution to the 
         //  normalizing constants
-        smoothingOnlyMass[m] -= alpha[m].get(oldTopic) * beta[m]
+        smoothingOnlyMass[m] -= gamma[m] * alpha[m].get(oldTopic) * beta[m]
                 / (tokensPerTopic[m].get(oldTopic) + betaSum[m]);
 
         double normSumN = (localTopicCounts[m].get(oldTopic) + totalMassOtherModalities.get(oldTopic))
@@ -564,10 +586,10 @@ public class iMixWorkerRunnable implements Runnable {
 
         // Add the old topic's contribution back into the
         //  normalizing constants.
-        smoothingOnlyMass[m] += alpha[m].get(oldTopic) * beta[m]
+        smoothingOnlyMass[m] += gamma[m] * alpha[m].get(oldTopic) * beta[m]
                 / (tokensPerTopic[m].get(oldTopic) + betaSum[m]);
 
-        smoothOnlyCachedCoefficients[m].set(oldTopic, alpha[m].get(oldTopic) / (tokensPerTopic[m].get(oldTopic) + betaSum[m]));
+        smoothOnlyCachedCoefficients[m].set(oldTopic, gamma[m] * alpha[m].get(oldTopic) / (tokensPerTopic[m].get(oldTopic) + betaSum[m]));
 
         normSumN = (localTopicCounts[m].get(oldTopic) + totalMassOtherModalities.get(oldTopic))
                 / (tokensPerTopic[m].get(oldTopic) + betaSum[m]);
@@ -810,7 +832,7 @@ public class iMixWorkerRunnable implements Runnable {
 
         //while (sample > 0.0 && topic < numCommonTopics) {
         while (sample > 0.0 && topic < numTopics) {
-            sample -= alpha[m].get(topic) * beta[m]
+            sample -= gamma[m] * alpha[m].get(topic) * beta[m]
                     / (tokensPerTopic[m].get(topic) + betaSum[m]);
             if (sample <= 0.0) {
                 newTopic = topic;
@@ -966,6 +988,28 @@ public class iMixWorkerRunnable implements Runnable {
             final int[] docLength,
             byte m,
             double[][] p) {
+
+        if (newTopic == numTopics) { //new topic in corpus
+            for (byte i = 0; i < numModalities; i++) {
+
+                alpha[i].set(numTopics, alpha[i].get(numTopics - 1));
+
+                if (i != m) { //Update smoothing for all other modalities, current modality will be updated at the end
+                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(newTopic) * beta[i]
+                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
+
+                    smoothOnlyCachedCoefficients[i].set(newTopic, gamma[i] * alpha[i].get(newTopic) / (tokensPerTopic[i].get(newTopic) + betaSum[i]));
+                    //ONLY Global counts should be updated
+//                    double normSumN = (localTopicCounts[i].get(newTopic) + totalMassOtherModalities.get(newTopic))
+//                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
+//
+//                    topicBetaMass[i] += beta[i] * normSumN;
+//                    cachedCoefficients.set(newTopic, normSumN);
+                }
+            }
+            numTopics++;
+        }
+
         //			Put that new topic into the counts
         oneDocTopics[m][position] = newTopic;
 
@@ -1006,7 +1050,7 @@ public class iMixWorkerRunnable implements Runnable {
 
         topicBetaMass[m] -= beta[m] * normSumN;
 
-        smoothingOnlyMass[m] -= alpha[m].get(newTopic) * beta[m]
+        smoothingOnlyMass[m] -= gamma[m] * alpha[m].get(newTopic) * beta[m]
                 / (tokensPerTopic[m].get(newTopic) + betaSum[m]);
 
         // }
@@ -1014,10 +1058,10 @@ public class iMixWorkerRunnable implements Runnable {
         tokensPerTopic[m].set(newTopic, tokensPerTopic[m].get(newTopic) + 1);
 
         //	update the coefficients for the non-zero topics
-        smoothingOnlyMass[m] += alpha[m].get(newTopic) * beta[m]
+        smoothingOnlyMass[m] += gamma[m] * alpha[m].get(newTopic) * beta[m]
                 / (tokensPerTopic[m].get(newTopic) + betaSum[m]);
 
-        smoothOnlyCachedCoefficients[m].set(newTopic, alpha[m].get(newTopic) / (tokensPerTopic[m].get(newTopic) + betaSum[m]));
+        smoothOnlyCachedCoefficients[m].set(newTopic, gamma[m] * alpha[m].get(newTopic) / (tokensPerTopic[m].get(newTopic) + betaSum[m]));
 
         normSumN = (localTopicCounts[m].get(newTopic) + totalMassOtherModalities.get(newTopic))
                 / (tokensPerTopic[m].get(newTopic) + betaSum[m]);
