@@ -181,6 +181,8 @@ public class iMixParallelTopicModel implements Serializable {
         this.numTypes = new int[numModalities];
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
+        
+        this.gamma = new double[numModalities];
         this.totalDocsPerModality = new int[numModalities];
 
         this.typeTopicCounts = new TIntArrayList[numModalities][];
@@ -339,6 +341,8 @@ public class iMixParallelTopicModel implements Serializable {
 
             alpha[i] = new TDoubleArrayList(numTopics);
             this.alpha[i].fill(0, numTopics, alphaSum[i] / numTopics);
+            
+            gamma[i] = 1;
 
             typeTopicCounts[i] = new TIntArrayList[tmpNumTypes];
             tokensPerTopic[i] = new TIntArrayList(numTopics);
@@ -559,7 +563,6 @@ public class iMixParallelTopicModel implements Serializable {
 //                                }
 //                            }
 //                        }
-
                         TIntArrayList currentTypeTopicCounts = typeTopicCounts[i][ type];
 
                         // Start by assuming that the array is either empty
@@ -614,7 +617,6 @@ public class iMixParallelTopicModel implements Serializable {
 //        }
 //        String remarkIt = "aaa";
         //entityPosistion
-
         //entityPosition.forEachKey(cidCnt)
     }
 
@@ -682,6 +684,10 @@ public class iMixParallelTopicModel implements Serializable {
                 }
                 if (similarity > mergeSimilarity) {
                     mergedTopics.put(t, t_text);
+                    for (Byte m = 0; m < numModalities; m++) {
+                        alpha[m].set(t, 0);
+                    }
+
                 }
 
                 //topicSimilarities[t][t_text] = similarity;
@@ -689,27 +695,29 @@ public class iMixParallelTopicModel implements Serializable {
 
         }
 
-        for (MixTopicModelTopicAssignment entity : data) {
-            for (Byte m = 0; m < numModalities; m++) {
-                TopicAssignment document = entity.Assignments[m];
+        if (mergedTopics.size() > 0) {
+            for (MixTopicModelTopicAssignment entity : data) {
+                for (Byte m = 0; m < numModalities; m++) {
+                    TopicAssignment document = entity.Assignments[m];
 
-                if (document != null) {
+                    if (document != null) {
 
-                    //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
-                    FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
-                    int[] topics = topicSequence.getFeatures();
+                        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                        FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+                        int[] topics = topicSequence.getFeatures();
 
-                    for (int position = 0; position < topics.length; position++) {
-                        int oldTopic = topics[position];
-                        if (mergedTopics.containsKey(oldTopic)) {
-                            topics[position] = mergedTopics.get(oldTopic);
+                        for (int position = 0; position < topics.length; position++) {
+                            int oldTopic = topics[position];
+                            if (mergedTopics.containsKey(oldTopic)) {
+                                topics[position] = mergedTopics.get(oldTopic);
+                            }
+
                         }
-
                     }
                 }
             }
+            buildInitialTypeTopicCounts();
         }
-        buildInitialTypeTopicCounts();
 
     }
 
@@ -1572,7 +1580,7 @@ public class iMixParallelTopicModel implements Serializable {
                         runnableCounts, runnableTotals,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
-                        typeSkewIndexes, skewOn, skewWeight, p_a, p_b,gamma);
+                        typeSkewIndexes, skewOn, skewWeight, p_a, p_b, gamma);
 
                 runnables[thread].initializeAlphaStatistics(histogramSize);
 
@@ -1596,7 +1604,7 @@ public class iMixParallelTopicModel implements Serializable {
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread,
                     ignoreLabels, numModalities,
-                    typeSkewIndexes, skewOn, skewWeight, p_a, p_b,gamma);
+                    typeSkewIndexes, skewOn, skewWeight, p_a, p_b, gamma);
 
             runnables[0].initializeAlphaStatistics(histogramSize);
 
