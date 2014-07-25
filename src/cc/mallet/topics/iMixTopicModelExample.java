@@ -50,7 +50,7 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 500;
+        int numTopics = 100;
         int numIterations = 350;
         int independentIterations = 10;
         int burnIn = 20;
