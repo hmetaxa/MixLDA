@@ -1693,7 +1693,7 @@ public class iMixParallelTopicModel implements Serializable {
                         && iteration % saveSampleInterval == 0) {
                     TByteArrayList modalities = new TByteArrayList();
                     modalities.add((byte) 0);
-                    mergeSimilarTopics(30, modalities, 0.7);
+                    mergeSimilarTopics(20, modalities, 0.6);
                 }
 
                 //sumTypeTopicCounts(runnables, iteration > burninPeriod);
