@@ -37,7 +37,6 @@ import java.util.TreeSet;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.zip.*;
-import org.knowceans.util.Samplers;
 
 /**
  * Mix Parallel semi supervised, multi modal topic modal based on MALLET
@@ -49,7 +48,7 @@ import org.knowceans.util.Samplers;
  *
  * @author Omiros Metaxas
  */
-public class iMixParallelTopicModel implements Serializable {
+public class iMixParallelTopicModelFixTopics implements Serializable {
 
     public class TopicMapping {
 
@@ -66,7 +65,7 @@ public class iMixParallelTopicModel implements Serializable {
         TextAndLabels
     }
     public static final int UNASSIGNED_TOPIC = -1;
-    public static Logger logger = MalletLogger.getLogger(iMixParallelTopicModel.class.getName());
+    public static Logger logger = MalletLogger.getLogger(iMixParallelTopicModelFixTopics.class.getName());
     public ArrayList<MixTopicModelTopicAssignment> data;  // the training instances and their topic assignments <entityId, Instances & TopicAssignments Per Modality>
     public Alphabet[] alphabet; // the alphabet for the input data per modality
     public LabelAlphabet topicAlphabet;  // the alphabet for the topics
@@ -118,11 +117,11 @@ public class iMixParallelTopicModel implements Serializable {
     public NumberFormat formatter;
     public boolean printLogLikelihood = true;
     public boolean ignoreLabels = false;
-    //public SkewType skewOn = SkewType.None;
+    public SkewType skewOn = SkewType.None;
     // The number of times each type appears in the corpus
     public int[][] typeTotals; //per modality
     // The skew index of eachType
-    //public double[][] typeSkewIndexes; //<modality, type>
+    public double[][] typeSkewIndexes; //<modality, type>
     // The skew index of each Lbl Type
     //public double[] lblTypeSkewIndexes;
     // The max over typeTotals, used for beta optimization
@@ -133,7 +132,7 @@ public class iMixParallelTopicModel implements Serializable {
     //int maxLblTypeCount;
     //double avgLblTypeCount;
     int numThreads = 1;
-    //double[] skewWeight; //per modality
+    double[] skewWeight; //per modality
     double[][] p_a; // a for beta prior for modalities correlation
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
@@ -145,11 +144,11 @@ public class iMixParallelTopicModel implements Serializable {
     private int histogramSize = 0;
 
     //double lblSkewWeight = 1;
-    public iMixParallelTopicModel(int numberOfTopics, byte numModalities) {
+    public iMixParallelTopicModelFixTopics(int numberOfTopics, byte numModalities) {
         this(numberOfTopics, 5, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities), false, SkewType.LabelsOnly);
     }
 
-    public iMixParallelTopicModel(int numberOfTopics, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
+    public iMixParallelTopicModelFixTopics(int numberOfTopics, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
         this(newLabelAlphabet(numberOfTopics + numberOfIndependentTopics * numModalities), numberOfIndependentTopics, numModalities, alphaSum, defaultBeta(numModalities), ignoreLabels, skewnOn);
     }
 
@@ -173,7 +172,7 @@ public class iMixParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public iMixParallelTopicModel(LabelAlphabet topicAlphabet, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
+    public iMixParallelTopicModelFixTopics(LabelAlphabet topicAlphabet, int numberOfIndependentTopics, byte numModalities, double[] alphaSum, double[] beta, boolean ignoreLabels, SkewType skewnOn) {
 
         this.numModalities = numModalities;
         //this.numIndependentTopics = numberOfIndependentTopics;
@@ -182,7 +181,7 @@ public class iMixParallelTopicModel implements Serializable {
         this.numTypes = new int[numModalities];
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
-
+        
         this.gamma = new double[numModalities];
         this.totalDocsPerModality = new int[numModalities];
 
@@ -191,12 +190,12 @@ public class iMixParallelTopicModel implements Serializable {
         //this.docLengthCounts = new int[numModalities][];
         //this.topicDocCounts = new int[numModalities][][];
         this.typeTotals = new int[numModalities][];
-        //this.typeSkewIndexes = new double[numModalities][];
+        this.typeSkewIndexes = new double[numModalities][];
 
         this.maxTypeCount = new int[numModalities];
         this.avgTypeCount = new double[numModalities];
-        //this.skewWeight = new double[numModalities];
-        //Arrays.fill(this.skewWeight, 1);
+        this.skewWeight = new double[numModalities];
+        Arrays.fill(this.skewWeight, 1);
 
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -215,7 +214,7 @@ public class iMixParallelTopicModel implements Serializable {
         }
 
         this.ignoreLabels = ignoreLabels;
-        //this.skewOn = skewnOn;
+        this.skewOn = skewnOn;
         this.alphaSum = alphaSum;
         this.alpha = new TDoubleArrayList[numModalities];
 
@@ -342,14 +341,14 @@ public class iMixParallelTopicModel implements Serializable {
 
             alpha[i] = new TDoubleArrayList(numTopics);
             this.alpha[i].fill(0, numTopics, alphaSum[i] / numTopics);
-
+            
             gamma[i] = 1;
 
             typeTopicCounts[i] = new TIntArrayList[tmpNumTypes];
             tokensPerTopic[i] = new TIntArrayList(numTopics);
 
             typeTotals[i] = new int[tmpNumTypes];
-            //typeSkewIndexes[i] = new double[tmpNumTypes];
+            typeSkewIndexes[i] = new double[tmpNumTypes];
 
             Randoms random = null;
             if (randomSeed == -1) {
@@ -496,7 +495,7 @@ public class iMixParallelTopicModel implements Serializable {
             //  looking at the entries before the first 0 entry.
             for (int type = 0; type < numTypes[i]; type++) {
 
-                //typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
+                typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
                 //tokensPerTopic[i].fill(0, numTopics, 0);
                 typeTopicCounts[i][type].fill(0, numTopics, 0);
 
@@ -1071,7 +1070,7 @@ public class iMixParallelTopicModel implements Serializable {
      buildInitialTypeTopicCounts();
      }
      */
-    public void sumTypeTopicCounts(iMixWorkerRunnable[] runnables, boolean calcSkew) {
+    public void sumTypeTopicCounts(iMixWorkerRunnableFixTopics[] runnables, boolean calcSkew) {
 
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
@@ -1178,52 +1177,53 @@ public class iMixParallelTopicModel implements Serializable {
     }
 
     //TODO save weights in DB
-//    private void calcSkew() {
-//        // Calc Skew weight
-//        //skewOn == SkewType.LabelsOnly
-//        double skewSum = 0;
-//        int nonZeroSkewCnt = 1;
-//        byte initModality = 0;
-//        if (skewOn == SkewType.LabelsOnly) {
-//            initModality = 1;
-//        }
-//
-//        for (Byte i = 0; i < numModalities; i++) {
-//            if (skewOn != SkewType.None && i >= initModality) {
-//
-//                for (int type = 0; type < numTypes[i]; type++) {
-//
-//                    int totalTypeCounts = 0;
-//                    typeSkewIndexes[i][type] = 0;
-//
-//                    int[] targetCounts = typeTopicCounts[i][type].toArray();
-//
-//                    int index = 0;
-//                    int count = 0;
-//                    while (index < targetCounts.length
-//                            && targetCounts[index] > 0) {
-//                        count = targetCounts[index] >> topicBits;
-//                        typeSkewIndexes[i][type] += Math.pow((double) count, 2);
-//                        totalTypeCounts += count;
-//                        //currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                        index++;
-//                    }
-//
-//                    if (totalTypeCounts > 0) {
-//                        typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
-//                    }
-//                    if (typeSkewIndexes[i][type] > 0) {
-//                        nonZeroSkewCnt++;
-//                        skewSum += typeSkewIndexes[i][type];
-//                    }
-//
-//                }
-//
-//                skewWeight[i] = (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
-//
-//            }
-//        }
-//    }
+    private void calcSkew() {
+        // Calc Skew weight
+        //skewOn == SkewType.LabelsOnly
+        double skewSum = 0;
+        int nonZeroSkewCnt = 1;
+        byte initModality = 0;
+        if (skewOn == SkewType.LabelsOnly) {
+            initModality = 1;
+        }
+
+        for (Byte i = 0; i < numModalities; i++) {
+            if (skewOn != SkewType.None && i >= initModality) {
+
+                for (int type = 0; type < numTypes[i]; type++) {
+
+                    int totalTypeCounts = 0;
+                    typeSkewIndexes[i][type] = 0;
+
+                    int[] targetCounts = typeTopicCounts[i][type].toArray();
+
+                    int index = 0;
+                    int count = 0;
+                    while (index < targetCounts.length
+                            && targetCounts[index] > 0) {
+                        count = targetCounts[index] >> topicBits;
+                        typeSkewIndexes[i][type] += Math.pow((double) count, 2);
+                        totalTypeCounts += count;
+                        //currentTopic = currentTypeTopicCounts[index] & topicMask;
+                        index++;
+                    }
+
+                    if (totalTypeCounts > 0) {
+                        typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
+                    }
+                    if (typeSkewIndexes[i][type] > 0) {
+                        nonZeroSkewCnt++;
+                        skewSum += typeSkewIndexes[i][type];
+                    }
+
+                }
+
+                skewWeight[i] = (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
+
+            }
+        }
+    }
+
     /**
      * Gather statistics on the size of documents and create histograms for use
      * in Dirichlet hyperparameter optimization.
@@ -1275,82 +1275,7 @@ public class iMixParallelTopicModel implements Serializable {
 //        }
     }
 
-    private void updateAlpha(iMixWorkerRunnable[] runnables) {
-
-        int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
-        int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
-
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int thread = 0; thread < numThreads; thread++) {
-                int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-                TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-
-                for (int count = 0; count < sourceLengthCounts[m].length; count++) {
-                    // for (Byte i = 0; i < numModalities; i++) {
-                    if (sourceLengthCounts[m][count] > 0) {
-                        docLengthCounts[m][count] += sourceLengthCounts[m][count];
-                        sourceLengthCounts[m][count] = 0;
-                    }
-                    //}
-                }
-
-                double[] mk = new double[numTopics + 1];
-
-                //double[] tt = new double[maxTopic + 2];
-                for (int t = 0; t < numTopics; t++) {
-
-                    //int k = kactive.get(kk);
-                    for (int j = 0; j < numDocuments; j++) {
-
-                        if (topicDocCounts[m].get(k) > 1) {
-                            //sample number of tables
-                            mk[kk] += Samplers.randAntoniak(gamma[m] * alpha[m].get(k),
-                                    nmk[m].get(k));
-                        } else //nmk[m].get(k) = 0 or 1
-                        {
-                            mk[kk] += nmk[m].get(k);
-                        }
-
-                    }
-                }// end outter for loop
-
-        //get number of tables
-                //tables = Vectors.sum(mk);
-                mk[maxTopic + 1] = gamma;
-                tt[maxTopic + 1] = gamma / (totalTables + gamma);
-        // tt = sampleDirichlet(mk);
-
-        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
-                // Initialize the smoothing-only sampling bucket
-                Arrays.fill(smoothingOnlyMass, 0d);
-                nonActiveTopics.clear();
-
-                int newMaxTopic = maxTopic;
-                for (int topic = 0; topic <= maxTopic + 1; topic++) {
-
-                    if (mk[topic] == 0) {
-                        // nonActiveTopics.add(topic);
-                        tau[topic] = 0;
-                        for (byte m = 0; m < numModalities; m++) {
-                            smoothOnlyCachedCoefficients[m][topic] = 0;
-                        }
-
-                    } else {
-                        if (topic <= maxTopic) { //maxTopic
-                            newMaxTopic = topic;
-                        }
-                        tau[topic] = tt[topic];
-
-                    }
-                }
-            }
-
-        }
-        logger.info("[alpha: " + formatter.format(alpha[m].get(0)) + "] ");
-        logger.info("[alphaSum: " + formatter.format(alphaSum[m]) + "] ");
-    }
-
-    public void optimizeAlpha(iMixWorkerRunnable[] runnables) {
+    public void optimizeAlpha(iMixWorkerRunnableFixTopics[] runnables) {
 
         int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
         int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
@@ -1413,17 +1338,7 @@ public class iMixParallelTopicModel implements Serializable {
             } else {
                 double[] alphaTmp = alpha[m].toArray();
 
-                //alphaSum[m] = Dirichlet.learnParameters(alphaTmp, topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
-                try {
-                    alphaSum[m] = Dirichlet.learnParameters(alphaTmp, topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
-                } catch (RuntimeException e) {
-                    // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
-                    logger.warning("Dirichlet optimization has become unstable. Resetting to alpha_t = 1.0.");
-                    alphaSum[m] = numTopics;
-                    for (int topic = 0; topic < numTopics; topic++) {
-                        alpha[m].set(topic, 1.0);
-                    }
-                }
+                alphaSum[m] = Dirichlet.learnParameters(alphaTmp, topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
                 alpha[m].reset();
                 alpha[m].add(alphaTmp);
             }
@@ -1521,7 +1436,7 @@ public class iMixParallelTopicModel implements Serializable {
         return converged;
     }
 
-    public void optimizeP(iMixWorkerRunnable[] runnables) {
+    public void optimizeP(iMixWorkerRunnableFixTopics[] runnables) {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
 //              runnables[thread].getPDistr_Mean();
@@ -1557,7 +1472,7 @@ public class iMixParallelTopicModel implements Serializable {
 //        }
     }
 
-    public void optimizeBeta(iMixWorkerRunnable[] runnables) {
+    public void optimizeBeta(iMixWorkerRunnableFixTopics[] runnables) {
 
         for (Byte i = 0; i < numModalities; i++) {
 
@@ -1617,7 +1532,7 @@ public class iMixParallelTopicModel implements Serializable {
 
         long startTime = System.currentTimeMillis();
 
-        iMixWorkerRunnable[] runnables = new iMixWorkerRunnable[numThreads];
+        iMixWorkerRunnableFixTopics[] runnables = new iMixWorkerRunnableFixTopics[numThreads];
 
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
@@ -1659,13 +1574,13 @@ public class iMixParallelTopicModel implements Serializable {
                     random = new Randoms(randomSeed);
                 }
 
-                runnables[thread] = new iMixWorkerRunnable(numTopics, 0, //numIndependentTopics,
+                runnables[thread] = new iMixWorkerRunnableFixTopics(numTopics, 0, //numIndependentTopics,
                         alpha, alphaSum, beta,
                         random, data,
                         runnableCounts, runnableTotals,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
-                        p_a, p_b, gamma);
+                        typeSkewIndexes, skewOn, skewWeight, p_a, p_b, gamma);
 
                 runnables[thread].initializeAlphaStatistics(histogramSize);
 
@@ -1683,13 +1598,13 @@ public class iMixParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new iMixWorkerRunnable(numTopics, 0, //numIndependentTopics,
+            runnables[0] = new iMixWorkerRunnableFixTopics(numTopics, 0, //numIndependentTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread,
                     ignoreLabels, numModalities,
-                    p_a, p_b, gamma);
+                    typeSkewIndexes, skewOn, skewWeight, p_a, p_b, gamma);
 
             runnables[0].initializeAlphaStatistics(histogramSize);
 
@@ -1778,7 +1693,7 @@ public class iMixParallelTopicModel implements Serializable {
                         && iteration % saveSampleInterval == 0) {
                     TByteArrayList modalities = new TByteArrayList();
                     modalities.add((byte) 0);
-                    mergeSimilarTopics(20, modalities, 0.6);
+                    mergeSimilarTopics(30, modalities, 0.7);
                 }
 
                 //sumTypeTopicCounts(runnables, iteration > burninPeriod);
@@ -1793,7 +1708,8 @@ public class iMixParallelTopicModel implements Serializable {
                         //System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
 
-                    //runnables[thread].resetSkewWeight(skewWeight);
+                    runnables[thread].resetSkewWeight(skewWeight);
+
                     //int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
                     for (Byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
@@ -2066,12 +1982,11 @@ public class iMixParallelTopicModel implements Serializable {
                 int topic = topicCounts[index] & topicMask;
                 int count = topicCounts[index] >> topicBits;
 
-//                if (skewOn == SkewType.TextAndLabels && modality == 0 || (skewOn == SkewType.LabelsOnly && modality > 0)) {
-//                    topicSortedWords.get(topic).add(new IDSorter(type, skewWeight[modality] * count * (1 + typeSkewIndexes[modality][type]))); //TODO Check it
-//                } else {
-//                    topicSortedWords.get(topic).add(new IDSorter(type, count));
-//                }
-                topicSortedWords.get(topic).add(new IDSorter(type, count));
+                if (skewOn == SkewType.TextAndLabels && modality == 0 || (skewOn == SkewType.LabelsOnly && modality > 0)) {
+                    topicSortedWords.get(topic).add(new IDSorter(type, skewWeight[modality] * count * (1 + typeSkewIndexes[modality][type]))); //TODO Check it
+                } else {
+                    topicSortedWords.get(topic).add(new IDSorter(type, count));
+                }
 
                 index++;
             }
@@ -2903,12 +2818,12 @@ public class iMixParallelTopicModel implements Serializable {
         }
     }
 
-    public static iMixParallelTopicModel read(File f) throws Exception {
+    public static iMixParallelTopicModelFixTopics read(File f) throws Exception {
 
-        iMixParallelTopicModel topicModel = null;
+        iMixParallelTopicModelFixTopics topicModel = null;
 
         ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-        topicModel = (iMixParallelTopicModel) ois.readObject();
+        topicModel = (iMixParallelTopicModelFixTopics) ois.readObject();
         ois.close();
 
         topicModel.initializeHistograms();
@@ -2925,7 +2840,7 @@ public class iMixParallelTopicModel implements Serializable {
 
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
-            iMixParallelTopicModel lda = new iMixParallelTopicModel(numTopics, (byte) 1);
+            iMixParallelTopicModelFixTopics lda = new iMixParallelTopicModelFixTopics(numTopics, (byte) 1);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training);

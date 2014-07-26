@@ -439,7 +439,7 @@ public class Dirichlet {
             double currentValue) {
         double currentDigamma;
 
-		// The histogram arrays are presumably allocated before
+        // The histogram arrays are presumably allocated before
         //  we knew what went in them. It is therefore likely that
         //  the largest non-zero value may be much closer to the 
         //  beginning than the end. We don't want to iterate over
@@ -467,7 +467,7 @@ public class Dirichlet {
 
             double currentParameter = currentValue / numDimensions;
 
-			// Calculate the numerator
+            // Calculate the numerator
             currentDigamma = 0;
             double numerator = 0;
 
@@ -477,7 +477,7 @@ public class Dirichlet {
                 numerator += countHistogram[index] * currentDigamma;
             }
 
-			// Now calculate the denominator, a sum over all observation lengths
+            // Now calculate the denominator, a sum over all observation lengths
             currentDigamma = 0;
             double denominator = 0;
             int previousLength = 0;
@@ -488,11 +488,11 @@ public class Dirichlet {
                 int length = nonZeroLengthIndex[denseIndex];
 
                 if (length - previousLength > 20) {
-					// If the next length is sufficiently far from the previous,
+                    // If the next length is sufficiently far from the previous,
                     //  it's faster to recalculate from scratch.
                     currentDigamma = digamma(currentValue + length) - cachedDigamma;
                 } else {
-					// Otherwise iterate up. This looks slightly different
+                    // Otherwise iterate up. This looks slightly different
                     //  from the previous version (no -1) because we're indexing differently.
                     for (int index = previousLength; index < length; index++) {
                         currentDigamma += 1.0 / (currentValue + index);
@@ -601,7 +601,7 @@ public class Dirichlet {
 
         double parametersSum = 0;
 
-		//	Initialize the parameter sum
+        //	Initialize the parameter sum
         for (k = 0; k < parameters.length; k++) {
             parametersSum += parameters[k];
         }
@@ -614,7 +614,7 @@ public class Dirichlet {
         int[] nonZeroLimits = new int[observations.length];
         Arrays.fill(nonZeroLimits, -1);
 
-		// The histogram arrays go up to the size of the largest document,
+        // The histogram arrays go up to the size of the largest document,
         //	but the non-zero values will almost always cluster in the low end.
         //	We avoid looping over empty arrays by saving the index of the largest
         //	non-zero value.
@@ -648,7 +648,7 @@ public class Dirichlet {
             // Bayesian estimation Part I
             denominator -= 1 / scale;
 
-			// Calculate the individual parameters
+            // Calculate the individual parameters
             parametersSum = 0;
 
             for (k = 0; k < parameters.length; k++) {
@@ -672,12 +672,15 @@ public class Dirichlet {
                 }
 
                 // Bayesian estimation part II
-                parameters[k] = (oldParametersK * parameters[k] + shape) / denominator;
+                parameters[k] = oldParametersK * (parameters[k] + shape) / denominator;
 
                 parametersSum += parameters[k];
             }
         }
 
+        if (parametersSum < 0.0) {
+            throw new RuntimeException("sum: " + parametersSum);
+        }
         return parametersSum;
     }
 
@@ -768,7 +771,7 @@ public class Dirichlet {
 
             parametersSum = 0.0;
 
-			// Calculate the individual parameters
+            // Calculate the individual parameters
             for (k = 0; k < partition.length; k++) {
 
                 alphaK = newParameters[k];
@@ -872,7 +875,7 @@ public class Dirichlet {
             }
             denominator -= observationLengths.length * digamma(magnitude);
 
-			// Calculate the individual parameters
+            // Calculate the individual parameters
             for (k = 0; k < partition.length; k++) {
                 newParameters[k] = 0;
 
@@ -997,7 +1000,7 @@ public class Dirichlet {
 
         magnitude = Math.exp(sum / (partition.length - 1));
 
-		//System.out.println(distributionToString(magnitude, partition));
+        //System.out.println(distributionToString(magnitude, partition));
         return System.currentTimeMillis() - start;
     }
 
