@@ -1302,9 +1302,9 @@ public class iMixParallelTopicModel implements Serializable {
                     //int k = kactive.get(kk);
                     for (int j = 0; j < numDocuments; j++) {
 
-                        if (topicDocCounts[m].get(k) > 1) {
+                        if (topicDocCounts[m].get(t) > 1) {
                             //sample number of tables
-                            mk[kk] += Samplers.randAntoniak(gamma[m] * alpha[m].get(k),
+                            mk[t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
                                     nmk[m].get(k));
                         } else //nmk[m].get(k) = 0 or 1
                         {
