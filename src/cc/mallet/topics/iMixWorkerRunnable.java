@@ -1289,5 +1289,66 @@ public class iMixWorkerRunnable implements Runnable {
         }
 
     }
+    
+     private void updateTauAndSmoothing() {
+           double[] mk = new double[numTopics + 1];
+
+                //double[] tt = new double[maxTopic + 2];
+                for (int t = 0; t < numTopics; t++) {
+
+                    //int k = kactive.get(kk);
+                    for (int j = 0; j < numDocuments; j++) {
+
+                        if (topicDocCounts[m].get(t) > 1) {
+                            //sample number of tables
+                            mk[t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
+                                    nmk[m].get(k));
+                        } else //nmk[m].get(k) = 0 or 1
+                        {
+                            mk[kk] += nmk[m].get(k);
+                        }
+
+                    }
+                }// end outter for loop
+                loop
+        mk[maxTopic + 1] = gamma;
+        tt[maxTopic + 1] = gamma / (totalTables + gamma);
+        // tt = sampleDirichlet(mk);
+
+        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
+
+        // Initialize the smoothing-only sampling bucket
+        Arrays.fill(smoothingOnlyMass, 0d);
+        nonActiveTopics.clear();
+
+        int newMaxTopic = maxTopic;
+        for (int topic = 0; topic <= maxTopic + 1; topic++) {
+
+            if (mk[topic] == 0) {
+               // nonActiveTopics.add(topic);
+                tau[topic] = 0;
+                for (byte m = 0; m < numModalities; m++) {
+                    smoothOnlyCachedCoefficients[m][topic] = 0;
+                }
+
+            } else {
+                if (topic <= maxTopic) { //maxTopic
+                    newMaxTopic = topic;
+                }
+                tau[topic] = tt[topic];
+                for (byte m = 0; m < numModalities; m++) {
+                    // Initialize the cached coefficients, using only smoothing.
+                    //  These values will be selectively replaced in documents with
+                    //  non-zero counts in particular topics.
+                    smoothingOnlyMass[m] += alpha * tau[topic] * beta[m] / (tokensPerTopic[m][topic] + betaSum[m]);
+                    smoothOnlyCachedCoefficients[m][topic] = alpha * tau[topic] / (tokensPerTopic[m][topic] + betaSum[m]);
+
+                }
+            }
+        }
+        maxTopic = newMaxTopic;
+
+
+    }
 
 }
