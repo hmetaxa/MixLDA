@@ -33,9 +33,7 @@ public class iMixWorkerRunnable implements Runnable {
         //public int nonZeroTopics;
         //public double few;//frequency exclusivity weight we have an array for that
     }
-
     private static final Object LOCK = new Object();
-
     boolean isFinished = true;
     boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
@@ -54,9 +52,7 @@ public class iMixWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-
     protected double[] gamma;
-
     protected TDoubleArrayList[] alpha;
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
@@ -564,8 +560,8 @@ public class iMixWorkerRunnable implements Runnable {
             int nonZeroTopics,
             // final int[] docLength,
             byte m //modality
-    //double[][] p
-    ) {
+            //double[][] p
+            ) {
 
         // if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
         //	Remove this token from all counts. 
@@ -683,8 +679,7 @@ public class iMixWorkerRunnable implements Runnable {
             byte m,
             TDoubleArrayList topicTermScores,
             TIntArrayList currentTypeTopicCounts,
-            int[] docLength
-    ) {
+            int[] docLength) {
         // Now go over the type/topic counts, decrementing
         //  where appropriate, and calculating the score
         //  for each topic at the same time.
@@ -990,7 +985,6 @@ public class iMixWorkerRunnable implements Runnable {
 
     }
 
-    
     protected int updateTopicCounts(
             int[][] oneDocTopics,
             int position,
@@ -1198,8 +1192,7 @@ public class iMixWorkerRunnable implements Runnable {
                         m,
                         topicTermScores,
                         currentTypeTopicCounts,
-                        docLength
-                );
+                        docLength);
 
                 //normalize smoothing mass. 
                 //ThreadLocalRandom.current().nextDouble()
@@ -1219,20 +1212,20 @@ public class iMixWorkerRunnable implements Runnable {
                 //double origSample = sample;
                 newTopic = //random.nextInt(numTopics);
                         findNewTopic(
-                                localTopicCounts,
-                                localTopicIndex,
-                                totalMassOtherModalities,
-                                topicBetaMass,
-                                nonZeroTopics,
-                                m,
-                                topicTermMass,
-                                topicTermScores,
-                                currentTypeTopicCounts,
-                                docLength,
-                                sample,
-                                p,
-                                oldTopic,
-                                newTopicMass);
+                        localTopicCounts,
+                        localTopicIndex,
+                        totalMassOtherModalities,
+                        topicBetaMass,
+                        nonZeroTopics,
+                        m,
+                        topicTermMass,
+                        topicTermScores,
+                        currentTypeTopicCounts,
+                        docLength,
+                        sample,
+                        p,
+                        oldTopic,
+                        newTopicMass);
 
                 long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
                 tmpPreviousTopics = tmpPreviousTopics >> topicBits;
@@ -1289,43 +1282,53 @@ public class iMixWorkerRunnable implements Runnable {
         }
 
     }
-    
-     private void updateTauAndSmoothing() {
-           double[] mk = new double[numTopics + 1];
 
-                //double[] tt = new double[maxTopic + 2];
-                for (int t = 0; t < numTopics; t++) {
+    private void updateTauAndSmoothing() {
+        double[][] mk = new double[numModalities][numTopics + 1];
 
-                    //int k = kactive.get(kk);
-                    for (int j = 0; j < numDocuments; j++) {
+        //double[] tt = new double[maxTopic + 2];
+        for (int t = 0; t < numTopics; t++) {
 
-                        if (topicDocCounts[m].get(t) > 1) {
-                            //sample number of tables
-                            mk[t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
-                                    nmk[m].get(k));
-                        } else //nmk[m].get(k) = 0 or 1
-                        {
-                            mk[kk] += nmk[m].get(k);
-                        }
-
+            //int k = kactive.get(kk);
+            for (int doc = startDoc;
+                    doc < data.size() && doc < startDoc + numDocs;
+                    doc++) {
+                //for (int j = 0; j < numDocuments; j++) {
+                for (byte m = 0; m < numModalities; m++) {
+                    if (tokensPerTopic[m].get(t) > 1) {
+                        //sample number of tables
+                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
+                                tokensPerTopic[m].get(t));
+                        // nmk[m].get(k));
+                    } else //nmk[m].get(k) = 0 or 1
+                    {
+                        mk[m][t] += tokensPerTopic[m].get(t);
                     }
-                }// end outter for loop
-                loop
-        mk[maxTopic + 1] = gamma;
-        tt[maxTopic + 1] = gamma / (totalTables + gamma);
-        // tt = sampleDirichlet(mk);
+                }
+            }
+        }// end outter for loop
 
-        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
+        for (byte m = 0; m < numModalities; m++) {
+            mk[m][numTopics + 1] = gamma[m];
 
+            double[] tt = sampleDirichlet(mk[m]);
+
+            for (int kk = 0; kk < numTopics; kk++) {
+                //int k = kactive.get(kk);
+                alpha[m].set(kk,tt[kk]);
+                //tau.set(k, tt[kk]);
+            }
+            alpha[m].set(numTopics,tt[numTopics]);
+            //tau.set(K, tt[K]);
+        }
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
-        nonActiveTopics.clear();
 
         int newMaxTopic = maxTopic;
         for (int topic = 0; topic <= maxTopic + 1; topic++) {
 
             if (mk[topic] == 0) {
-               // nonActiveTopics.add(topic);
+                // nonActiveTopics.add(topic);
                 tau[topic] = 0;
                 for (byte m = 0; m < numModalities; m++) {
                     smoothOnlyCachedCoefficients[m][topic] = 0;
@@ -1349,6 +1352,43 @@ public class iMixWorkerRunnable implements Runnable {
         maxTopic = newMaxTopic;
 
 
+    }
+    
+       private double[] sampleDirichlet(double[] p) {
+        double magnitude = 1;
+        double[] partition;
+
+        magnitude = 0;
+        partition = new double[p.length];
+
+        // Add up the total
+        for (int i = 0; i < p.length; i++) {
+            magnitude += p[i];
+        }
+
+        for (int i = 0; i < p.length; i++) {
+            partition[i] = p[i] / magnitude;
+        }
+
+        double distribution[] = new double[partition.length];
+
+
+//		For each dimension, draw a sample from Gamma(mp_i, 1)
+        double sum = 0;
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
+            if (distribution[i] <= 0) {
+                distribution[i] = 0.0001;
+            }
+            sum += distribution[i];
+        }
+
+//		Normalize
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] /= sum;
+        }
+
+        return distribution;
     }
 
 }

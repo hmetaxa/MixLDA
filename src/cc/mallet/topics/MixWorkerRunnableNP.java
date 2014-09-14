@@ -526,7 +526,7 @@ public class MixWorkerRunnableNP implements Runnable {
         //tables = Vectors.sum(mk);
         mk[maxTopic + 1] = gamma;
         tt[maxTopic + 1] = gamma / (totalTables + gamma);
-        // tt = sampleDirichlet(mk);
+         tt = sampleDirichlet(mk);
 
         //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
 
