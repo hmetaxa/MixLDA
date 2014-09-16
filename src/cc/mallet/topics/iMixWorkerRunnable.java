@@ -334,26 +334,27 @@ public class iMixWorkerRunnable implements Runnable {
 
             isFinished = false;
 
+            updateTauAndSmoothing();
             // Initialize the smoothing-only sampling bucket
-            Arrays.fill(smoothingOnlyMass, 0d);
-
-            for (byte i = 0; i < numModalities; i++) {
-
-                // Initialize the cached coefficients, using only smoothing.
-                //  These values will be selectively replaced in documents with
-                //  non-zero counts in particular topics.
-                //for (int topic = 0; topic < numCommonTopics; topic++) {
-                for (int topic = 0; topic < numTopics; topic++) {
-                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
-                }
-
-//                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
+//            Arrays.fill(smoothingOnlyMass, 0d);
 //
-//                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-//                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
+//            for (byte i = 0; i < numModalities; i++) {
+//
+//                // Initialize the cached coefficients, using only smoothing.
+//                //  These values will be selectively replaced in documents with
+//                //  non-zero counts in particular topics.
+//                //for (int topic = 0; topic < numCommonTopics; topic++) {
+//                for (int topic = 0; topic < numTopics; topic++) {
+//                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+//                    smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
 //                }
-            }
+//
+////                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
+////
+////                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+////                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
+////                }
+//            }
 
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
@@ -1000,23 +1001,25 @@ public class iMixWorkerRunnable implements Runnable {
             double[][] p) {
 
         if (newTopic == numTopics) { //new topic in corpus
-            for (byte i = 0; i < numModalities; i++) {
-
-                alpha[i].set(numTopics, alpha[i].get(numTopics - 1));
-
-                if (i != m) { //Update smoothing for all other modalities, current modality will be updated at the end
-                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(newTopic) * beta[i]
-                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
-
-                    smoothOnlyCachedCoefficients[i].set(newTopic, gamma[i] * alpha[i].get(newTopic) / (tokensPerTopic[i].get(newTopic) + betaSum[i]));
-                    //ONLY Global counts should be updated
-//                    double normSumN = (localTopicCounts[i].get(newTopic) + totalMassOtherModalities.get(newTopic))
+            updateTauAndSmoothing();
+            
+//            for (byte i = 0; i < numModalities; i++) {
+//
+//                alpha[i].set(numTopics, alpha[i].get(numTopics - 1));
+//
+//                if (i != m) { //Update smoothing for all other modalities, current modality will be updated at the end
+//                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(newTopic) * beta[i]
 //                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
 //
-//                    topicBetaMass[i] += beta[i] * normSumN;
-//                    cachedCoefficients.set(newTopic, normSumN);
-                }
-            }
+//                    smoothOnlyCachedCoefficients[i].set(newTopic, gamma[i] * alpha[i].get(newTopic) / (tokensPerTopic[i].get(newTopic) + betaSum[i]));
+//                    //ONLY Global counts should be updated
+////                    double normSumN = (localTopicCounts[i].get(newTopic) + totalMassOtherModalities.get(newTopic))
+////                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
+////
+////                    topicBetaMass[i] += beta[i] * normSumN;
+////                    cachedCoefficients.set(newTopic, normSumN);
+//                }
+//            }
             numTopics++;
         }
 
@@ -1324,33 +1327,14 @@ public class iMixWorkerRunnable implements Runnable {
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
 
-        int newMaxTopic = maxTopic;
-        for (int topic = 0; topic <= maxTopic + 1; topic++) {
-
-            if (mk[topic] == 0) {
-                // nonActiveTopics.add(topic);
-                tau[topic] = 0;
-                for (byte m = 0; m < numModalities; m++) {
-                    smoothOnlyCachedCoefficients[m][topic] = 0;
+         for (byte i = 0; i < numModalities; i++) {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+                    smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
                 }
 
-            } else {
-                if (topic <= maxTopic) { //maxTopic
-                    newMaxTopic = topic;
-                }
-                tau[topic] = tt[topic];
-                for (byte m = 0; m < numModalities; m++) {
-                    // Initialize the cached coefficients, using only smoothing.
-                    //  These values will be selectively replaced in documents with
-                    //  non-zero counts in particular topics.
-                    smoothingOnlyMass[m] += alpha * tau[topic] * beta[m] / (tokensPerTopic[m][topic] + betaSum[m]);
-                    smoothOnlyCachedCoefficients[m][topic] = alpha * tau[topic] / (tokensPerTopic[m][topic] + betaSum[m]);
-
-                }
             }
-        }
-        maxTopic = newMaxTopic;
-
+         
 
     }
     

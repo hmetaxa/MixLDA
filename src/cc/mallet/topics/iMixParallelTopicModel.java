@@ -1275,80 +1275,80 @@ public class iMixParallelTopicModel implements Serializable {
 //        }
     }
 
-    private void updateAlpha(iMixWorkerRunnable[] runnables) {
-
-        int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
-        int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
-
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int thread = 0; thread < numThreads; thread++) {
-                int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-                TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-
-                for (int count = 0; count < sourceLengthCounts[m].length; count++) {
-                    // for (Byte i = 0; i < numModalities; i++) {
-                    if (sourceLengthCounts[m][count] > 0) {
-                        docLengthCounts[m][count] += sourceLengthCounts[m][count];
-                        sourceLengthCounts[m][count] = 0;
-                    }
-                    //}
-                }
-
-                double[] mk = new double[numTopics + 1];
-
-                //double[] tt = new double[maxTopic + 2];
-                for (int t = 0; t < numTopics; t++) {
-
-                    //int k = kactive.get(kk);
-                    for (int j = 0; j < numDocuments; j++) {
-
-                        if (topicDocCounts[m].get(t) > 1) {
-                            //sample number of tables
-                            mk[t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
-                                    topicsPerDoc[m].get(k));
-                        } else //nmk[m].get(k) = 0 or 1
-                        {
-                            mk[kk] += nmk[m].get(k);
-                        }
-
-                    }
-                }// end outter for loop
-
-        //get number of tables
-                //tables = Vectors.sum(mk);
-                mk[maxTopic + 1] = gamma;
-                tt[maxTopic + 1] = gamma / (totalTables + gamma);
-        // tt = sampleDirichlet(mk);
-
-        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
-                // Initialize the smoothing-only sampling bucket
-                Arrays.fill(smoothingOnlyMass, 0d);
-                nonActiveTopics.clear();
-
-                int newMaxTopic = maxTopic;
-                for (int topic = 0; topic <= maxTopic + 1; topic++) {
-
-                    if (mk[topic] == 0) {
-                        // nonActiveTopics.add(topic);
-                        tau[topic] = 0;
-                        for (byte m = 0; m < numModalities; m++) {
-                            smoothOnlyCachedCoefficients[m][topic] = 0;
-                        }
-
-                    } else {
-                        if (topic <= maxTopic) { //maxTopic
-                            newMaxTopic = topic;
-                        }
-                        tau[topic] = tt[topic];
-
-                    }
-                }
-            }
-
-        }
-        logger.info("[alpha: " + formatter.format(alpha[m].get(0)) + "] ");
-        logger.info("[alphaSum: " + formatter.format(alphaSum[m]) + "] ");
-    }
+//    private void updateAlpha(iMixWorkerRunnable[] runnables) {
+//
+//        int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
+//        int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
+//
+//        for (Byte m = 0; m < numModalities; m++) {
+//            for (int thread = 0; thread < numThreads; thread++) {
+//                int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
+//                TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
+//
+//                for (int count = 0; count < sourceLengthCounts[m].length; count++) {
+//                    // for (Byte i = 0; i < numModalities; i++) {
+//                    if (sourceLengthCounts[m][count] > 0) {
+//                        docLengthCounts[m][count] += sourceLengthCounts[m][count];
+//                        sourceLengthCounts[m][count] = 0;
+//                    }
+//                    //}
+//                }
+//
+//                double[] mk = new double[numTopics + 1];
+//
+//                //double[] tt = new double[maxTopic + 2];
+//                for (int t = 0; t < numTopics; t++) {
+//
+//                    //int k = kactive.get(kk);
+//                    for (int j = 0; j < numDocuments; j++) {
+//
+//                        if (topicDocCounts[m].get(t) > 1) {
+//                            //sample number of tables
+//                            mk[t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
+//                                    topicsPerDoc[m].get(k));
+//                        } else //nmk[m].get(k) = 0 or 1
+//                        {
+//                            mk[kk] += nmk[m].get(k);
+//                        }
+//
+//                    }
+//                }// end outter for loop
+//
+//        //get number of tables
+//                //tables = Vectors.sum(mk);
+//                mk[maxTopic + 1] = gamma;
+//                tt[maxTopic + 1] = gamma / (totalTables + gamma);
+//        // tt = sampleDirichlet(mk);
+//
+//        //double[] tt = SampleSymmetricDirichlet(1,maxTopic+2);
+//                // Initialize the smoothing-only sampling bucket
+//                Arrays.fill(smoothingOnlyMass, 0d);
+//                nonActiveTopics.clear();
+//
+//                int newMaxTopic = maxTopic;
+//                for (int topic = 0; topic <= maxTopic + 1; topic++) {
+//
+//                    if (mk[topic] == 0) {
+//                        // nonActiveTopics.add(topic);
+//                        tau[topic] = 0;
+//                        for (byte m = 0; m < numModalities; m++) {
+//                            smoothOnlyCachedCoefficients[m][topic] = 0;
+//                        }
+//
+//                    } else {
+//                        if (topic <= maxTopic) { //maxTopic
+//                            newMaxTopic = topic;
+//                        }
+//                        tau[topic] = tt[topic];
+//
+//                    }
+//                }
+//            }
+//
+//        }
+//        logger.info("[alpha: " + formatter.format(alpha[m].get(0)) + "] ");
+//        logger.info("[alphaSum: " + formatter.format(alphaSum[m]) + "] ");
+//    }
 
     public void optimizeAlpha(iMixWorkerRunnable[] runnables) {
 
