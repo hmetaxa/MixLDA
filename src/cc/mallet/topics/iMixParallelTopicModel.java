@@ -17,6 +17,7 @@ import gnu.trove.map.hash.TIntIntHashMap;
 import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
 import java.io.*;
+import static java.lang.Math.log;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -37,6 +38,7 @@ import java.util.TreeSet;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.zip.*;
+import org.knowceans.util.RandomSamplers;
 import org.knowceans.util.Samplers;
 
 /**
@@ -143,6 +145,19 @@ public class iMixParallelTopicModel implements Serializable {
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
     private int histogramSize = 0;
+   
+    // Optimize gamma hyper params
+    RandomSamplers samp;double aalpha = 5;
+	double balpha = 0.1;
+	double abeta = 0.1;
+	double bbeta = 0.1;
+	// Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
+	double agamma = 5;
+	double bgamma = 0.1;
+	// number of samples for parameter samplers
+	int R = 10;
+
+    
 
     //double lblSkewWeight = 1;
     public iMixParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -1349,7 +1364,6 @@ public class iMixParallelTopicModel implements Serializable {
 //        logger.info("[alpha: " + formatter.format(alpha[m].get(0)) + "] ");
 //        logger.info("[alphaSum: " + formatter.format(alphaSum[m]) + "] ");
 //    }
-
     public void optimizeAlpha(iMixWorkerRunnable[] runnables) {
 
         int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
@@ -1555,6 +1569,35 @@ public class iMixParallelTopicModel implements Serializable {
 //            runnables[thread].resetP_a(p_a);
 //            runnables[thread].resetP_a(p_b);
 //        }
+    }
+
+    private void optimizeGamma() {
+        
+      for (byte m = 0; m < numModalities; m++) {
+        for (int r = 0; r < R; r++) {
+            // gamma: root level (Escobar+West95) with n = T
+            // (14)
+            double eta = samp.randBeta(gamma[m] + 1, T);
+            double bloge = bgamma - log(eta);
+            // (13')
+            double pie = 1. / (1. + (T * bloge / (agamma + K - 1)));
+            // (13)
+            int u = samp.randBernoulli(pie);
+            gamma = samp.randGamma(agamma + K - 1 + u, 1. / bloge);
+
+            // alpha: document level (Teh+06)
+            double qs = 0;
+            double qw = 0;
+            for (int m = 0; m < M; m++) {
+                // (49) (corrected)
+                qs += samp.randBernoulli(w[m].length / (w[m].length + alpha));
+                // (48)
+                qw += log(samp.randBeta(alpha + 1, w[m].length));
+            }
+            // (47)
+            alpha = samp.randGamma(aalpha + T - qs, 1. / (balpha - qw));
+        }
+      }
     }
 
     public void optimizeBeta(iMixWorkerRunnable[] runnables) {

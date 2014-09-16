@@ -334,7 +334,7 @@ public class iMixWorkerRunnable implements Runnable {
 
             isFinished = false;
 
-            updateTauAndSmoothing();
+            updateAlphaAndSmoothing();
             // Initialize the smoothing-only sampling bucket
 //            Arrays.fill(smoothingOnlyMass, 0d);
 //
@@ -1001,7 +1001,7 @@ public class iMixWorkerRunnable implements Runnable {
             double[][] p) {
 
         if (newTopic == numTopics) { //new topic in corpus
-            updateTauAndSmoothing();
+            updateAlphaAndSmoothing();
             
 //            for (byte i = 0; i < numModalities; i++) {
 //
@@ -1286,7 +1286,7 @@ public class iMixWorkerRunnable implements Runnable {
 
     }
 
-    private void updateTauAndSmoothing() {
+    private void updateAlphaAndSmoothing() {
         double[][] mk = new double[numModalities][numTopics + 1];
 
         //double[] tt = new double[maxTopic + 2];
@@ -1315,6 +1315,7 @@ public class iMixWorkerRunnable implements Runnable {
             mk[m][numTopics + 1] = gamma[m];
 
             double[] tt = sampleDirichlet(mk[m]);
+            
 
             for (int kk = 0; kk < numTopics; kk++) {
                 //int k = kactive.get(kk);
