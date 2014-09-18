@@ -145,19 +145,18 @@ public class iMixParallelTopicModel implements Serializable {
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
     private int histogramSize = 0;
-   
-    // Optimize gamma hyper params
-    RandomSamplers samp;double aalpha = 5;
-	double balpha = 0.1;
-	double abeta = 0.1;
-	double bbeta = 0.1;
-	// Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
-	double agamma = 5;
-	double bgamma = 0.1;
-	// number of samples for parameter samplers
-	int R = 10;
 
-    
+    // Optimize gamma hyper params
+    RandomSamplers samp;
+    double aalpha = 5;
+    double balpha = 0.1;
+    double abeta = 0.1;
+    double bbeta = 0.1;
+    // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
+    double agamma = 5;
+    double bgamma = 0.1;
+    // number of samples for parameter samplers
+    int R = 10;
 
     //double lblSkewWeight = 1;
     public iMixParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -1571,33 +1570,58 @@ public class iMixParallelTopicModel implements Serializable {
 //        }
     }
 
-    private void optimizeGamma() {
-        
-      for (byte m = 0; m < numModalities; m++) {
+    private void optimizeGamma(iMixWorkerRunnable[] runnables) {
+
+        int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
+        int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
+        double[] tablesPerModality = new double[numModalities];
+        Arrays.fill(tablesPerModality, 0);
+        double totalTables = 0;
+
+        for (Byte mod = 0; mod < numModalities; mod++) {
+            for (int thread = 0; thread < numThreads; thread++) {
+                int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
+                TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
+                tablesPerModality[mod] += runnables[thread].getTablesPerModality()[mod];
+                totalTables += tablesPerModality[mod];
+                for (int count = 0; count < sourceLengthCounts[mod].length; count++) {
+                    // for (Byte i = 0; i < numModalities; i++) {
+                    if (sourceLengthCounts[mod][count] > 0) {
+                        docLengthCounts[mod][count] += sourceLengthCounts[mod][count];
+                        sourceLengthCounts[mod][count] = 0;
+                    }
+                    //}
+                }
+            }
+        }
+
         for (int r = 0; r < R; r++) {
             // gamma: root level (Escobar+West95) with n = T
             // (14)
-            double eta = samp.randBeta(gamma[m] + 1, T);
+            double eta = samp.randBeta(gammaRoot + 1, totalTables);
             double bloge = bgamma - log(eta);
             // (13')
-            double pie = 1. / (1. + (T * bloge / (agamma + K - 1)));
+            double pie = 1. / (1. + (totalTables * bloge / (agamma + numTopics - 1)));
             // (13)
             int u = samp.randBernoulli(pie);
-            gamma = samp.randGamma(agamma + K - 1 + u, 1. / bloge);
+            gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
 
-            // alpha: document level (Teh+06)
-            double qs = 0;
-            double qw = 0;
-            for (int m = 0; m < M; m++) {
-                // (49) (corrected)
-                qs += samp.randBernoulli(w[m].length / (w[m].length + alpha));
-                // (48)
-                qw += log(samp.randBeta(alpha + 1, w[m].length));
+            for (byte m = 0; m < numModalities; m++) {
+                // alpha: document level (Teh+06)
+                double qs = 0;
+                double qw = 0;
+                for (int j = 0; j < docLengthCounts[m].length; j++) {
+                    for (int i = 0; i <= docLengthCounts[m][j]; i++) {
+
+                        qs += samp.randBernoulli(docLengthCounts[m][j] / (docLengthCounts[m][j] + gamma[m]));
+                        // (48)
+                        qw += log(samp.randBeta(gamma[m] + 1, docLengthCounts[m][j]));
+                    }
+                }
+                // (47)
+                gamma[m] = samp.randGamma(aalpha + tablesPerModality[m] - qs, 1. / (balpha - qw));
             }
-            // (47)
-            alpha = samp.randGamma(aalpha + T - qs, 1. / (balpha - qw));
         }
-      }
     }
 
     public void optimizeBeta(iMixWorkerRunnable[] runnables) {
@@ -1708,7 +1732,7 @@ public class iMixParallelTopicModel implements Serializable {
                         runnableCounts, runnableTotals,
                         offset, docsPerThread,
                         ignoreLabels, numModalities,
-                        p_a, p_b, gamma);
+                        p_a, p_b, gamma, gammaRoot);
 
                 runnables[thread].initializeAlphaStatistics(histogramSize);
 
@@ -1732,7 +1756,7 @@ public class iMixParallelTopicModel implements Serializable {
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread,
                     ignoreLabels, numModalities,
-                    p_a, p_b, gamma);
+                    p_a, p_b, gamma, gammaRoot);
 
             runnables[0].initializeAlphaStatistics(histogramSize);
 

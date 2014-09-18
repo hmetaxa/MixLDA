@@ -15,6 +15,7 @@ import gnu.trove.map.hash.TIntObjectHashMap;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.knowceans.util.Samplers;
+import org.knowceans.util.Vectors;
 
 /**
  * A parallel semi supervised topic model runnable task.
@@ -52,6 +53,7 @@ public class iMixWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    protected double gammaRoot;
     protected double[] gamma;
     protected TDoubleArrayList[] alpha;
     protected double[] alphaSum;
@@ -71,6 +73,7 @@ public class iMixWorkerRunnable implements Runnable {
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
     protected Randoms random;
+    protected double[] tablesPerModality; // num of tables per modality
     // The skew index of eachType
     //protected final double[][] typeSkewIndexes;
     //protected double[] skewWeight;// = 1;
@@ -88,7 +91,7 @@ public class iMixWorkerRunnable implements Runnable {
             TIntArrayList[][] typeTopicCounts,
             TIntArrayList[] tokensPerTopic,
             int startDoc, int numDocs, boolean ignoreLabels, byte numModalities,
-            double[][] p_a, double[][] p_b, double[] gamma) {
+            double[][] p_a, double[][] p_b, double[] gamma, double gammaRoot) {
 
         this.data = data;
 
@@ -98,6 +101,7 @@ public class iMixWorkerRunnable implements Runnable {
         //this.numCommonTopics = numTopics - numIndependentTopics * numModalities;
         this.numTypes = new int[numModalities];
         this.betaSum = new double[numModalities];
+        this.tablesPerModality = new double[numModalities];
         //this.skewWeight = skewWeight;
         this.p_a = p_a;  //new double[numModalities][numModalities];
         this.p_b = p_b;
@@ -149,6 +153,10 @@ public class iMixWorkerRunnable implements Runnable {
      */
     public void makeOnlyThread() {
         shouldBuildLocalCounts = false;
+    }
+
+    public double[] getTablesPerModality() {
+        return tablesPerModality;
     }
 
     public TIntArrayList[] getTokensPerTopic() {
@@ -561,8 +569,8 @@ public class iMixWorkerRunnable implements Runnable {
             int nonZeroTopics,
             // final int[] docLength,
             byte m //modality
-            //double[][] p
-            ) {
+    //double[][] p
+    ) {
 
         // if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
         //	Remove this token from all counts. 
@@ -1002,7 +1010,7 @@ public class iMixWorkerRunnable implements Runnable {
 
         if (newTopic == numTopics) { //new topic in corpus
             updateAlphaAndSmoothing();
-            
+
 //            for (byte i = 0; i < numModalities; i++) {
 //
 //                alpha[i].set(numTopics, alpha[i].get(numTopics - 1));
@@ -1215,20 +1223,20 @@ public class iMixWorkerRunnable implements Runnable {
                 //double origSample = sample;
                 newTopic = //random.nextInt(numTopics);
                         findNewTopic(
-                        localTopicCounts,
-                        localTopicIndex,
-                        totalMassOtherModalities,
-                        topicBetaMass,
-                        nonZeroTopics,
-                        m,
-                        topicTermMass,
-                        topicTermScores,
-                        currentTypeTopicCounts,
-                        docLength,
-                        sample,
-                        p,
-                        oldTopic,
-                        newTopicMass);
+                                localTopicCounts,
+                                localTopicIndex,
+                                totalMassOtherModalities,
+                                topicBetaMass,
+                                nonZeroTopics,
+                                m,
+                                topicTermMass,
+                                topicTermScores,
+                                currentTypeTopicCounts,
+                                docLength,
+                                sample,
+                                p,
+                                oldTopic,
+                                newTopicMass);
 
                 long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
                 tmpPreviousTopics = tmpPreviousTopics >> topicBits;
@@ -1312,34 +1320,33 @@ public class iMixWorkerRunnable implements Runnable {
         }// end outter for loop
 
         for (byte m = 0; m < numModalities; m++) {
-            mk[m][numTopics + 1] = gamma[m];
+            mk[m][numTopics + 1] = gammaRoot;
+            tablesPerModality[m] = Vectors.sum(mk[m]);
 
             double[] tt = sampleDirichlet(mk[m]);
-            
 
             for (int kk = 0; kk < numTopics; kk++) {
                 //int k = kactive.get(kk);
-                alpha[m].set(kk,tt[kk]);
+                alpha[m].set(kk, tt[kk]);
                 //tau.set(k, tt[kk]);
             }
-            alpha[m].set(numTopics,tt[numTopics]);
+            alpha[m].set(numTopics, tt[numTopics]);
             //tau.set(K, tt[K]);
         }
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
 
-         for (byte i = 0; i < numModalities; i++) {
-                for (int topic = 0; topic < numTopics; topic++) {
-                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
-                }
-
+        for (byte i = 0; i < numModalities; i++) {
+            for (int topic = 0; topic < numTopics; topic++) {
+                smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
+                smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
             }
-         
+
+        }
 
     }
-    
-       private double[] sampleDirichlet(double[] p) {
+
+    private double[] sampleDirichlet(double[] p) {
         double magnitude = 1;
         double[] partition;
 
@@ -1356,7 +1363,6 @@ public class iMixWorkerRunnable implements Runnable {
         }
 
         double distribution[] = new double[partition.length];
-
 
 //		For each dimension, draw a sample from Gamma(mp_i, 1)
         double sum = 0;
