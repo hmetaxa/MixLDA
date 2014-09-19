@@ -83,7 +83,7 @@ public class iMixParallelTopicModel implements Serializable {
     public int[] totalDocsPerModality; //number of docs containing this modality 
     //public int totalLabels;
     protected double[] gamma;
-    protected double gammaRoot;
+    protected double gammaRoot=1;
     public TDoubleArrayList[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     public double[] alphaSum;
     public double[] beta;   // Prior on per-topic multinomial distribution over token types (per modality) 
@@ -1906,7 +1906,8 @@ public class iMixParallelTopicModel implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % optimizeInterval == 0) {
 
-                optimizeAlpha(runnables);
+                //optimizeAlpha(runnables);
+                optimizeGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 

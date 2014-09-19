@@ -1308,8 +1308,7 @@ public class iMixWorkerRunnable implements Runnable {
                 for (byte m = 0; m < numModalities; m++) {
                     if (tokensPerTopic[m].get(t) > 1) {
                         //sample number of tables
-                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t),
-                                tokensPerTopic[m].get(t));
+                        mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
                     } else //nmk[m].get(k) = 0 or 1
                     {
@@ -1320,7 +1319,7 @@ public class iMixWorkerRunnable implements Runnable {
         }// end outter for loop
 
         for (byte m = 0; m < numModalities; m++) {
-            mk[m][numTopics + 1] = gammaRoot;
+            mk[m][numTopics] = gammaRoot;
             tablesPerModality[m] = Vectors.sum(mk[m]);
 
             double[] tt = sampleDirichlet(mk[m]);
