@@ -199,7 +199,8 @@ public class Randoms extends java.util.Random {
 	public synchronized double nextGamma(double alpha, double beta, double lambda) {
 		double gamma=0;
 		if (alpha <= 0 || beta <= 0) {
-			throw new IllegalArgumentException ("alpha and beta must be strictly positive.");
+                     return 0;
+			//throw new IllegalArgumentException ("alpha and beta must be strictly positive.");
 		}
 		if (alpha < 1) {
 			double b,p;

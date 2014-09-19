@@ -110,15 +110,22 @@ public class iMixWorkerRunnable implements Runnable {
         //this.typeSkewIndexes = typeSkewIndexes;
         this.gamma = gamma;
 
+        this.alpha = new TDoubleArrayList[numModalities];
+        this.alphaSum = new double[numModalities];
+
         for (byte i = 0; i < numModalities; i++) {
             this.numTypes[i] = typeTopicCounts[i].length;
             this.betaSum[i] = beta[i] * numTypes[i];
-            this.smoothOnlyCachedCoefficients[i] = new TDoubleArrayList(numTopics);
-            this.smoothOnlyCachedCoefficients[i].fill(0, numTopics, 0);
+            this.smoothOnlyCachedCoefficients[i] = new TDoubleArrayList(numTopics + 1);
+            this.smoothOnlyCachedCoefficients[i].fill(0, numTopics + 1, 0);
+
+            this.alpha[i] = new TDoubleArrayList(numTopics + 1);
+            this.alpha[i].fill(0, numTopics + 1, 1); //has one more dimension
 
             //Arrays.fill(this.p[i], 1d);
         }
 
+        //this.alphaSum = alphaSum;
         if (Integer.bitCount(numTopics) == 1) {
             // exact power of 2
             topicMask = numTopics - 1;
@@ -132,8 +139,7 @@ public class iMixWorkerRunnable implements Runnable {
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
 
-        this.alphaSum = alphaSum;
-        this.alpha = alpha;
+        //this.alpha = alpha; not the global alpha anymore.. 
         this.beta = beta;
 
         this.random = random;
@@ -923,13 +929,13 @@ public class iMixWorkerRunnable implements Runnable {
                     newTopic = findNewTopicInSmoothingMass(sample, m, docLength);
                 } else {
                     //totally new topic
-                    synchronized (LOCK) {
-                        newTopic = ++numTopics;
-
-                        for (m = 0; m < numModalities; m++) {
-                            alpha[m].set(numTopics + 1, alpha[m].get(numTopics));
-                        }
-                    }
+                    //synchronized (LOCK) {
+                        newTopic = numTopics;
+//Update topics count will take care of them
+//                        for (m = 0; m < numModalities; m++) {
+//                            alpha[m].set(numTopics + 1, alpha[m].get(numTopics));
+//                        }
+                   // }
 
                 }
 
@@ -1009,25 +1015,20 @@ public class iMixWorkerRunnable implements Runnable {
             double[][] p) {
 
         if (newTopic == numTopics) { //new topic in corpus
+
+            totalMassOtherModalities.add(0);
+            cachedCoefficients.add(0);
+            for (Byte i = 0; i < numModalities; i++) {
+                localTopicCounts[i].add(0);
+                alpha[i].add(1);
+
+                tokensPerTopic[i].add(i == m ? 1 : 0);
+                smoothOnlyCachedCoefficients[i].add(0);
+             
+            }
+
             updateAlphaAndSmoothing();
 
-//            for (byte i = 0; i < numModalities; i++) {
-//
-//                alpha[i].set(numTopics, alpha[i].get(numTopics - 1));
-//
-//                if (i != m) { //Update smoothing for all other modalities, current modality will be updated at the end
-//                    smoothingOnlyMass[i] += gamma[i] * alpha[i].get(newTopic) * beta[i]
-//                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
-//
-//                    smoothOnlyCachedCoefficients[i].set(newTopic, gamma[i] * alpha[i].get(newTopic) / (tokensPerTopic[i].get(newTopic) + betaSum[i]));
-//                    //ONLY Global counts should be updated
-////                    double normSumN = (localTopicCounts[i].get(newTopic) + totalMassOtherModalities.get(newTopic))
-////                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
-////
-////                    topicBetaMass[i] += beta[i] * normSumN;
-////                    cachedCoefficients.set(newTopic, normSumN);
-//                }
-//            }
             numTopics++;
         }
 
@@ -1211,7 +1212,8 @@ public class iMixWorkerRunnable implements Runnable {
                 assert (topicBetaMass[m] >= 0) : "topicBeta Mass " + topicBetaMass[m] + " below 0";
                 assert (topicTermMass >= 0) : "topicTerm Mass " + topicTermMass + " below 0";
 
-                double newTopicMass = gamma[m] * alpha[m].get(numTopics + 1) / (docLength[m] * numTypes[m]);
+                //double newTopicMass = gamma[m] * alpha[m].get(numTopics) / (docLength[m] * numTypes[m]);
+                double newTopicMass = gamma[m] * alpha[m].get(numTopics) / (numTypes[m]);
 
                 double sample = ThreadLocalRandom.current().nextDouble() * (newTopicMass + smoothingOnlyMass[m]
                         + topicBetaMass[m] + topicTermMass);
@@ -1308,7 +1310,8 @@ public class iMixWorkerRunnable implements Runnable {
                 for (byte m = 0; m < numModalities; m++) {
                     if (tokensPerTopic[m].get(t) > 1) {
                         //sample number of tables
-                        mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m].get(t), tokensPerTopic[m].get(t));
+                        //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
                     } else //nmk[m].get(k) = 0 or 1
                     {
@@ -1319,19 +1322,29 @@ public class iMixWorkerRunnable implements Runnable {
         }// end outter for loop
 
         for (byte m = 0; m < numModalities; m++) {
+            //alpha[m].fill(0, numTopics, 0);
+
+            alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
             tablesPerModality[m] = Vectors.sum(mk[m]);
 
             double[] tt = sampleDirichlet(mk[m]);
 
-            for (int kk = 0; kk < numTopics; kk++) {
+            for (int kk = 0; kk <= numTopics; kk++) {
                 //int k = kactive.get(kk);
                 alpha[m].set(kk, tt[kk]);
+                alphaSum[m] += gamma[m] * tt[kk];
                 //tau.set(k, tt[kk]);
             }
-            alpha[m].set(numTopics, tt[numTopics]);
+
+//            if (alpha[m].size() < numTopics + 1) {
+//                alpha[m].add(tt[numTopics]);
+//            } else {
+//                alpha[m].set(numTopics, tt[numTopics]);
+//            }
             //tau.set(K, tt[K]);
         }
+
         // Initialize the smoothing-only sampling bucket
         Arrays.fill(smoothingOnlyMass, 0d);
 
@@ -1340,6 +1353,8 @@ public class iMixWorkerRunnable implements Runnable {
                 smoothingOnlyMass[i] += gamma[i] * alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
                 smoothOnlyCachedCoefficients[i].set(topic, gamma[i] * alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
             }
+            smoothingOnlyMass[i] += gamma[i] * alpha[i].get(numTopics) * beta[i] / (betaSum[i]);
+            smoothOnlyCachedCoefficients[i].set(numTopics, gamma[i] * alpha[i].get(numTopics) / (betaSum[i]));
 
         }
 
@@ -1366,6 +1381,7 @@ public class iMixWorkerRunnable implements Runnable {
 //		For each dimension, draw a sample from Gamma(mp_i, 1)
         double sum = 0;
         for (int i = 0; i < distribution.length; i++) {
+
             distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
             if (distribution[i] <= 0) {
                 distribution[i] = 0.0001;

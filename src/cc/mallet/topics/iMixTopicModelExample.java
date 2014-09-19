@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 1;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -50,11 +50,11 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
-        int numIterations = 350;
+        int numTopics = 10;
+        int numIterations = 450;
         int independentIterations = 10;
-        int burnIn = 20;
-        int optimizeInterval = 20;
+        int burnIn = 50;
+        int optimizeInterval = 10;
         LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -477,7 +477,7 @@ public class iMixTopicModelExample {
                 hdp.initialize(instances[0]);
 
                 //set number of iterations, and display result or not 
-                hdp.estimate(2000);
+                hdp.estimate(500);
 
                 //get topic distribution for first instance
                 double[] distr = hdp.topicDistribution(0);

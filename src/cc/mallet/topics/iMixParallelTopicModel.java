@@ -83,7 +83,7 @@ public class iMixParallelTopicModel implements Serializable {
     public int[] totalDocsPerModality; //number of docs containing this modality 
     //public int totalLabels;
     protected double[] gamma;
-    protected double gammaRoot=1;
+    protected double gammaRoot=10;
     public TDoubleArrayList[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     public double[] alphaSum;
     public double[] beta;   // Prior on per-topic multinomial distribution over token types (per modality) 
@@ -247,6 +247,8 @@ public class iMixParallelTopicModel implements Serializable {
 
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
+        
+        this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
     }
 
@@ -354,10 +356,10 @@ public class iMixParallelTopicModel implements Serializable {
             numTypes[i] = tmpNumTypes;
             betaSum[i] = beta[i] * tmpNumTypes;
 
-            alpha[i] = new TDoubleArrayList(numTopics);
-            this.alpha[i].fill(0, numTopics, alphaSum[i] / numTopics);
+            alpha[i] = new TDoubleArrayList(numTopics+1);
+            this.alpha[i].fill(0, numTopics+1, alphaSum[i] / numTopics); //has one more dimension
 
-            gamma[i] = 1;
+            gamma[i] = 10;
 
             typeTopicCounts[i] = new TIntArrayList[tmpNumTypes];
             tokensPerTopic[i] = new TIntArrayList(numTopics);
@@ -365,12 +367,12 @@ public class iMixParallelTopicModel implements Serializable {
             typeTotals[i] = new int[tmpNumTypes];
             //typeSkewIndexes[i] = new double[tmpNumTypes];
 
-            Randoms random = null;
-            if (randomSeed == -1) {
-                random = new Randoms();
-            } else {
-                random = new Randoms(randomSeed);
-            }
+//            Randoms random = null;
+//            if (randomSeed == -1) {
+//                random = new Randoms();
+//            } else {
+//                random = new Randoms(randomSeed);
+//            }
 
             int doc = 0;
 
@@ -1907,7 +1909,7 @@ public class iMixParallelTopicModel implements Serializable {
                     && iteration % optimizeInterval == 0) {
 
                 //optimizeAlpha(runnables);
-                optimizeGamma(runnables);
+                //optimizeGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 
