@@ -58,7 +58,6 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
         //public int nonZeroTopics;
         //public double few;//frequency exclusivity weight we have an array for that
     }
-
 //    public enum SkewType {
 //
 //        None,
@@ -495,7 +494,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
 
                 typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
                 //tokensPerTopic[i].fill(0, numTopics, 0);
-                Arrays.fill(typeTopicCounts[i][type],0);
+                Arrays.fill(typeTopicCounts[i][type], 0);
                 //typeTopicCounts[i][type].fill(0, numTopics, 0);
 
 //                int[] topicCounts = typeTopicCounts[i][type];
@@ -597,7 +596,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                                     && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
                                 int temp = currentTypeTopicCounts[index];
                                 currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-                                currentTypeTopicCounts[index - 1]=temp;
+                                currentTypeTopicCounts[index - 1] = temp;
 
                                 index--;
                             }
@@ -684,7 +683,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                 if (similarity > mergeSimilarity) {
                     mergedTopics.put(t, t_text);
                     for (Byte m = 0; m < numModalities; m++) {
-                        alpha[m][t]= 0;
+                        alpha[m][t] = 0;
                     }
 
                 }
@@ -1153,7 +1152,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                         // }
                         currentCount = targetCounts[targetIndex] >> topicBits;
 
-                        targetCounts[targetIndex] = 
+                        targetCounts[targetIndex] =
                                 ((currentCount + count) << topicBits) + topic;
 
                         // Now ensure that the array is still sorted by 
@@ -1161,8 +1160,8 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                         while (targetIndex > 0
                                 && targetCounts[targetIndex] > targetCounts[targetIndex - 1]) {
                             int temp = targetCounts[targetIndex];
-                            targetCounts[targetIndex] =  targetCounts[targetIndex - 1];
-                            targetCounts[targetIndex - 1] =  temp;
+                            targetCounts[targetIndex] = targetCounts[targetIndex - 1];
+                            targetCounts[targetIndex - 1] = temp;
 
                             targetIndex--;
                         }
@@ -1333,25 +1332,33 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                         numTopics,
                         alphaSum[m]);
                 for (int topic = 0; topic < numTopics; topic++) {
-                    alpha[m][topic] =  alphaSum[m] / numTopics;
+                    alpha[m][topic] = alphaSum[m] / numTopics;
                 }
             } else {
                 double[] alphaTmp = Arrays.copyOf(alpha[m], alpha[m].length);
                 double prevAlphaSum = alphaSum[m];
-                        //new double(alpha[m]);
+                //new double(alpha[m]);
 
                 //alphaSum[m] = Dirichlet.learnParameters(alpha[m], topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
                 //alpha[m];
                 //alpha[m].add(alphaTmp);
-                 try {
+                try {
                     alphaSum[m] = Dirichlet.learnParameters(alpha[m], topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
-                    
+
+//                    if (Double.isNaN(alphaSum[m])|| Double.isInfinite(prevAlphaSum) alphaSum[m]<0 || alphaSum[m]>10) {
+//                        logger.warning("Dirichlet optimization has become unstable: "+ alphaSum[m]+". Resetting to previous alpha");
+//                        alphaSum[m] = prevAlphaSum;
+//                        for (int topic = 0; topic < numTopics; topic++) {
+//                            alpha[m][topic] = alphaTmp[topic];
+//                        }
+//                    }
+
                 } catch (RuntimeException e) {
                     // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
-                    logger.warning("Dirichlet optimization has become unstable. Resetting to previous alpha_t");
+                    logger.warning("Dirichlet optimization has become unstable:"+e.getMessage()+". Resetting to previous alpha_t");
                     alphaSum[m] = prevAlphaSum;
                     for (int topic = 0; topic < numTopics; topic++) {
-                        alpha[m][topic]=alphaTmp[topic];
+                        alpha[m][topic] = alphaTmp[topic];
                     }
                 }
             }
@@ -1562,7 +1569,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
         if (numThreads > 1) {
 
             for (int thread = 0; thread < numThreads; thread++) {
-                
+
                 int[][] runnableTotals = new int[numModalities][numTopics];
                 int[][][] runnableCounts = new int[numModalities][][];
                 for (byte i = 0; i < numModalities; i++) {
@@ -1574,7 +1581,7 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                         runnableCounts[i][type] = counts;
                     }
                 }
-            
+
                 // some docs may be missing at the end due to integer division
                 if (thread == numThreads - 1) {
                     docsPerThread = data.size() - offset;
@@ -1715,13 +1722,13 @@ public class iMixParallelTopicModelFixTopics implements Serializable {
                 //place synchronized values back to threads
                 for (int thread = 0; thread < numThreads; thread++) {
 
-                     int[][] runnableTotals = runnables[thread].getTokensPerTopic();
+                    int[][] runnableTotals = runnables[thread].getTokensPerTopic();
                     for (byte i = 0; i < numModalities; i++) {
                         System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
-                    
+
                     //runnables[thread].resetSkewWeight(skewWeight);
-                 int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
+                    int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
                     for (byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
                             int[] targetCounts = runnableCounts[i][type];

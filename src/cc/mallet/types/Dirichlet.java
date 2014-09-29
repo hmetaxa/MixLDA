@@ -678,7 +678,7 @@ public class Dirichlet {
             }
         }
 
-        if (parametersSum < 0.0) {
+        if (parametersSum < 0.0 || Double.isNaN(parametersSum) || Double.isInfinite(parametersSum)) {
             throw new RuntimeException("sum: " + parametersSum);
         }
         return parametersSum;
