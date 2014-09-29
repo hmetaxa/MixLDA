@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 1;
+        byte numModalities = 2;
         int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -50,7 +50,7 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 10;
+        int numTopics = 100;
         int numIterations = 450;
         int independentIterations = 10;
         int burnIn = 50;
@@ -529,7 +529,12 @@ public class iMixTopicModelExample {
                 //model.saveModelInterval=250;
                 modelOrig.estimate();
             }
-            iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
+            
+            //Non parametric model
+            //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
+            
+            //parametric model
+            iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
