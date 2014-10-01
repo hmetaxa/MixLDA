@@ -58,7 +58,6 @@ public class MixLDAParallelTopicModel implements Serializable {
         //public int nonZeroTopics;
         //public double few;//frequency exclusivity weight we have an array for that
     }
-
 //    public enum SkewType {
 //
 //        None,
@@ -495,7 +494,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                 typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
                 //tokensPerTopic[i].fill(0, numTopics, 0);
-                Arrays.fill(typeTopicCounts[i][type],0);
+                Arrays.fill(typeTopicCounts[i][type], 0);
                 //typeTopicCounts[i][type].fill(0, numTopics, 0);
 
 //                int[] topicCounts = typeTopicCounts[i][type];
@@ -534,9 +533,9 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                         int[] tmplist = tokensPerTopic[i];
 
-                        int tmp = tmplist[topic];
-                        tokensPerTopic[i][topic] = tmp + 1;
-                        //tokensPerTopic[i][topic]++;
+                        //int tmp = tmplist[topic];
+                        //tokensPerTopic[i][topic] = tmp + 1;
+                        tokensPerTopic[i][topic]++;
 
                         // The format for these arrays is 
                         //  the topic in the rightmost bits
@@ -597,7 +596,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                                     && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
                                 int temp = currentTypeTopicCounts[index];
                                 currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-                                currentTypeTopicCounts[index - 1]=temp;
+                                currentTypeTopicCounts[index - 1] = temp;
 
                                 index--;
                             }
@@ -684,7 +683,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                 if (similarity > mergeSimilarity) {
                     mergedTopics.put(t, t_text);
                     for (Byte m = 0; m < numModalities; m++) {
-                        alpha[m][t]= 0;
+                        alpha[m][t] = 0;
                     }
 
                 }
@@ -1153,7 +1152,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         // }
                         currentCount = targetCounts[targetIndex] >> topicBits;
 
-                        targetCounts[targetIndex] = 
+                        targetCounts[targetIndex] =
                                 ((currentCount + count) << topicBits) + topic;
 
                         // Now ensure that the array is still sorted by 
@@ -1161,8 +1160,8 @@ public class MixLDAParallelTopicModel implements Serializable {
                         while (targetIndex > 0
                                 && targetCounts[targetIndex] > targetCounts[targetIndex - 1]) {
                             int temp = targetCounts[targetIndex];
-                            targetCounts[targetIndex] =  targetCounts[targetIndex - 1];
-                            targetCounts[targetIndex - 1] =  temp;
+                            targetCounts[targetIndex] = targetCounts[targetIndex - 1];
+                            targetCounts[targetIndex - 1] = temp;
 
                             targetIndex--;
                         }
@@ -1333,31 +1332,31 @@ public class MixLDAParallelTopicModel implements Serializable {
                         numTopics,
                         alphaSum[m]);
                 for (int topic = 0; topic < numTopics; topic++) {
-                    alpha[m][topic] =  alphaSum[m] / numTopics;
+                    alpha[m][topic] = alphaSum[m] / numTopics;
                 }
             } else {
                 double[] alphaTmp = Arrays.copyOf(alpha[m], alpha[m].length);
                 double prevAlphaSum = alphaSum[m];
-                        //new double(alpha[m]);
+                //new double(alpha[m]);
 
                 //alphaSum[m] = Dirichlet.learnParameters(alpha[m], topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
                 //alpha[m];
                 //alpha[m].add(alphaTmp);
-                 try {
+                try {
                     alphaSum[m] = Dirichlet.learnParameters(alpha[m], topicDocCounts[m], docLengthCounts[m], 1.001, 1.0, 1);
-                    
+
                 } catch (RuntimeException e) {
                     // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
-                    logger.warning("Dirichlet optimization has become unstable. Resetting to previous alpha_t");
+                    logger.warning("Dirichlet optimization has become unstable:" + e.getMessage() + ". Resetting to previous alpha_t");
                     alphaSum[m] = prevAlphaSum;
                     for (int topic = 0; topic < numTopics; topic++) {
-                        alpha[m][topic]=alphaTmp[topic];
+                        alpha[m][topic] = alphaTmp[topic];
                     }
                 }
             }
 
-            logger.info("[alpha: " + formatter.format(alpha[m][0]) + "] ");
-            logger.info("[alphaSum: " + formatter.format(alphaSum[m]) + "] ");
+            logger.info("[alpha[" + m + "]: " + formatter.format(alpha[m][0]) + "] ");
+            logger.info("[alphaSum[" + m + "]: " + formatter.format(alphaSum[m]) + "] ");
         }
     }
 
@@ -1562,7 +1561,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         if (numThreads > 1) {
 
             for (int thread = 0; thread < numThreads; thread++) {
-                
+
                 int[][] runnableTotals = new int[numModalities][numTopics];
                 int[][][] runnableCounts = new int[numModalities][][];
                 for (byte i = 0; i < numModalities; i++) {
@@ -1574,7 +1573,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         runnableCounts[i][type] = counts;
                     }
                 }
-            
+
                 // some docs may be missing at the end due to integer division
                 if (thread == numThreads - 1) {
                     docsPerThread = data.size() - offset;
@@ -1715,13 +1714,13 @@ public class MixLDAParallelTopicModel implements Serializable {
                 //place synchronized values back to threads
                 for (int thread = 0; thread < numThreads; thread++) {
 
-                     int[][] runnableTotals = runnables[thread].getTokensPerTopic();
+                    int[][] runnableTotals = runnables[thread].getTokensPerTopic();
                     for (byte i = 0; i < numModalities; i++) {
                         System.arraycopy(tokensPerTopic[i], 0, runnableTotals[i], 0, numTopics);
                     }
-                    
+
                     //runnables[thread].resetSkewWeight(skewWeight);
-                 int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
+                    int[][][] runnableCounts = runnables[thread].getTypeTopicCounts();
                     for (byte i = 0; i < numModalities; i++) {
                         for (int type = 0; type < numTypes[i]; type++) {
                             int[] targetCounts = runnableCounts[i][type];
@@ -2599,7 +2598,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
-                topicLogGammas[ topic] = Dirichlet.logGammaStirling(alpha[m][topic]);
+                topicLogGammas[ topic] = alpha[m][topic] == 0 ? 0 : Dirichlet.logGammaStirling(alpha[m][topic]);
             }
             int[] topicCounts = new int[numTopics];
 
@@ -2616,13 +2615,14 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                         for (int topic = 0; topic < numTopics; topic++) {
                             if (topicCounts[topic] > 0) {
-                                logLikelihood[m] += (Dirichlet.logGammaStirling(alpha[m][topic] + topicCounts[topic])
+                                double tmp_a = alpha[m][topic] + topicCounts[topic];
+                                logLikelihood[m] += (tmp_a == 0 ? 0 : Dirichlet.logGammaStirling(tmp_a)
                                         - topicLogGammas[ topic]);
                             }
                         }
 
                         // subtract the (count + parameter) sum term
-                        logLikelihood[m] -= Dirichlet.logGammaStirling(alphaSum[m] + docTopics.length);
+                        logLikelihood[m] -= (alphaSum[m] + docTopics.length) == 0 ? 0 : Dirichlet.logGammaStirling(alphaSum[m] + docTopics.length);
                         modalityCnt++;
 
                     }
@@ -2632,6 +2632,16 @@ public class MixLDAParallelTopicModel implements Serializable {
 
             // add the parameter sum term
             logLikelihood[m] += modalityCnt * Dirichlet.logGammaStirling(alphaSum[m]);
+
+            if (Double.isNaN(logLikelihood[m])) {
+                logger.warning("NaN in log likelihood calculation" + " for modality: " + m);
+                logLikelihood[m] = 0;
+                break;
+            } else if (Double.isInfinite(logLikelihood[m])) {
+                logger.warning("infinite log likelihood" + " for modality: " + m);
+                logLikelihood[m] = 0;
+                break;
+            }
 
             // And the topics
             // Count the number of type-topic pairs that are not just (logGamma(beta) - logGamma(beta))
@@ -2649,7 +2659,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                     int count = topicCounts[index] >> topicBits;
 
                     nonZeroTypeTopics++;
-                    logLikelihood[m] += Dirichlet.logGammaStirling(beta[m] + count);
+                    logLikelihood[m] += (beta[m] + count) == 0 ? 0 : Dirichlet.logGammaStirling(beta[m] + count);
 
                     if (Double.isNaN(logLikelihood[m])) {
                         logger.warning("NaN in log likelihood calculation" + " for modality: " + m);
@@ -2666,7 +2676,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             }
 
             for (int topic = 0; topic < numTopics; topic++) {
-                logLikelihood[m] -= Dirichlet.logGammaStirling((beta[m] * numTypes[m])
+                logLikelihood[m] -= (beta[m] * numTypes[m] + tokensPerTopic[m][topic]) == 0 ? 0 : Dirichlet.logGammaStirling((beta[m] * numTypes[m])
                         + tokensPerTopic[m][topic]);
 
                 if (Double.isNaN(logLikelihood[m])) {
@@ -2682,10 +2692,10 @@ public class MixLDAParallelTopicModel implements Serializable {
             }
 
             // logGamma(|V|*beta) for every topic
-            logLikelihood[m] += Dirichlet.logGammaStirling(beta[m] * numTypes[m]) * numTopics;
+            logLikelihood[m] += (beta[m] * numTypes[m]) == 0 ? 0 : Dirichlet.logGammaStirling(beta[m] * numTypes[m]) * numTopics;
 
             // logGamma(beta) for all type/topic pairs with non-zero count
-            logLikelihood[m] -= Dirichlet.logGammaStirling(beta[m]) * nonZeroTypeTopics;
+            logLikelihood[m] -= beta[m] == 0 ? 0 : Dirichlet.logGammaStirling(beta[m]) * nonZeroTypeTopics;
 
             if (Double.isNaN(logLikelihood[m])) {
                 logger.info("at the end");
