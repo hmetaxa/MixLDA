@@ -11,29 +11,32 @@ import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
 //import gnu.trove.list.array.double[];
 //import gnu.trove.list.array.int[];
-import gnu.trove.map.hash.TIntObjectHashMap;
+//import gnu.trove.map.hash.TIntObjectHashMap;
+//import gnu.trove.map.hash.TObjectIntHashMap;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * A parallel semi supervised topic model runnable task.
  *
- * @author Omiros Metaxas extending MALLET Parallel topic model of author David
- * Mimno, Andrew McCallum test BOX sync
+ * @author Omiros Metaxas extending MALLET Parallel topic model of David Mimno,
+ * Andrew McCallum
  *
  */
 public class MixLDAWorkerRunnable implements Runnable {
+//
+//    public class MassValue {
+//
+//        public double topicTermMass;
+//        public double topicBetaMass;
+//        public double smoothingOnlyMass;
+//        //public int nonZeroTopics;
+//        //public double few;//frequency exclusivity weight we have an array for that
+//    }
 
-    public class MassValue {
-
-        public double topicTermMass;
-        public double topicBetaMass;
-        public double smoothingOnlyMass;
-        //public int nonZeroTopics;
-        //public double few;//frequency exclusivity weight we have an array for that
-    }
+    public static final int UNASSIGNED_TOPIC = -1;
     boolean isFinished = true;
-    boolean ignoreLabels = false;
+    //boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
     ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
@@ -50,8 +53,6 @@ public class MixLDAWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-
-    
 
     protected double[][] alpha;
     protected double[] alphaSum;
@@ -105,13 +106,12 @@ public class MixLDAWorkerRunnable implements Runnable {
         this.smoothingOnlyMass = new double[numModalities];
         this.smoothOnlyCachedCoefficients = new double[numModalities][];
         //this.typeSkewIndexes = typeSkewIndexes;
-        
 
         for (byte i = 0; i < numModalities; i++) {
             this.numTypes[i] = typeTopicCounts[i].length;
             this.betaSum[i] = beta[i] * numTypes[i];
             this.smoothOnlyCachedCoefficients[i] = new double[numTopics];
-            Arrays.fill( this.smoothOnlyCachedCoefficients[i], 0);
+            Arrays.fill(this.smoothOnlyCachedCoefficients[i], 0);
         }
 
         if (Integer.bitCount(numTopics) == 1) {
@@ -259,7 +259,7 @@ public class MixLDAWorkerRunnable implements Runnable {
 
                         int topic = topics[position];
 
-                        if (topic == ParallelTopicModel.UNASSIGNED_TOPIC) {
+                        if (topic == UNASSIGNED_TOPIC) {
                             System.err.println(" buildLocalTypeTopicCounts UNASSIGNED_TOPIC");
                             continue;
                         }
@@ -298,10 +298,10 @@ public class MixLDAWorkerRunnable implements Runnable {
                             // new value is 1, so we don't have to worry about sorting
                             //  (except by topic suffix, which doesn't matter)
 
-                            currentTypeTopicCounts[index]=(1 << topicBits) + topic;
+                            currentTypeTopicCounts[index] = (1 << topicBits) + topic;
                         } else {
-                            currentTypeTopicCounts[index]=
-                                    ((currentValue + 1) << topicBits) + topic;
+                            currentTypeTopicCounts[index]
+                                    = ((currentValue + 1) << topicBits) + topic;
 
                             // Now ensure that the array is still sorted by 
                             //  bubbling this value up.
@@ -344,14 +344,9 @@ public class MixLDAWorkerRunnable implements Runnable {
                 //for (int topic = 0; topic < numCommonTopics; topic++) {
                 for (int topic = 0; topic < numTopics; topic++) {
                     smoothingOnlyMass[i] += alpha[i][topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i][topic] =   alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
+                    smoothOnlyCachedCoefficients[i][topic] = alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
                 }
 
-//                for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
-//
-//                    smoothingOnlyMass[i] += alpha[i].get(topic) * beta[i] / (tokensPerTopic[i].get(topic) + betaSum[i]);
-//                    smoothOnlyCachedCoefficients[i].set(topic, alpha[i].get(topic) / (tokensPerTopic[i].get(topic) + betaSum[i]));
-//                }
             }
 
             for (int doc = startDoc;
@@ -406,7 +401,7 @@ public class MixLDAWorkerRunnable implements Runnable {
 //    }
     protected int initSampling(
             MixTopicModelTopicAssignment doc,
-            double[][] totalMassPerModalityAndTopic,
+            //double[][] totalMassPerModalityAndTopic,
             int[][] oneDocTopics,
             FeatureSequence[] tokenSequence,
             int[] docLength,
@@ -415,15 +410,16 @@ public class MixLDAWorkerRunnable implements Runnable {
 
         for (byte i = 0; i < numModalities; i++) {
             docLength[i] = 0;
-            totalMassPerModalityAndTopic[i] = new double[numTopics];
-            Arrays.fill(totalMassPerModalityAndTopic[i], 0);
+            //totalMassPerModalityAndTopic[i] = new double[numTopics];
+            // Arrays.fill(totalMassPerModalityAndTopic[i], 0);
             //totalMassPerModalityAndTopic[i].fill(0, , 0);
 
             localTopicCounts[i] = new int[numTopics];
-            Arrays.fill( localTopicCounts[i], 0);
+            //Arrays.fill( localTopicCounts[i], 0);
             //localTopicCounts[i].fill(0, numTopics, 0);
 
             if (doc.Assignments[i] != null) {
+                //TODO can I order by tokens/topics??
                 oneDocTopics[i] = doc.Assignments[i].topicSequence.getFeatures();
 
                 //System.arraycopy(oneDocTopics[i], 0, doc.Assignments[i].topicSequence.getFeatures(), 0, doc.Assignments[i].topicSequence.getFeatures().length-1);
@@ -433,7 +429,7 @@ public class MixLDAWorkerRunnable implements Runnable {
 
                 //		populate topic counts
                 for (int position = 0; position < docLength[i]; position++) {
-                    if (oneDocTopics[i][position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
+                    if (oneDocTopics[i][position] == UNASSIGNED_TOPIC) {
                         System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                         continue;
                     }
@@ -442,15 +438,6 @@ public class MixLDAWorkerRunnable implements Runnable {
                 }
             }
 
-//            for (int topic = 0; topic < numCommonTopics; topic++) {
-//                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
-//                        / (docLength[i] + alphaSum));
-//            }
-//
-//            for (int topic = numCommonTopics + i * numIndependentTopics; topic < numCommonTopics + (i + 1) * numIndependentTopics; topic++) {
-//                totalMassPerModalityAndTopic[i].set(topic, (localTopicCounts[i].get(topic) + alpha.get(topic))
-//                        / (docLength[i] + alphaSum));
-//            }
         }
         // Build an array that densely lists the topics that
         //  have non-zero counts.
@@ -471,27 +458,6 @@ public class MixLDAWorkerRunnable implements Runnable {
         // Record the total number of non-zero topics
         int nonZeroTopics = denseIndex;
 
-        //		Initialize the topic count/beta sampling bucket
-        // Initialize cached coefficients and the topic/beta 
-        //  normalizing constant.
-//        int topic = -1;
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            topic = localTopicIndex.get(denseIndex);
-//            for (byte m = 0; m < numModalities; m++) {
-//
-//                if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-//
-//                    //	initialize the total mass per modality: ( n_{t|d}+a(m) / (docLength[m]+aSum))
-//                    double normSumN = (localTopicCounts[m].get(topic) + alpha.get(topic))
-//                            / (docLength[m] + alphaSum);
-//
-//                    totalMassPerModalityAndTopic[m].set(topic, totalMassPerModalityAndTopic[m].get(topic) + normSumN);
-//
-//                }
-//
-//            }
-//        }
         return nonZeroTopics;
     }
 
@@ -510,7 +476,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         //cachedCoefficients.reset();
         Arrays.fill(cachedCoefficients, 0);
         //cachedCoefficients.fill(0, numTopics, 0);
-        
+
         //totalMassOtherModalities.reset();
         Arrays.fill(totalMassOtherModalities, 0);
         //totalMassOtherModalities.fill(0, numTopics, 0);
@@ -531,8 +497,8 @@ public class MixLDAWorkerRunnable implements Runnable {
         for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
             topic = localTopicIndex[denseIndex];
-            //totalMassOtherModalities.set(topic, 0);
 
+            //totalMassOtherModalities.set(topic, 0);
 //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
             //  if (topic < numTopics) {
             for (byte i = 0; i < numModalities; i++) {
@@ -571,7 +537,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         //	Remove this token from all counts. 
         // Remove this topic's contribution to the 
         //  normalizing constants
-        smoothingOnlyMass[m] -=  alpha[m][oldTopic] * beta[m]
+        smoothingOnlyMass[m] -= alpha[m][oldTopic] * beta[m]
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         double normSumN = (localTopicCounts[m][oldTopic] + totalMassOtherModalities[oldTopic])
@@ -581,11 +547,11 @@ public class MixLDAWorkerRunnable implements Runnable {
         //cachedCoefficients.set(oldTopic, normSumN);
 
         // Decrement the local doc/topic counts
-        localTopicCounts[m][oldTopic] --;
+        localTopicCounts[m][oldTopic]--;
 
         // Decrement the global topic count totals
         tokensPerTopic[m][oldTopic]--;
-        
+
         assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
 
         // Add the old topic's contribution back into the
@@ -593,7 +559,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         smoothingOnlyMass[m] += alpha[m][oldTopic] * beta[m]
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
-        smoothOnlyCachedCoefficients[m][oldTopic] =  alpha[m][oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+        smoothOnlyCachedCoefficients[m][oldTopic] = alpha[m][oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         normSumN = (localTopicCounts[m][oldTopic] + totalMassOtherModalities[oldTopic])
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
@@ -628,7 +594,7 @@ public class MixLDAWorkerRunnable implements Runnable {
             // shift all remaining dense indices to the left.
             while (denseIndex < nonZeroTopics) {
                 if (denseIndex < localTopicIndex.length - 1) {
-                    localTopicIndex[denseIndex] = localTopicIndex[denseIndex+1];
+                    localTopicIndex[denseIndex] = localTopicIndex[denseIndex + 1];
                 }
                 denseIndex++;
             }
@@ -636,47 +602,45 @@ public class MixLDAWorkerRunnable implements Runnable {
             nonZeroTopics--;
         }
 
-        //omiors test ... recalc all beta 
         return nonZeroTopics;
 
     }
 
     //TODO: I recalc them every time because sometimes I had a sampling error in FindTopicIn Beta Mass.. 
     //I shouldn't need it, thus I should check it again
-    protected void recalcBetaAndCachedCoefficients(
-            double[][] cachedCoefficients,
-            int[][] localTopicCounts,
-            int[] localTopicIndex,
-            double[] topicBetaMass,
-            int nonZeroTopics,
-            final int[] docLength,
-            byte m, //modality
-            double[][] p) {
-
-        Arrays.fill(topicBetaMass, 0);
-        for (byte i = 0; i < numModalities; i++) {
-            
-            Arrays.fill(cachedCoefficients[i], 0);
-        }
-
-        for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-            int topic = localTopicIndex[denseIndex];
-            //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
-
-            for (byte j = 0; j < numModalities; j++) {
-                if (docLength[j] > 0) {
-                    double normSumN = p[m][j] * localTopicCounts[j][topic]
-                            / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
-
-                    topicBetaMass[m] += beta[m] * normSumN;
-                    cachedCoefficients[m][topic] += normSumN;
-                }
-            }
-            //}
-
-        }
-    }
-
+//    protected void recalcBetaAndCachedCoefficients(
+//            double[][] cachedCoefficients,
+//            int[][] localTopicCounts,
+//            int[] localTopicIndex,
+//            double[] topicBetaMass,
+//            int nonZeroTopics,
+//            final int[] docLength,
+//            byte m, //modality
+//            double[][] p) {
+//
+//        Arrays.fill(topicBetaMass, 0);
+//        for (byte i = 0; i < numModalities; i++) {
+//            
+//            Arrays.fill(cachedCoefficients[i], 0);
+//        }
+//
+//        for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+//            int topic = localTopicIndex[denseIndex];
+//            //if (topic < numCommonTopics || (topic >= numCommonTopics + m * numIndependentTopics && topic < numCommonTopics + (m + 1) * numIndependentTopics)) {
+//
+//            for (byte j = 0; j < numModalities; j++) {
+//                if (docLength[j] > 0) {
+//                    double normSumN = p[m][j] * localTopicCounts[j][topic]
+//                            / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
+//
+//                    topicBetaMass[m] += beta[m] * normSumN;
+//                    cachedCoefficients[m][topic] += normSumN;
+//                }
+//            }
+//            //}
+//
+//        }
+//    }
     protected double calcTopicScores(
             double[] cachedCoefficients,
             int oldTopic,
@@ -684,7 +648,7 @@ public class MixLDAWorkerRunnable implements Runnable {
             double[] topicTermScores,
             int[] currentTypeTopicCounts,
             int[] docLength
-            ) {
+    ) {
         // Now go over the type/topic counts, decrementing
         //  where appropriate, and calculating the score
         //  for each topic at the same time.
@@ -697,12 +661,13 @@ public class MixLDAWorkerRunnable implements Runnable {
 //        if (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC) {
 //            System.err.println(" Remove Old Topic Contribution UNASSIGNED_TOPIC");
 //        }
-        boolean alreadyDecremented = (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC);
+        boolean alreadyDecremented = false; //(oldTopic == UNASSIGNED_TOPIC);
 
         double topicTermMass = 0.0;
 
         while (index < currentTypeTopicCounts.length
-                && currentTypeTopicCounts.length > 0) {
+                && currentTypeTopicCounts.length > 0
+                ) {
 
             currentTopic = currentTypeTopicCounts[index] & topicMask;
             currentValue = currentTypeTopicCounts[index] >> topicBits;
@@ -718,13 +683,13 @@ public class MixLDAWorkerRunnable implements Runnable {
                 if (currentValue == 0) {
                     currentTypeTopicCounts[index] = 0;
                 } else {
-                    currentTypeTopicCounts[index] = 
-                            (currentValue << topicBits) + oldTopic;
+                    currentTypeTopicCounts[index]
+                            = (currentValue << topicBits) + oldTopic;
                 }
 
                 // Shift the reduced value to the right, if necessary.
                 int subIndex = index;
-                while (subIndex < currentTypeTopicCounts.length- 1
+                while (subIndex < currentTypeTopicCounts.length - 1
                         && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
                     int temp = currentTypeTopicCounts[subIndex];
                     currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
@@ -736,20 +701,10 @@ public class MixLDAWorkerRunnable implements Runnable {
                 alreadyDecremented = true;
             } else {
 
-                // re scale topic term scores (probability mass related to token/label type)
-                //types having large skew--> not ver discriminative. Thus I decrease their probability mass
-                // skewWeight is used for normalization. Thus the total probability mass (topic term scores) related to types remains almost constant
-                // but is share based on type skewness promoting types that are discriminative
-                //double skewInx = skewWeight[m] * (1 + termSkew); //1;
-                //if (!ignoreSkewness) {
-                //skewInx = skewWeight[m] * (1 + termSkew);
-                // }
-
-                //add normalized smoothingOnly coefficient 
-                score = (cachedCoefficients[currentTopic] + smoothOnlyCachedCoefficients[m][currentTopic]) * currentValue ;
+                score = (cachedCoefficients[currentTopic] + smoothOnlyCachedCoefficients[m][currentTopic]) * currentValue;
 
                 topicTermMass += score;
-                topicTermScores[index]= score;
+                topicTermScores[index] = score;
 
                 index++;
             }
@@ -770,22 +725,22 @@ public class MixLDAWorkerRunnable implements Runnable {
             i++;
             sample -= topicTermScores[i];
         }
-        if (i >= 0) {
-            newTopic = currentTypeTopicCounts[i] & topicMask;
-            currentValue = currentTypeTopicCounts[i] >> topicBits;
+        //if (i >= 0) { // Omiros normally not needed
+        newTopic = currentTypeTopicCounts[i] & topicMask;
+        currentValue = currentTypeTopicCounts[i] >> topicBits;
 
-            currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
+        currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
 
-            // Bubble the new value up, if necessary
-            while (i > 0
-                    && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-                int temp = currentTypeTopicCounts[i];
-                currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-                currentTypeTopicCounts[i - 1] = temp;
+        // Bubble the new value up, if necessary
+        while (i > 0
+                && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
+            int temp = currentTypeTopicCounts[i];
+            currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
+            currentTypeTopicCounts[i - 1] = temp;
 
-                i--;
-            }
+            i--;
         }
+        //}
         return newTopic;
     }
 
@@ -795,7 +750,7 @@ public class MixLDAWorkerRunnable implements Runnable {
             double[] totalMassOtherModalities,
             int nonZeroTopics,
             byte m,
-            final int[] docLength,
+            int[] docLength,
             double sample,
             double[][] p) {
 
@@ -825,7 +780,7 @@ public class MixLDAWorkerRunnable implements Runnable {
     protected int findNewTopicInSmoothingMass(
             double sample,
             byte m,
-            final int[] docLength) {
+            int[] docLength) {
 
         int newTopic = -1;
         //sample *= docLength[m];
@@ -963,13 +918,13 @@ public class MixLDAWorkerRunnable implements Runnable {
             currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
         } else {
             currentValue = currentTypeTopicCounts[index] >> topicBits;
-            currentTypeTopicCounts[index]  = ((currentValue + 1) << topicBits) + newTopic;
+            currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;
 
             // Bubble the increased value left, if necessary
             while (index > 0
                     && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
                 int temp = currentTypeTopicCounts[index];
-                currentTypeTopicCounts[index] =  currentTypeTopicCounts[index - 1];
+                currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
                 currentTypeTopicCounts[index - 1] = temp;
 
                 index--;
@@ -1012,7 +967,6 @@ public class MixLDAWorkerRunnable implements Runnable {
 //            }
 //            numTopics++;
 //        }
-
         //			Put that new topic into the counts
         oneDocTopics[m][position] = newTopic;
 
@@ -1039,8 +993,8 @@ public class MixLDAWorkerRunnable implements Runnable {
             while (denseIndex > 0
                     && localTopicIndex[denseIndex - 1] > newTopic) {
 
-                localTopicIndex[denseIndex] =
-                        localTopicIndex[denseIndex - 1];
+                localTopicIndex[denseIndex]
+                        = localTopicIndex[denseIndex - 1];
                 denseIndex--;
             }
 
@@ -1048,29 +1002,29 @@ public class MixLDAWorkerRunnable implements Runnable {
             nonZeroTopics++;
         }
 
-        double normSumN = (localTopicCounts[m][newTopic]+ totalMassOtherModalities[newTopic])
+        double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         topicBetaMass[m] -= beta[m] * normSumN;
 
-        smoothingOnlyMass[m] -=  alpha[m][newTopic] * beta[m]
+        smoothingOnlyMass[m] -= alpha[m][newTopic] * beta[m]
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         // }
-        localTopicCounts[m][newTopic] ++ ;
-        tokensPerTopic[m][newTopic] ++ ;
+        localTopicCounts[m][newTopic]++;
+        tokensPerTopic[m][newTopic]++;
 
         //	update the coefficients for the non-zero topics
         smoothingOnlyMass[m] += alpha[m][newTopic] * beta[m]
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
-        smoothOnlyCachedCoefficients[m][newTopic] =  alpha[m][newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
+        smoothOnlyCachedCoefficients[m][newTopic] = alpha[m][newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
                 / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
         topicBetaMass[m] += beta[m] * normSumN;
-        cachedCoefficients[newTopic]  = normSumN;
+        cachedCoefficients[newTopic] = normSumN;
 
         return nonZeroTopics;
     }
@@ -1079,8 +1033,7 @@ public class MixLDAWorkerRunnable implements Runnable {
 
         MixTopicModelTopicAssignment doc = data.get(docCnt);
 
-        double[][] totalMassPerModalityAndTopic = new double[numModalities][];
-
+        //double[][] totalMassPerModalityAndTopic = new double[numModalities][];
         //cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
         int[][] oneDocTopics = new int[numModalities][]; //token topics sequence for document
         FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
@@ -1112,7 +1065,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         //FeatureSequence topicSequence =  (FeatureSequence) document.topicSequence;/
         int nonZeroTopics = initSampling(
                 doc,
-                totalMassPerModalityAndTopic,
+                //totalMassPerModalityAndTopic,
                 oneDocTopics,
                 tokenSequence,
                 docLength,
@@ -1127,8 +1080,10 @@ public class MixLDAWorkerRunnable implements Runnable {
         double[] cachedCoefficients = new double[numTopics];
         double[] totalMassOtherModalities = new double[numTopics];
 
+//        TObjectIntHashMap<String> boostTopicSelection = new TObjectIntHashMap<String>();
         for (byte m = 0; m < numModalities; m++) // byte m = 0;
         {
+            //      boostTopicSelection.clear();
 
             initSamplingForModality(
                     cachedCoefficients,
@@ -1143,6 +1098,7 @@ public class MixLDAWorkerRunnable implements Runnable {
                     nonZeroTopics);
 
             FeatureSequence tokenSequenceCurMod = tokenSequence[m];
+
             for (int position = 0; position < docLength[m]; position++) {
 
                 // if (tokenSequenceCurMod != null) { already checked in init sampling --> docLength[m] =0 if is null
@@ -1150,10 +1106,18 @@ public class MixLDAWorkerRunnable implements Runnable {
 
                 oldTopic = oneDocTopics[m][position];
 
-                int[] currentTypeTopicCounts = typeTopicCounts[m][type];
+                long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+
+//                String boostId = type + "_" + tmpPreviousTopics;
+//                long minTopic = (long) 1 << (63 - topicBits);
+//                minTopic = tmpPreviousTopics >> topicBits;
+//                minTopic += (long) 1 << (63 - topicBits);
+//                minTopic = tmpPreviousTopics >> topicBits;
+//                minTopic += (long) 1 << (63 - topicBits);
+//                if (!(tmpPreviousTopics > minTopic && boostTopicSelection.containsKey(boostId))) {
+                // if (true) {
                 //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
                 //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length-1);
-
                 nonZeroTopics = removeOldTopicContribution(
                         cachedCoefficients,
                         totalMassOtherModalities,
@@ -1179,7 +1143,11 @@ public class MixLDAWorkerRunnable implements Runnable {
                 double[] topicTermScores = new double[numTopics];
                 Arrays.fill(topicTermScores, 0);
                 //topicTermScores.fill(0, numTopics, 0);
-               // double termSkew = typeSkewIndexes[m][type];
+                // double termSkew = typeSkewIndexes[m][type];
+
+                int[] currentTypeTopicCounts = typeTopicCounts[m][type];
+                //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
+                //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length - 1);
 
                 double topicTermMass = calcTopicScores(
                         cachedCoefficients,
@@ -1191,10 +1159,13 @@ public class MixLDAWorkerRunnable implements Runnable {
 
                 //normalize smoothing mass. 
                 //ThreadLocalRandom.current().nextDouble()
-                assert (smoothingOnlyMass[m] >= 0) : "smoothing Mass " + smoothingOnlyMass[m] + " below 0";
-                assert (topicBetaMass[m] >= 0) : "topicBeta Mass " + topicBetaMass[m] + " below 0";
-                assert (topicTermMass >= 0) : "topicTerm Mass " + topicTermMass + " below 0";
-
+                // assert (smoothingOnlyMass[m] >= 0) : "smoothing Mass " + smoothingOnlyMass[m] + " below 0";
+                // assert (topicBetaMass[m] >= 0) : "topicBeta Mass " + topicBetaMass[m] + " below 0";
+                // assert (topicTermMass >= 0) : "topicTerm Mass " + topicTermMass + " below 0";
+//                    MassValue tmpValue = new MassValue();
+//                    tmpValue.smoothingOnlyMass = smoothingOnlyMass[m];
+//                    tmpValue.topicBetaMass = topicBetaMass[m];
+//                    tmpValue.topicTermMass = topicTermMass;
                 double sample = ThreadLocalRandom.current().nextDouble() * (smoothingOnlyMass[m]
                         + topicBetaMass[m] + topicTermMass);
 
@@ -1219,11 +1190,14 @@ public class MixLDAWorkerRunnable implements Runnable {
                                 p,
                                 oldTopic);
 
-                long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+//                    boostTopicSelection.put(boostId, newTopic);
+//
+//                } else {
+//                    newTopic = boostTopicSelection.get(boostId);
+//                }
                 tmpPreviousTopics = tmpPreviousTopics >> topicBits;
                 long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
                 tmpPreviousTopics += newTopicTmp;
-//
                 doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
 
                 //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
@@ -1244,13 +1218,6 @@ public class MixLDAWorkerRunnable implements Runnable {
 
                 //statistics for p optimization
                 for (byte i = (byte) (m - 1); i >= 0; i--) {
-//                        
-//                        if (localTopicCounts[i][newTopic] == 0)
-//                        {
-//                            System.out.println("Modality not related");
-//                            
-//                        }
-
                     pDistr_Mean[m][i][docCnt] += (localTopicCounts[i][newTopic] > 0 ? 1.0 : 0d) / (double) docLength[m];
                     pDistr_Mean[i][m][docCnt] = pDistr_Mean[m][i][docCnt];
                     //pDistr_Var[m][i][docCnt]+= localTopicCounts[i][newTopic]/docLength[m];
@@ -1262,7 +1229,7 @@ public class MixLDAWorkerRunnable implements Runnable {
             if (shouldSaveState) {
                 // Update the document-topic count histogram,
                 //  for dirichlet estimation
-                docLengthCounts[m][ docLength[m]]++;
+                docLengthCounts[m][docLength[m]]++;
 
                 for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                     int topic = localTopicIndex[denseIndex];

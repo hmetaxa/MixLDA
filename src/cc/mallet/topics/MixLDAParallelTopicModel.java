@@ -12,16 +12,16 @@ import cc.mallet.types.*;
 import cc.mallet.util.MalletLogger;
 import cc.mallet.util.Randoms;
 import gnu.trove.TByteArrayList;
-import gnu.trove.list.array.TDoubleArrayList;
+//import gnu.trove.list.array.TDoubleArrayList;
 import gnu.trove.list.array.TIntArrayList;
 import gnu.trove.map.hash.TIntIntHashMap;
-import gnu.trove.map.hash.TIntObjectHashMap;
+//import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
 import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+//import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.NumberFormat;
@@ -30,9 +30,9 @@ import java.util.Arrays;
 import java.util.Formatter;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
+//import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+//import java.util.Set;
 import java.util.TreeSet;
 
 import java.util.concurrent.*;
@@ -121,7 +121,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     // The number of times each type appears in the corpus
     public int[][] typeTotals; //per modality
     // The skew index of eachType
-    public double[][] typeSkewIndexes; //<modality, type>
+    //public double[][] typeSkewIndexes; //<modality, type>
     // The skew index of each Lbl Type
     //public double[] lblTypeSkewIndexes;
     // The max over typeTotals, used for beta optimization
@@ -132,7 +132,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     //int maxLblTypeCount;
     //double avgLblTypeCount;
     int numThreads = 1;
-    double[] skewWeight; //per modality
+   // double[] skewWeight; //per modality
     double[][] p_a; // a for beta prior for modalities correlation
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
@@ -190,12 +190,12 @@ public class MixLDAParallelTopicModel implements Serializable {
         //this.docLengthCounts = new int[numModalities][];
         //this.topicDocCounts = new int[numModalities][][];
         this.typeTotals = new int[numModalities][];
-        this.typeSkewIndexes = new double[numModalities][];
+//        this.typeSkewIndexes = new double[numModalities][];
 
         this.maxTypeCount = new int[numModalities];
         this.avgTypeCount = new double[numModalities];
-        this.skewWeight = new double[numModalities];
-        Arrays.fill(this.skewWeight, 1);
+       // this.skewWeight = new double[numModalities];
+      //  Arrays.fill(this.skewWeight, 1);
 
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -345,7 +345,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             tokensPerTopic[i] = new int[numTopics];
 
             typeTotals[i] = new int[tmpNumTypes];
-            typeSkewIndexes[i] = new double[tmpNumTypes];
+            //typeSkewIndexes[i] = new double[tmpNumTypes];
 
             Randoms random = null;
             if (randomSeed == -1) {
@@ -492,7 +492,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             //  looking at the entries before the first 0 entry.
             for (int type = 0; type < numTypes[i]; type++) {
 
-                typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
+               // typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
                 //tokensPerTopic[i].fill(0, numTopics, 0);
                 Arrays.fill(typeTopicCounts[i][type], 0);
                 //typeTopicCounts[i][type].fill(0, numTopics, 0);

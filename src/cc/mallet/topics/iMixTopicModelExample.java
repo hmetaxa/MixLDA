@@ -5,16 +5,16 @@ import cc.mallet.util.*;
 
 import cc.mallet.types.*;
 import cc.mallet.pipe.*;
-import cc.mallet.pipe.iterator.*;
-import cc.mallet.topics.*;
-import cc.mallet.util.Maths;
-import gnu.trove.map.TIntObjectMap;
+//import cc.mallet.pipe.iterator.*;
+//import cc.mallet.topics.*;
+//import cc.mallet.util.Maths;
+//import gnu.trove.map.TIntObjectMap;
 import gnu.trove.map.TObjectIntMap;
-import gnu.trove.map.hash.TIntObjectHashMap;
+//import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
 
 import java.util.*;
-import java.util.regex.*;
+//import java.util.regex.*;
 import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -41,27 +41,27 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
-        int numIndependentTopics = 0;
+        byte numModalities = 1;
+        //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
-        boolean ignoreLabels = true;
+        //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
         boolean runTopicModelling = true;
-        iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
+        //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 100;
         int numIterations = 450;
         int independentIterations = 10;
         int burnIn = 50;
         int optimizeInterval = 10;
-        LabelType lblType = LabelType.Grants;
+        LabelType lblType = LabelType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
-        String experimentId = numTopics + "T_" + numIndependentTopics + "IT_" + numIterations + "IIT_" + independentIterations + "I_" + burnIn + "B_" + "M_" + numModalities + "_" + lblType.toString() + "_" + skewOn.toString();
+        String experimentId = numTopics + "T_" + numIterations +"IT_"+  independentIterations + "IIT_" + burnIn + "B_" +  numModalities + "M_" + "_" + lblType.toString(); // + "_" + skewOn.toString();
         
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
         
@@ -522,8 +522,8 @@ public class iMixTopicModelExample {
                 // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
                 modelOrig.setNumIterations(numIterations);
-                modelOrig.optimizeInterval = 50;
-                modelOrig.burninPeriod = 150;
+                modelOrig.optimizeInterval = optimizeInterval;
+                modelOrig.burninPeriod = burnIn;
                 //model.optimizeInterval = 0;
                 //model.burninPeriod = 0;
                 //model.saveModelInterval=250;
