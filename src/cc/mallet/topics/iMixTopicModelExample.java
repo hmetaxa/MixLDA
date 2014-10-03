@@ -26,7 +26,7 @@ import java.util.logging.Logger;
 
 public class iMixTopicModelExample {
     
-    public enum LabelType {
+    public enum ExperimentType {
         
         Authors,
         Grants,
@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 1;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -50,28 +50,28 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 10;
         int numIterations = 450;
         int independentIterations = 10;
         int burnIn = 50;
         int optimizeInterval = 10;
-        LabelType lblType = LabelType.Authors;
+        ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
-        String experimentId = numTopics + "T_" + numIterations +"IT_"+  independentIterations + "IIT_" + burnIn + "B_" +  numModalities + "M_" + "_" + lblType.toString(); // + "_" + skewOn.toString();
+        String experimentId = numTopics + "T_" + numIterations +"IT_"+  independentIterations + "IIT_" + burnIn + "B_" +  numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
         
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
         
-        if (lblType == LabelType.DBLP) {
+        if (experimentType == ExperimentType.DBLP) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/citation-network2.db";
-        } else if (lblType == LabelType.PM_pdb) {
+        } else if (experimentType == ExperimentType.PM_pdb) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/europepmc.db";
-        } else if (lblType == LabelType.DBLP_ACM) {
+        } else if (experimentType == ExperimentType.DBLP_ACM) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db";
-        } else if (lblType == LabelType.ACM) {
+        } else if (experimentType == ExperimentType.ACM) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/acmdata1.db";
         }
         Connection connection = null;
@@ -100,7 +100,7 @@ public class iMixTopicModelExample {
                 
                 String sql = "";
                 
-                if (lblType == LabelType.Grants) {
+                if (experimentType == ExperimentType.Grants) {
                     sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.funding_lvl2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
                             + "                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n"
@@ -116,14 +116,14 @@ public class iMixTopicModelExample {
 //                        //  + " Doc.source='" + docSource + "' and "
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
-                } else if (lblType == LabelType.Authors) {
+                } else if (experimentType == ExperimentType.Authors) {
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                             + "from Doc \n"
                             + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
                             + "Where \n"
                             + "Doc.source='NIPS' \n"
                             + "Group By Doc.DocId, Doc.text";
-                } else if (lblType == LabelType.DBLP) {
+                } else if (experimentType == ExperimentType.DBLP) {
                     sql = "			\n"
                             + " select id, title||' '||abstract AS text, Authors, \n"
                             + "  GROUP_CONCAT(citation.Target,',') as citations\n"
@@ -141,12 +141,12 @@ public class iMixTopicModelExample {
 //                        + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
 //                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
                     // + " LIMIT 200000"
-                } else if (lblType == LabelType.PM_pdb) {
+                } else if (experimentType == ExperimentType.PM_pdb) {
                     sql = " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
                             + "                        from pubdoc  inner join \n"
                             + "                        pdblink on pdblink.pmcId=pubdoc.pmcId \n"
                             + "                    Group By pubdoc.pmcId, pubdoc.abstract, pubdoc.body";
-                } else if (lblType == LabelType.DBLP_ACM) {
+                } else if (experimentType == ExperimentType.DBLP_ACM) {
                     sql = " select id, title||' '||abstract AS text, Authors, \n"
                             + "  ref_id as citations\n"
                             + "  from papers\n"
@@ -154,7 +154,7 @@ public class iMixTopicModelExample {
                             + " (abstract IS NOT NULL) AND (abstract<>'') \n " //+" AND ref_Id IS NOT NULL AND ref_id<>''  \n" 
                             // + " LIMIT 20000"
                             ;
-                } else if (lblType == LabelType.ACM) {
+                } else if (experimentType == ExperimentType.ACM) {
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
                             + "                          ref_objid as citations, primarycategory||'\t'||othercategory AS categories \n"
                             + "                          from ACMData1 \n";
@@ -173,7 +173,7 @@ public class iMixTopicModelExample {
                     //System.out.println("name = " + rs.getString("file"));
                     //System.out.println("name = " + rs.getString("fundings"));
                     //int cnt = rs.getInt("grantsCnt");
-                    switch (lblType) {
+                    switch (experimentType) {
                         case Grants:
                             instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
@@ -334,7 +334,7 @@ public class iMixTopicModelExample {
              */
             // Other Modalities
             ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-            if (lblType == LabelType.DBLP || lblType == LabelType.DBLP_ACM) {
+            if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
                 pipeListCSV.add(new CSV2FeatureSequence(","));
             } else {
                 pipeListCSV.add(new CSV2FeatureSequence());
@@ -470,14 +470,14 @@ public class iMixTopicModelExample {
                 NP_Topics_out.flush();
                 npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
             }
-            boolean runHDPModel = false;
+            boolean runHDPModel = true;
             if (runHDPModel) {
                 //setup HDP parameters(alpha, beta, gamma, initialTopics)
-                HDP hdp = new HDP(1.0, 0.1, 1.0, 10);
+                HDP hdp = new HDP(1.0, 0.1, 4.0, numTopics);
                 hdp.initialize(instances[0]);
 
                 //set number of iterations, and display result or not 
-                hdp.estimate(500);
+                hdp.estimate(numIterations);
 
                 //get topic distribution for first instance
                 double[] distr = hdp.topicDistribution(0);
@@ -644,7 +644,7 @@ public class iMixTopicModelExample {
 //      statement.executeUpdate("insert into person values(2, 'yui')");
 //      ResultSet rs = statement.executeQuery("select * from person");
                 String sql = "";
-                switch (lblType) {
+                switch (experimentType) {
                     case Grants:
                         sql = "select    GrantId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join GrantPerDoc on topicsPerDoc.DocId= GrantPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
@@ -680,7 +680,7 @@ public class iMixTopicModelExample {
                     
                     String newLabelId = "";
                     
-                    switch (lblType) {
+                    switch (experimentType) {
                         case Grants:
                             newLabelId = rs.getString("GrantId");
                             break;
@@ -736,7 +736,7 @@ public class iMixTopicModelExample {
                                 startCalc = true;
                                 similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
                                 if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                    bulkInsert.setInt(1, lblType.ordinal());
+                                    bulkInsert.setInt(1, experimentType.ordinal());
                                     bulkInsert.setString(2, fromGrantId);
                                     bulkInsert.setString(3, toGrantId);
                                     bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);

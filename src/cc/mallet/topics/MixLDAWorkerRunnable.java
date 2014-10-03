@@ -1079,6 +1079,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         //	Iterate over the positions (words) in the document for each modality
         double[] cachedCoefficients = new double[numTopics];
         double[] totalMassOtherModalities = new double[numTopics];
+        double[] topicTermScores = new double[numTopics];
 
 //        TObjectIntHashMap<String> boostTopicSelection = new TObjectIntHashMap<String>();
         for (byte m = 0; m < numModalities; m++) // byte m = 0;
@@ -1140,8 +1141,9 @@ public class MixLDAWorkerRunnable implements Runnable {
 //                        docLength,
 //                        m,
 //                        p);
-                double[] topicTermScores = new double[numTopics];
-                Arrays.fill(topicTermScores, 0);
+                
+                //TOCheck: probably not needed Arrays.fill(topicTermScores, 0);
+                
                 //topicTermScores.fill(0, numTopics, 0);
                 // double termSkew = typeSkewIndexes[m][type];
 
@@ -1166,8 +1168,11 @@ public class MixLDAWorkerRunnable implements Runnable {
 //                    tmpValue.smoothingOnlyMass = smoothingOnlyMass[m];
 //                    tmpValue.topicBetaMass = topicBetaMass[m];
 //                    tmpValue.topicTermMass = topicTermMass;
-                double sample = ThreadLocalRandom.current().nextDouble() * (smoothingOnlyMass[m]
-                        + topicBetaMass[m] + topicTermMass);
+                
+                double sample = 
+                        //random.nextUniform() *
+                        ThreadLocalRandom.current().nextDouble() * 
+                        (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
 
 //                if (sample < 0) {
 //                    newTopic = 0;

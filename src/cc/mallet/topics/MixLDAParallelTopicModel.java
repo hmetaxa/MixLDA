@@ -1706,7 +1706,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         && iteration % saveSampleInterval == 0) {
                     TByteArrayList modalities = new TByteArrayList();
                     modalities.add((byte) 0);
-                    mergeSimilarTopics(30, modalities, 0.7);
+                    //mergeSimilarTopics(30, modalities, 0.7);
                 }
 
                 //sumTypeTopicCounts(runnables, iteration > burninPeriod);
@@ -2634,11 +2634,11 @@ public class MixLDAParallelTopicModel implements Serializable {
             logLikelihood[m] += modalityCnt * Dirichlet.logGammaStirling(alphaSum[m]);
 
             if (Double.isNaN(logLikelihood[m])) {
-                logger.warning("NaN in log likelihood calculation" + " for modality: " + m);
+                logger.warning("NaN in log likelihood level1 calculation" + " for modality: " + m);
                 logLikelihood[m] = 0;
                 break;
             } else if (Double.isInfinite(logLikelihood[m])) {
-                logger.warning("infinite log likelihood" + " for modality: " + m);
+                logger.warning("infinite log likelihood at level1 " + " for modality: " + m);
                 logLikelihood[m] = 0;
                 break;
             }
