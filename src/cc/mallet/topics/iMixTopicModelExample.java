@@ -25,9 +25,9 @@ import java.sql.Statement;
 import java.util.logging.Logger;
 
 public class iMixTopicModelExample {
-    
+
     public enum ExperimentType {
-        
+
         Authors,
         Grants,
         DBLP,
@@ -35,13 +35,13 @@ public class iMixTopicModelExample {
         DBLP_ACM,
         ACM
     }
-    
+
     public iMixTopicModelExample() throws IOException {
-        
+
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -50,21 +50,24 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 10;
-        int numIterations = 450;
+        int numTopics = 100;
+        int numIterations = 250;
         int independentIterations = 10;
         int burnIn = 50;
         int optimizeInterval = 10;
-        ExperimentType experimentType = ExperimentType.Authors;
+        ExperimentType experimentType = ExperimentType.Grants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
 
         boolean DBLP_PPR = false;
-        String experimentId = numTopics + "T_" + numIterations +"IT_"+  independentIterations + "IIT_" + burnIn + "B_" +  numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
-        
+        String experimentId = numTopics + "T_" + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
+
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
-        
+
+        if (experimentType == ExperimentType.Grants) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/fundedarxiv.db";
+        }
         if (experimentType == ExperimentType.DBLP) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/citation-network2.db";
         } else if (experimentType == ExperimentType.PM_pdb) {
@@ -87,26 +90,26 @@ public class iMixTopicModelExample {
             //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
             for (byte m = 0; m < numModalities; m++) {
                 instanceBuffer.add(new ArrayList<Instance>());
-                
+
             }
             try {
-                
+
                 connection = DriverManager.getConnection(SQLLitedb);
                 //String sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,\"\t\") as GrantIds from Doc inner join GrantPerDoc on Doc.DocId=GrantPerDoc.DocId where Doc.source='pubmed' and grantPerDoc.grantId like 'ec%' Group By Doc.DocId, Doc.text";
                 //String docSource = "pubmed";
                 String docSource = "arxiv";
-                
+
                 String grantType = "FP7";
-                
+
                 String sql = "";
-                
+
                 if (experimentType == ExperimentType.Grants) {
-                    sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.funding_lvl2,'\t') as Areas, Doc.Source  \n"
+                    sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
                             + "                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n"
                             + "			 INNER JOIN Grant on Grant.GrantId= GrantPerDoc.GrantId\n"
                             + "                         where \n"
-                            + "                        Grant.funding_lvl0='" + grantType + "'\n"
+                            + "                        Grant.Category0='" + grantType + "'\n"
                             + "                         Group By Doc.DocId, Doc.text";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
@@ -196,7 +199,7 @@ public class iMixTopicModelExample {
                             break;
                         case DBLP:
                             instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
-                            
+
                             if (numModalities > 1) {
                                 if (DBLP_PPR) {
                                     String tmpStr = rs.getString("Citations");
@@ -205,10 +208,10 @@ public class iMixTopicModelExample {
                                     if (tmpStr != null) {
                                         citations = tmpStr.split(",");
                                         citationsCnt = rs.getString("CitationsCnt").split(",");
-                                        
+
                                         String citationStr = "";
                                         int index = 0;
-                                        
+
                                         while (index < citationsCnt.length) {
                                             int cnt = Integer.parseInt(citationsCnt[index]);
                                             for (int i = 1; i <= cnt / 50; i++) {
@@ -218,9 +221,9 @@ public class iMixTopicModelExample {
                                                 citationStr += citations[index];
                                             }
                                             index++;
-                                            
+
                                         }
-                                        
+
                                         instanceBuffer.get(1).add(new Instance(citationStr, null, rs.getString("Id"), "citations"));
                                     }
                                 } else {
@@ -237,18 +240,18 @@ public class iMixTopicModelExample {
                         case PM_pdb:
                             //instanceBuffer.get(0).add(new Instance(rs.getString("abstract") + " " + rs.getString("body"), null, rs.getString("pmcId"), "text"));
                             instanceBuffer.get(0).add(new Instance(rs.getString("abstract"), null, rs.getString("pmcId"), "text"));
-                            
+
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("pbdCodes"), null, rs.getString("pmcId"), "pbdCode"));
                             }
                             break;
                         case DBLP_ACM:
                             instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
-                            
+
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "citation"));
                             }
-                            
+
                             if (numModalities > 2) {
                                 String tmpStr = rs.getString("Citations").replace("\t", ",");
                                 instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
@@ -256,17 +259,17 @@ public class iMixTopicModelExample {
                             break;
                         case ACM:
                             instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
-                            
+
                             if (numModalities > 1) {
                                 String tmpStr = rs.getString("Citations");//.replace("\t", ",");
                                 instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
                             }
-                            
+
                             if (numModalities > 3) {
                                 String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                                 instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                             }
-                            
+
                             if (numModalities > 2) {
                                 String tmpStr = rs.getString("Categories");//.replace("\t", ",");
                                 instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
@@ -274,7 +277,7 @@ public class iMixTopicModelExample {
                             break;
                         default:
                     }
-                    
+
                 }
             } catch (SQLException e) {
                 // if the error message is "out of memory", 
@@ -290,7 +293,7 @@ public class iMixTopicModelExample {
                     System.err.println(e);
                 }
             }
-            
+
             logger.info("Read " + instanceBuffer.get(0).size() + " instances modality 0");
 
             //numModalities = 2;
@@ -300,13 +303,13 @@ public class iMixTopicModelExample {
             // Pipes: lowercase, tokenize, remove stopwords, map to features
             pipeListText.add(new Input2CharSequence(false)); //homer
             pipeListText.add(new CharSequenceLowercase());
-            
+
             SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
             GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, false);
-            
+
             tokenizer.stop("cid");
             tokenizer.stop("null");
-            
+
             pipeListText.add(tokenizer);
             Alphabet alphabet = new Alphabet();
             pipeListText.add(new StringList2FeatureSequence(alphabet));
@@ -339,18 +342,18 @@ public class iMixTopicModelExample {
             } else {
                 pipeListCSV.add(new CSV2FeatureSequence());
             }
-            
+
             InstanceList[] instances = new InstanceList[numModalities];
-            
+
             instances[0] = new InstanceList(new SerialPipes(pipeListText));
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
-            
+
             for (byte m = 1; m < numModalities; m++) {
                 logger.info("Read " + instanceBuffer.get(m).size() + " instances modality " + m);
                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
                 instances[m].addThruPipe(instanceBuffer.get(m).iterator());
             }
-            
+
             logger.info(" instances added through pipe");
 // pruning for all other modalities no text
             for (byte m = 1; m < numModalities; m++) {
@@ -376,10 +379,10 @@ public class iMixTopicModelExample {
                         for (int ii = 0; ii < instances[m].size(); ii++) {
                             Instance instance = instances[m].get(ii);
                             FeatureSequence fs = (FeatureSequence) instance.getData();
-                            
+
                             fs.addFeatureWeightsTo(counts);
                         }
-                        
+
                         Instance instance;
 
                         // Next, iterate over the same list again, adding 
@@ -387,9 +390,9 @@ public class iMixTopicModelExample {
                         while (instances[m].size() > 0) {
                             instance = instances[m].get(0);
                             FeatureSequence fs = (FeatureSequence) instance.getData();
-                            
+
                             fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
-                            
+
                             newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
                                     instance.getName(),
                                     instance.getSource())));
@@ -400,55 +403,59 @@ public class iMixTopicModelExample {
                         //                       + " -> " + newAlphabet.size());
                         // Make the new list the official list.
                         instances[m] = newInstanceList;
-                        
+
                     } else {
                         throw new UnsupportedOperationException("Pruning features from "
                                 + firstInstance.getClass().getName()
                                 + " is not currently supported");
                     }
-                    
+
                 }
             }
-            
-            logger.info(" instances pruned");
 
+            logger.info(" instances pruned");
+            boolean splitCorpus = false;
+             InstanceList[] testInstances = null;
+              InstanceList[] trainingInstances = instances;
+            if (splitCorpus) {
             //instances.addThruPipe(new FileIterator(inputDir));
-            //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
-            //
-            //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
-            // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
-            //  Note that the first parameter is passed as the sum over topics, while
-            //  the second is 
-            InstanceList[] testInstances = new InstanceList[numModalities];
-            
-            InstanceList[] trainingInstances = new InstanceList[numModalities];
-            
-            TObjectIntMap<String> entityPosition = new TObjectIntHashMap<String>();
-            int index = 0;
-            for (byte m = 0; m < numModalities; m++) {
-                Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
-                InstanceList newInstanceList = new InstanceList(newPipe);
-                testInstances[m] = newInstanceList;
-                InstanceList newInstanceList2 = new InstanceList(newPipe);
-                trainingInstances[m] = newInstanceList2;
-                for (int i = 0; i < instances[m].size(); i++) {
-                    Instance instance = instances[m].get(i);
-                    String entityId = (String) instance.getName();
-                    if (i < instances[m].size() * 0.8 && m == 0) {
-                        entityPosition.put(entityId, index);
-                        trainingInstances[m].add(instance);
-                        index++;
-                    } else if (m != 0 && entityPosition.containsKey(entityId)) {
-                        trainingInstances[m].add(instance);
-                    } else {
-                        testInstances[m].add(instance);
+                //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
+                //
+                //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
+                // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
+                //  Note that the first parameter is passed as the sum over topics, while
+                //  the second is 
+            testInstances = new InstanceList[numModalities];
+
+                trainingInstances = new InstanceList[numModalities];
+
+                TObjectIntMap<String> entityPosition = new TObjectIntHashMap<String>();
+                int index = 0;
+                for (byte m = 0; m < numModalities; m++) {
+                    Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
+                    InstanceList newInstanceList = new InstanceList(newPipe);
+                    testInstances[m] = newInstanceList;
+                    InstanceList newInstanceList2 = new InstanceList(newPipe);
+                    trainingInstances[m] = newInstanceList2;
+                    for (int i = 0; i < instances[m].size(); i++) {
+                        Instance instance = instances[m].get(i);
+                        String entityId = (String) instance.getName();
+                        if (i < instances[m].size() * 0.8 && m == 0) {
+                            entityPosition.put(entityId, index);
+                            trainingInstances[m].add(instance);
+                            index++;
+                        } else if (m != 0 && entityPosition.containsKey(entityId)) {
+                            trainingInstances[m].add(instance);
+                        } else {
+                            testInstances[m].add(instance);
+                        }
                     }
                 }
             }
-            
+
             String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
             File outPath = new File(outputDir);
-            
+
             outPath.mkdir();
             String stateFile = outputDir + File.separator + "output_state";
             String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
@@ -470,7 +477,7 @@ public class iMixTopicModelExample {
                 NP_Topics_out.flush();
                 npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
             }
-            boolean runHDPModel = true;
+            boolean runHDPModel = false;
             if (runHDPModel) {
                 //setup HDP parameters(alpha, beta, gamma, initialTopics)
                 HDP hdp = new HDP(1.0, 0.1, 4.0, numTopics);
@@ -502,18 +509,18 @@ public class iMixTopicModelExample {
 
                 //10-folds cross validation, with 1000 iteration for each test.
                 hdp.runCrossValidation(10, 1000);
-                
+
             }
             double[] beta = new double[numModalities];
             double[] alphaSum = new double[numModalities];
             Arrays.fill(alphaSum, 1);
-            
+
             Arrays.fill(beta, 0.01);
-            
+
             boolean runOrigParallelModel = false;
             if (runOrigParallelModel) {
                 ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, beta[0]);
-                
+
                 modelOrig.addInstances(instances[0]);
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
@@ -529,21 +536,19 @@ public class iMixTopicModelExample {
                 //model.saveModelInterval=250;
                 modelOrig.estimate();
             }
-            
+
             //Non parametric model
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
-            
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
             MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta);
-            
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
             model.setIndependentIterations(independentIterations);
             model.optimizeInterval = optimizeInterval;
             model.burninPeriod = burnIn;
-            
+
             model.addInstances(instances);//trainingInstances);//instances);
 
             logger.info(" instances added");
@@ -558,12 +563,12 @@ public class iMixTopicModelExample {
             //model.burninPeriod = 0;
             //model.saveModelInterval=250;
             model.estimate();
-            
+
             logger.info("model estimated");
             model.saveTopics(SQLLitedb, experimentId);
-            
+
             logger.info("Topics Saved");
-            
+
             model.printTopWords(
                     new File(topicKeysFile), topWords, topLabels, false);
             logger.info("Top words printed");
@@ -572,23 +577,23 @@ public class iMixTopicModelExample {
             //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
             model.printState(
                     new File(stateFileZip));
-            
+
             logger.info("printState finished");
-            
+
             PrintWriter outState = new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
-            
+
             model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
                     0.1);
-            
+
             outState.close();
             logger.info("printDocumentTopics finished");
-            
+
             PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
-            
+
             model.topicPhraseXMLReport(outXMLPhrase, topWords);
-            
+
             outState.close();
-            
+
             logger.info("topicPhraseXML report finished");
 
 //        GunZipper g = new GunZipper(new File(stateFileZip));
@@ -621,11 +626,11 @@ public class iMixTopicModelExample {
                     //MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
                     //diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
-                    
+
                 } catch (Exception e) {
                     System.err.println(e.getMessage());
                 }
-                
+
             }
         }
         if (calcSimilarities) {
@@ -656,30 +661,30 @@ public class iMixTopicModelExample {
                     case PM_pdb:
                         sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
-                        
+
                         break;
                     case DBLP:
                         sql = "select  Source, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join prlinks on topicsPerDoc.DocId= prlinks.source"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
-                        
+
                         break;
                     default:
                 }
 
                 // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
                 ResultSet rs = statement.executeQuery(sql);
-                
+
                 HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
-                
+
                 String labelId = "";
                 int[] topics = new int[numTopics];
                 double[] weights = new double[numTopics];
                 int cnt = 0;
                 double a;
                 while (rs.next()) {
-                    
+
                     String newLabelId = "";
-                    
+
                     switch (experimentType) {
                         case Grants:
                             newLabelId = rs.getString("GrantId");
@@ -695,7 +700,7 @@ public class iMixTopicModelExample {
                             break;
                         default:
                     }
-                    
+
                     if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
                         labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
                         topics = new int[numTopics];
@@ -706,29 +711,29 @@ public class iMixTopicModelExample {
                     topics[cnt] = rs.getInt("TopicId");
                     weights[cnt] = rs.getDouble("Weight");
                     cnt++;
-                    
+
                 }
-                
+
                 cnt = 0;
                 double similarity = 0;
                 double similarityThreshold = 0.1;
                 NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
-                
+
                 statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
                 String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
-                
+
                 PreparedStatement bulkInsert = null;
                 sql = "insert into EntitySimilarity values(?,?,?,?,?);";
-                
+
                 try {
-                    
+
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-                    
+
                     for (String fromGrantId : labelVectors.keySet()) {
                         boolean startCalc = false;
-                        
+
                         for (String toGrantId : labelVectors.keySet()) {
                             if (!fromGrantId.equals(toGrantId) && !startCalc) {
                                 continue;
@@ -747,9 +752,9 @@ public class iMixTopicModelExample {
                         }
                     }
                     connection.commit();
-                    
+
                 } catch (SQLException e) {
-                    
+
                     if (connection != null) {
                         try {
                             System.err.print("Transaction is being rolled back");
@@ -759,13 +764,13 @@ public class iMixTopicModelExample {
                         }
                     }
                 } finally {
-                    
+
                     if (bulkInsert != null) {
                         bulkInsert.close();
                     }
                     connection.setAutoCommit(true);
                 }
-                
+
             } catch (SQLException e) {
                 // if the error message is "out of memory", 
                 // it probably means no database file is found
@@ -780,7 +785,7 @@ public class iMixTopicModelExample {
                     System.err.println(e);
                 }
             }
-            
+
             logger.info("similarities calculation finished");
         }
 
@@ -850,24 +855,24 @@ public class iMixTopicModelExample {
          System.out.println("0\t" + testProbabilities[0]);
          */
     }
-    
+
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionCutoff, boolean preserveCase)
             throws IOException {
-        
+
         ArrayList<Instance> input = new ArrayList<Instance>();
         for (Instance instance : instanceBuffer) {
             input.add((Instance) instance.clone());
         }
-        
+
         ArrayList<Pipe> pipes = new ArrayList<Pipe>();
         Alphabet alphabet = new Alphabet();
-        
+
         CharSequenceLowercase csl = new CharSequenceLowercase();
         SimpleTokenizer st = prunedTokenizer.deepClone();
         StringList2FeatureSequence sl2fs = new StringList2FeatureSequence(alphabet);
         FeatureCountPipe featureCounter = new FeatureCountPipe(alphabet, null);
         FeatureDocFreqPipe docCounter = new FeatureDocFreqPipe(alphabet, null);
-        
+
         pipes.add(new Input2CharSequence(false)); //homer
 
         if (!preserveCase) {
@@ -884,7 +889,7 @@ public class iMixTopicModelExample {
 
         Pipe serialPipe = new SerialPipes(pipes);
         Iterator<Instance> iterator = serialPipe.newIteratorFrom(input.iterator());
-        
+
         int count = 0;
 
         // We aren't really interested in the instance itself,
@@ -904,7 +909,7 @@ public class iMixTopicModelExample {
                 prunedTokenizer.stop(word);
             }
         }
-        
+
         if (pruneCount > 0) {
             featureCounter.addPrunedWordsToStoplist(prunedTokenizer, pruneCount);
         }
@@ -912,19 +917,19 @@ public class iMixTopicModelExample {
             docCounter.addPrunedWordsToStoplist(prunedTokenizer, docProportionCutoff);
         }
     }
-    
+
     private void outputCsvFiles(String outputDir, Boolean htmlOutputFlag, String inputDir, int numTopics, String stateFile, String outputDocTopicsFile, String topicKeysFile) {
-        
+
         CsvBuilder cb = new CsvBuilder();
         cb.createCsvFiles(numTopics, outputDir, stateFile, outputDocTopicsFile, topicKeysFile);
-        
+
         if (htmlOutputFlag) {
             HtmlBuilder hb = new HtmlBuilder(cb.getNtd(), new File(inputDir));
             hb.createHtmlFiles(new File(outputDir));
         }
         //clearExtrafiles(outputDir);
     }
-    
+
     private void clearExtrafiles(String outputDir) {
         String[] fileNames = {"topic-input.mallet", "output_topic_keys.csv", "output_state.gz",
             "output_doc_topics.csv", "output_state"};
@@ -933,25 +938,25 @@ public class iMixTopicModelExample {
                 System.out.println(f);
             }
             Boolean b = new File(outputDir, f).delete();
-            
+
         }
-        
+
     }
-    
+
     public void createCitationGraphFile(String outputCsv, String SQLLitedb) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         Connection connection = null;
         try {
-            
+
             FileWriter fwrite = new FileWriter(outputCsv);
             BufferedWriter out = new BufferedWriter(fwrite);
             String header = "# DBLP citation graph \n"
                     + "# fromNodeId, toNodeId \n";
             out.write(header);
-            
+
             connection = DriverManager.getConnection(SQLLitedb);
-            
+
             String sql = "select id, ref_id from papers where ref_num >0 ";
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);  // set timeout to 30 sec.
@@ -960,7 +965,7 @@ public class iMixTopicModelExample {
                 // read the result set
                 int Id = rs.getInt("Id");
                 String citationNums = rs.getString("ref_id");
-                
+
                 String csvLine = "";//Id + "\t" + citationNums;
 
                 String[] str = citationNums.split("\t");
@@ -968,7 +973,7 @@ public class iMixTopicModelExample {
                     csvLine = Id + "\t" + str[i];
                     out.write(csvLine + "\n");
                 }
-                
+
             }
             out.flush();
         } catch (SQLException e) {
@@ -987,74 +992,74 @@ public class iMixTopicModelExample {
                 System.err.println(e);
             }
         }
-        
+
     }
-    
+
     public void createRefACMTables(String SQLLitedb) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         Connection connection = null;
         try {
-            
+
             connection = DriverManager.getConnection(SQLLitedb);
-            
+
             Statement statement = connection.createStatement();
             statement.executeUpdate("create table if not exists Author (AuthorId nvarchar(50), FirstName nvarchar(50), LastName nvarchar(50), MiddleName nvarchar(10), Affilication TEXT) ");
             String deleteSQL = String.format("Delete from Author ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement.executeUpdate("create table if not exists Citation (CitationId nvarchar(50), Reference TEXT) ");
             deleteSQL = String.format("Delete from Citation ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement.executeUpdate("create table if not exists Category (Category TEXT) ");
             deleteSQL = String.format("Delete from Category ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement = connection.createStatement();
             statement.executeUpdate("create table if not exists PubAuthor (PubId nvarchar(50), AuthorId nvarchar(50)) ");
             deleteSQL = String.format("Delete from PubAuthor ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement.executeUpdate("create table if not exists PubCitation (PubId nvarchar(50), CitationId nvarchar(50)) ");
             deleteSQL = String.format("Delete from PubCitation ");
             statement.executeUpdate(deleteSQL);
-            
+
             statement.executeUpdate("create table if not exists PubCategory (PubId nvarchar(50), Category TEXT) ");
             deleteSQL = String.format("Delete from PubCategory ");
             statement.executeUpdate(deleteSQL);
-            
+
             PreparedStatement authorBulkInsert = null;
             PreparedStatement citationBulkInsert = null;
             PreparedStatement categoryBulkInsert = null;
-            
+
             PreparedStatement pubAuthorBulkInsert = null;
             PreparedStatement pubCitationBulkInsert = null;
             PreparedStatement pubCategoryBulkInsert = null;
-            
+
             String authorInsertsql = "insert into Author values(?,?,?,?,?);";
             String citationInsertsql = "insert into Citation values(?,?);";
             String categoryInsertsql = "insert into Category values(?);";
-            
+
             String pubAuthorInsertsql = "insert into pubAuthor values(?,?);";
             String pubCitationInsertsql = "insert into pubCitation values(?,?);";
             String pubCategoryInsertsql = "insert into pubCategory values(?,?);";
-            
+
             TObjectIntHashMap<String> authorsLst = new TObjectIntHashMap<String>();
             TObjectIntHashMap<String> citationsLst = new TObjectIntHashMap<String>();
             TObjectIntHashMap<String> categorysLst = new TObjectIntHashMap<String>();
-            
+
             try {
-                
+
                 connection.setAutoCommit(false);
                 authorBulkInsert = connection.prepareStatement(authorInsertsql);
                 citationBulkInsert = connection.prepareStatement(citationInsertsql);
                 categoryBulkInsert = connection.prepareStatement(categoryInsertsql);
-                
+
                 pubAuthorBulkInsert = connection.prepareStatement(pubAuthorInsertsql);
                 pubCitationBulkInsert = connection.prepareStatement(pubCitationInsertsql);
                 pubCategoryBulkInsert = connection.prepareStatement(pubCategoryInsertsql);
-                
+
                 String sql = "	Select articleid,authors_id,authors_firstname,authors_lastname,authors_middlename,authors_affiliation,authors_role, \n"
                         + "			ref_objid,reftext,primarycategory,othercategory \n"
                         + "			 from ACMData1 \n";
@@ -1063,26 +1068,26 @@ public class iMixTopicModelExample {
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
                 ResultSet rs = statement.executeQuery(sql);
-                
+
                 while (rs.next()) {
                     // read the result set
                     String Id = rs.getString("articleid");
-                    
+
                     String authorIdsStr = rs.getString("authors_id");
                     String[] authorIds = authorIdsStr.split("\t");
-                    
+
                     String authors_firstnamesStr = rs.getString("authors_firstname");
                     String[] authors_firstnames = authors_firstnamesStr.split("\t");
-                    
+
                     String authors_lastnamesStr = rs.getString("authors_lastname");
                     String[] authors_lastnames = authors_lastnamesStr.split("\t");
-                    
+
                     String authors_middlenamesStr = rs.getString("authors_middlename");
                     String[] authors_middlenames = authors_middlenamesStr.split("\t");
-                    
+
                     String authors_affiliationsStr = rs.getString("authors_affiliation");
                     String[] authors_affiliations = authors_affiliationsStr.split("\t");
-                    
+
                     for (int i = 0; i < authorIds.length - 1; i++) {
                         String authorId = authorIds[i];
                         if (!authorsLst.containsKey(authorId)) {
@@ -1091,7 +1096,7 @@ public class iMixTopicModelExample {
                             String fstName = authors_firstnames.length - 1 > i ? authors_firstnames[i] : "";
                             String mName = authors_middlenames.length - 1 > i ? authors_middlenames[i] : "";
                             String affiliation = authors_affiliations.length - 1 > i ? authors_affiliations[i] : "";
-                            
+
                             authorBulkInsert.setString(1, authorId);
                             authorBulkInsert.setString(2, lstName);
                             authorBulkInsert.setString(3, fstName);
@@ -1102,21 +1107,21 @@ public class iMixTopicModelExample {
                         pubAuthorBulkInsert.setString(1, Id);
                         pubAuthorBulkInsert.setString(2, authorId);
                         pubAuthorBulkInsert.executeUpdate();
-                        
+
                     }
-                    
+
                     String citationIdsStr = rs.getString("ref_objid");
                     String[] citationIds = citationIdsStr.split("\t");
-                    
+
                     String citationsStr = rs.getString("reftext");
                     String[] citations = citationsStr.split("\t");
-                    
+
                     for (int i = 0; i < citationIds.length - 1; i++) {
                         String citationId = citationIds[i];
                         if (!citationsLst.containsKey(citationId)) {
                             citationsLst.put(citationId, 1);
                             String ref = citations.length - 1 > i ? citations[i] : "";
-                            
+
                             citationBulkInsert.setString(1, citationId);
                             citationBulkInsert.setString(2, ref);
                             citationBulkInsert.executeUpdate();
@@ -1125,13 +1130,13 @@ public class iMixTopicModelExample {
                         pubCitationBulkInsert.setString(2, citationId);
                         pubCitationBulkInsert.executeUpdate();
                     }
-                    
+
                     String prCategoriesStr = rs.getString("primarycategory");
                     String[] prCategories = prCategoriesStr.split("\t");
-                    
+
                     String categoriesStr = rs.getString("othercategory");
                     String[] categories = categoriesStr.split("\t");
-                    
+
                     for (int i = 0; i < prCategories.length - 1; i++) {
                         String category = prCategories[i];
                         if (!categorysLst.containsKey(category)) {
@@ -1143,7 +1148,7 @@ public class iMixTopicModelExample {
                         pubCategoryBulkInsert.setString(2, category);
                         pubCategoryBulkInsert.executeUpdate();
                     }
-                    
+
                     for (int i = 0; i < categories.length - 1; i++) {
                         String category = categories[i];
                         if (!categorysLst.containsKey(category)) {
@@ -1151,18 +1156,18 @@ public class iMixTopicModelExample {
                             categoryBulkInsert.setString(1, category);
                             categoryBulkInsert.executeUpdate();
                         }
-                        
+
                         pubCategoryBulkInsert.setString(1, Id);
                         pubCategoryBulkInsert.setString(2, category);
                         pubCategoryBulkInsert.executeUpdate();
                     }
-                    
+
                 }
-                
+
                 connection.commit();
-                
+
             } catch (SQLException e) {
-                
+
                 if (connection != null) {
                     try {
                         System.err.print("Transaction is being rolled back");
@@ -1172,7 +1177,7 @@ public class iMixTopicModelExample {
                     }
                 }
             } finally {
-                
+
                 if (authorBulkInsert != null) {
                     authorBulkInsert.close();
                 }
@@ -1184,7 +1189,7 @@ public class iMixTopicModelExample {
                 }
                 connection.setAutoCommit(true);
             }
-            
+
         } catch (SQLException e) {
             // if the error message is "out of memory", 
             // it probably means no database file is found
@@ -1201,12 +1206,12 @@ public class iMixTopicModelExample {
                 System.err.println(e);
             }
         }
-        
+
     }
-    
+
     public static void main(String[] args) throws Exception {
         Class.forName("org.sqlite.JDBC");
         iMixTopicModelExample trainer = new iMixTopicModelExample();
-        
+
     }
 }
