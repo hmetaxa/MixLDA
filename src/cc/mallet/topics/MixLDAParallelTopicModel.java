@@ -132,7 +132,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     //int maxLblTypeCount;
     //double avgLblTypeCount;
     int numThreads = 1;
-   // double[] skewWeight; //per modality
+    // double[] skewWeight; //per modality
     double[][] p_a; // a for beta prior for modalities correlation
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
@@ -142,6 +142,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
     private int histogramSize = 0;
+    boolean checkConvergenceRate = false;
 
     //double lblSkewWeight = 1;
     public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -194,8 +195,8 @@ public class MixLDAParallelTopicModel implements Serializable {
 
         this.maxTypeCount = new int[numModalities];
         this.avgTypeCount = new double[numModalities];
-       // this.skewWeight = new double[numModalities];
-      //  Arrays.fill(this.skewWeight, 1);
+        // this.skewWeight = new double[numModalities];
+        //  Arrays.fill(this.skewWeight, 1);
 
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -368,7 +369,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                     //int topic = random.nextInt(numTopics);
                     int type = tokens.getIndexAtPosition(position);
-                    typeTotals[i][ type]++;
+                    typeTotals[i][type]++;
 
                     int topic = ThreadLocalRandom.current().nextInt(numTopics);//nextInt(numCommonTopics + numIndependentTopics);
 //                    if (topic >= numCommonTopics) {
@@ -379,7 +380,12 @@ public class MixLDAParallelTopicModel implements Serializable {
                 }
 
                 //lblSequence.
-                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
+                TopicAssignment t;
+                if (checkConvergenceRate) {
+                    t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
+                } else {
+                    t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
+                }
                 MixTopicModelTopicAssignment mt;
                 String entityId = (String) instance.getName();
 
@@ -492,7 +498,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             //  looking at the entries before the first 0 entry.
             for (int type = 0; type < numTypes[i]; type++) {
 
-               // typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
+                // typeSkewIndexes[i][type] = 0; //TODO: Initialize based on documents
                 //tokensPerTopic[i].fill(0, numTopics, 0);
                 Arrays.fill(typeTopicCounts[i][type], 0);
                 //typeTopicCounts[i][type].fill(0, numTopics, 0);
@@ -561,7 +567,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 //                                }
 //                            }
 //                        }
-                        int[] currentTypeTopicCounts = typeTopicCounts[i][ type];
+                        int[] currentTypeTopicCounts = typeTopicCounts[i][type];
 
                         // Start by assuming that the array is either empty
                         //  or is in sorted (descending) order.
@@ -587,8 +593,8 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                             currentTypeTopicCounts[index] = (1 << topicBits) + topic;
                         } else {
-                            currentTypeTopicCounts[index] =
-                                    ((currentValue + 1) << topicBits) + topic;
+                            currentTypeTopicCounts[index]
+                                    = ((currentValue + 1) << topicBits) + topic;
 
                             // Now ensure that the array is still sorted by 
                             //  bubbling this value up.
@@ -1143,17 +1149,18 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                         while (targetCounts[targetIndex] > 0 && currentTopic != topic) {
                             targetIndex++;
+
+                            if (targetIndex == targetCounts.length) {
+                                logger.info("overflow in merging on type " + type + " moodality: " + i + " thread: " + thread);
+                            }
                             currentTopic = targetCounts[targetIndex] & topicMask;
 
                         }
 
-                        //if (targetCounts.get(targetIndex) == 0 && currentTopic != topic) {
-                        //    logger.info("overflow in merging on type " + type + " moodality: " + i + " thread: " + thread);
-                        // }
                         currentCount = targetCounts[targetIndex] >> topicBits;
 
-                        targetCounts[targetIndex] =
-                                ((currentCount + count) << topicBits) + topic;
+                        targetCounts[targetIndex]
+                                = ((currentCount + count) << topicBits) + topic;
 
                         // Now ensure that the array is still sorted by 
                         //  bubbling this value up.
@@ -1519,7 +1526,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             // Now allocate it and populate it.
             int[] topicSizeHistogram = new int[maxTopicSize + 1];
             for (int topic = 0; topic < numTopics; topic++) {
-                topicSizeHistogram[ tokensPerTopic[i][topic]]++;
+                topicSizeHistogram[tokensPerTopic[i][topic]]++;
             }
 
             betaSum[i] = Dirichlet.learnSymmetricConcentration(countHistogram,
@@ -1771,7 +1778,9 @@ public class MixLDAParallelTopicModel implements Serializable {
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
-                    checkConvergence(0.8, 3, iteration / 10);
+                    if (checkConvergenceRate) {
+                        checkConvergence(0.8, 3, iteration / 10);
+                    }
                     for (Byte i = 0; i < numModalities; i++) {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
@@ -2353,7 +2362,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         // Loop over the tokens in the document, counting the current topic
         //  assignments.
         for (int position = 0; position < topics.getLength(); position++) {
-            topicDistribution[ topics.getIndexAtPosition(position)]++;
+            topicDistribution[topics.getIndexAtPosition(position)]++;
         }
 
         // Add the smoothing parameters and normalize
@@ -2444,7 +2453,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                             // Count up the tokens
                             for (int token = 0; token < docLen[m]; token++) {
-                                topicCounts[m][ currentDocTopics[token]]++;
+                                topicCounts[m][currentDocTopics[token]]++;
                             }
                         }
                     }
@@ -2598,7 +2607,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
-                topicLogGammas[ topic] = alpha[m][topic] == 0 ? 0 : Dirichlet.logGammaStirling(alpha[m][topic]);
+                topicLogGammas[topic] = alpha[m][topic] == 0 ? 0 : Dirichlet.logGammaStirling(alpha[m][topic]);
             }
             int[] topicCounts = new int[numTopics];
 
@@ -2610,14 +2619,14 @@ public class MixLDAParallelTopicModel implements Serializable {
                     docTopics = topicSequence.getFeatures();
                     if (docTopics.length > 0) {
                         for (int token = 0; token < docTopics.length; token++) {
-                            topicCounts[ docTopics[token]]++;
+                            topicCounts[docTopics[token]]++;
                         }
 
                         for (int topic = 0; topic < numTopics; topic++) {
                             if (topicCounts[topic] > 0) {
                                 double tmp_a = alpha[m][topic] + topicCounts[topic];
                                 logLikelihood[m] += (tmp_a == 0 ? 0 : Dirichlet.logGammaStirling(tmp_a)
-                                        - topicLogGammas[ topic]);
+                                        - topicLogGammas[topic]);
                             }
                         }
 

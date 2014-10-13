@@ -36,6 +36,7 @@ public class MixLDAWorkerRunnable implements Runnable {
 
     public static final int UNASSIGNED_TOPIC = -1;
     boolean isFinished = true;
+    boolean checkConvergenceRate = false;
     //boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
     ArrayList<MixTopicModelTopicAssignment> data;
@@ -666,8 +667,7 @@ public class MixLDAWorkerRunnable implements Runnable {
         double topicTermMass = 0.0;
 
         while (index < currentTypeTopicCounts.length
-                && currentTypeTopicCounts.length > 0
-                ) {
+                && currentTypeTopicCounts.length > 0) {
 
             currentTopic = currentTypeTopicCounts[index] & topicMask;
             currentValue = currentTypeTopicCounts[index] >> topicBits;
@@ -1106,8 +1106,7 @@ public class MixLDAWorkerRunnable implements Runnable {
                 type = tokenSequenceCurMod.getIndexAtPosition(position);
 
                 oldTopic = oneDocTopics[m][position];
-
-                long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+                //long tmpPreviousTopics =0;
 
 //                String boostId = type + "_" + tmpPreviousTopics;
 //                long minTopic = (long) 1 << (63 - topicBits);
@@ -1141,12 +1140,9 @@ public class MixLDAWorkerRunnable implements Runnable {
 //                        docLength,
 //                        m,
 //                        p);
-                
                 //TOCheck: probably not needed Arrays.fill(topicTermScores, 0);
-                
                 //topicTermScores.fill(0, numTopics, 0);
                 // double termSkew = typeSkewIndexes[m][type];
-
                 int[] currentTypeTopicCounts = typeTopicCounts[m][type];
                 //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
                 //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length - 1);
@@ -1168,11 +1164,10 @@ public class MixLDAWorkerRunnable implements Runnable {
 //                    tmpValue.smoothingOnlyMass = smoothingOnlyMass[m];
 //                    tmpValue.topicBetaMass = topicBetaMass[m];
 //                    tmpValue.topicTermMass = topicTermMass;
-                
-                double sample = 
-                        //random.nextUniform() *
-                        ThreadLocalRandom.current().nextDouble() * 
-                        (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
+                double sample
+                        = //random.nextUniform() *
+                        ThreadLocalRandom.current().nextDouble()
+                        * (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
 
 //                if (sample < 0) {
 //                    newTopic = 0;
@@ -1200,11 +1195,14 @@ public class MixLDAWorkerRunnable implements Runnable {
 //                } else {
 //                    newTopic = boostTopicSelection.get(boostId);
 //                }
-                tmpPreviousTopics = tmpPreviousTopics >> topicBits;
-                long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
-                tmpPreviousTopics += newTopicTmp;
-                doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+                if (checkConvergenceRate) {
+                    long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
 
+                    tmpPreviousTopics = tmpPreviousTopics >> topicBits;
+                    long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
+                    tmpPreviousTopics += newTopicTmp;
+                    doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+                }
                 //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
                 //assert(newTopic != -1);
                 nonZeroTopics = updateTopicCounts(

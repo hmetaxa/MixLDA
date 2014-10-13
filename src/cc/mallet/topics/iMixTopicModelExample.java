@@ -50,11 +50,11 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
-        int numIterations = 250;
+        int numTopics = 150;
+        int numIterations = 650;
         int independentIterations = 10;
         int burnIn = 50;
-        int optimizeInterval = 10;
+        int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.Grants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -111,6 +111,7 @@ public class iMixTopicModelExample {
                             + "                         where \n"
                             + "                        Grant.Category0='" + grantType + "'\n"
                             + "                         Group By Doc.DocId, Doc.text";
+                           // + " LIMIT 1000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
@@ -309,6 +310,8 @@ public class iMixTopicModelExample {
 
             tokenizer.stop("cid");
             tokenizer.stop("null");
+            
+            //tokenizer.
 
             pipeListText.add(tokenizer);
             Alphabet alphabet = new Alphabet();
