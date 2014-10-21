@@ -15,6 +15,8 @@ import cc.mallet.util.Randoms;
 //import gnu.trove.map.hash.TObjectIntHashMap;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import org.knowceans.util.Samplers;
+import org.knowceans.util.Vectors;
 
 /**
  * A parallel semi supervised topic model runnable task.
@@ -36,11 +38,13 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
     public static final int UNASSIGNED_TOPIC = -1;
     boolean isFinished = true;
+    boolean checkConvergenceRate = false;
     //boolean ignoreLabels = false;
     //boolean ignoreSkewness = false;
     ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
     protected int numTopics; // Number of topics to be fit
+    protected int maxNumTopics; // Number of topics to be fit
     //protected int numCommonTopics;
     protected byte numModalities;
     //protected int numIndependentTopics;
@@ -53,7 +57,8 @@ public class iMixLDAWorkerRunnable implements Runnable {
     protected int[][] typeTotals; //not used for now
     //homer
     //protected final double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-
+    protected double gammaRoot;
+    protected double[] gamma;
     protected double[][] alpha;
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
@@ -72,6 +77,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
     protected Randoms random;
+    protected double[] tablesPerModality; // num of tables per modality
     // The skew index of eachType
     //protected final double[][] typeSkewIndexes;
     //protected double[] skewWeight;// = 1;
@@ -82,7 +88,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
     //double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
 
-    public iMixLDAWorkerRunnable(int numTopics, int numIndependentTopics,
+    public iMixLDAWorkerRunnable(int numTopics, int maxNumTopics, int numIndependentTopics,
             double[][] alpha, double[] alphaSum,
             double[] beta, Randoms random,
             final ArrayList<MixTopicModelTopicAssignment> data,
@@ -90,30 +96,38 @@ public class iMixLDAWorkerRunnable implements Runnable {
             int[][] tokensPerTopic,
             int startDoc, int numDocs, byte numModalities,
             //double[][] typeSkewIndexes, iMixParallelTopicModelFixTopics.SkewType skewOn, double[] skewWeight,
-            double[][] p_a, double[][] p_b) {
+            double[][] p_a, double[][] p_b, boolean checkConvergenceRate, double[] gamma, double gammaRoot) {
 
         this.data = data;
-
+        this.checkConvergenceRate = checkConvergenceRate;
         this.numTopics = numTopics;
+        this.maxNumTopics = numTopics;
         //this.numIndependentTopics = numIndependentTopics;
         this.numModalities = numModalities;
         //this.numCommonTopics = numTopics - numIndependentTopics * numModalities;
         this.numTypes = new int[numModalities];
         this.betaSum = new double[numModalities];
+        this.tablesPerModality = new double[numModalities];
         //this.skewWeight = skewWeight;
         this.p_a = p_a;  //new double[numModalities][numModalities];
         this.p_b = p_b;
         this.smoothingOnlyMass = new double[numModalities];
         this.smoothOnlyCachedCoefficients = new double[numModalities][];
         //this.typeSkewIndexes = typeSkewIndexes;
+        this.gamma = gamma;
+
+        this.alpha = new double[numModalities][maxNumTopics];
+        this.alphaSum = new double[numModalities];
 
         for (byte i = 0; i < numModalities; i++) {
             this.numTypes[i] = typeTopicCounts[i].length;
             this.betaSum[i] = beta[i] * numTypes[i];
-            this.smoothOnlyCachedCoefficients[i] = new double[numTopics];
+            this.smoothOnlyCachedCoefficients[i] = new double[maxNumTopics];
             Arrays.fill(this.smoothOnlyCachedCoefficients[i], 0);
+            Arrays.fill(this.alpha[i], 0, numTopics, 1);
         }
 
+        //this.alphaSum = alphaSum;
         if (Integer.bitCount(numTopics) == 1) {
             // exact power of 2
             topicMask = numTopics - 1;
@@ -127,8 +141,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
 
-        this.alphaSum = alphaSum;
-        this.alpha = alpha;
+        //this.alpha = alpha; not the global alpha anymore.. 
         this.beta = beta;
 
         this.random = random;
@@ -148,6 +161,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
      */
     public void makeOnlyThread() {
         shouldBuildLocalCounts = false;
+    }
+
+    public double[] getTablesPerModality() {
+        return tablesPerModality;
     }
 
     public int[][] getTokensPerTopic() {
@@ -175,7 +192,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //    }
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[numModalities][size];
-        topicDocCounts = new int[numModalities][numTopics][];
+        topicDocCounts = new int[numModalities][maxNumTopics][];
         for (byte i = 0; i < numModalities; i++) {
             //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
             for (int topic = 0; topic < numTopics; topic++) {
@@ -205,11 +222,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //    public void resetSkewWeight(double[] skewWeight) {
 //        this.skewWeight = skewWeight;
 //    }
-//
-//    public void resetGamma(double[] gamma) {
-//        this.gamma = gamma;
-//    }
-//
+    public void resetGamma(double[] gamma) {
+        this.gamma = gamma;
+    }
+
     public void resetFastSampling(boolean fastSampling) {
         this.fastSampling = fastSampling;
     }
@@ -333,21 +349,22 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
             isFinished = false;
 
+            updateAlphaAndSmoothing();
             // Initialize the smoothing-only sampling bucket
-            Arrays.fill(smoothingOnlyMass, 0d);
-
-            for (byte i = 0; i < numModalities; i++) {
-
-                // Initialize the cached coefficients, using only smoothing.
-                //  These values will be selectively replaced in documents with
-                //  non-zero counts in particular topics.
-                //for (int topic = 0; topic < numCommonTopics; topic++) {
-                for (int topic = 0; topic < numTopics; topic++) {
-                    smoothingOnlyMass[i] += alpha[i][topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
-                    smoothOnlyCachedCoefficients[i][topic] = alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
-                }
-
-            }
+//            Arrays.fill(smoothingOnlyMass, 0d);
+//
+//            for (byte i = 0; i < numModalities; i++) {
+//
+//                // Initialize the cached coefficients, using only smoothing.
+//                //  These values will be selectively replaced in documents with
+//                //  non-zero counts in particular topics.
+//                //for (int topic = 0; topic < numCommonTopics; topic++) {
+//                for (int topic = 0; topic < numTopics; topic++) {
+//                    smoothingOnlyMass[i] += alpha[i][topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
+//                    smoothOnlyCachedCoefficients[i][topic] = alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
+//                }
+//
+//            }
 
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
@@ -537,7 +554,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
         //	Remove this token from all counts. 
         // Remove this topic's contribution to the 
         //  normalizing constants
-        smoothingOnlyMass[m] -= alpha[m][oldTopic] * beta[m]
+        smoothingOnlyMass[m] -= gamma[m] * alpha[m][oldTopic] * beta[m]
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         double normSumN = (localTopicCounts[m][oldTopic] + totalMassOtherModalities[oldTopic])
@@ -556,10 +573,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         // Add the old topic's contribution back into the
         //  normalizing constants.
-        smoothingOnlyMass[m] += alpha[m][oldTopic] * beta[m]
+        smoothingOnlyMass[m] += gamma[m] * alpha[m][oldTopic] * beta[m]
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
-        smoothOnlyCachedCoefficients[m][oldTopic] = alpha[m][oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
+        smoothOnlyCachedCoefficients[m][oldTopic] = gamma[m] * alpha[m][oldTopic] / (tokensPerTopic[m][oldTopic] + betaSum[m]);
 
         normSumN = (localTopicCounts[m][oldTopic] + totalMassOtherModalities[oldTopic])
                 / (tokensPerTopic[m][oldTopic] + betaSum[m]);
@@ -666,8 +683,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
         double topicTermMass = 0.0;
 
         while (index < currentTypeTopicCounts.length
-                && currentTypeTopicCounts.length > 0
-                ) {
+                && currentTypeTopicCounts.length > 0) {
 
             currentTopic = currentTypeTopicCounts[index] & topicMask;
             currentValue = currentTypeTopicCounts[index] >> topicBits;
@@ -790,7 +806,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         //while (sample > 0.0 && topic < numCommonTopics) {
         while (sample > 0.0 && topic < numTopics) {
-            sample -= alpha[m][topic] * beta[m]
+            sample -= gamma[m] * alpha[m][topic] * beta[m]
                     / (tokensPerTopic[m][topic] + betaSum[m]);
             if (sample <= 0.0) {
                 newTopic = topic;
@@ -835,7 +851,8 @@ public class iMixLDAWorkerRunnable implements Runnable {
             int[] docLength,
             double sample,
             double[][] p,
-            int oldTopic) {
+            int oldTopic,
+            double newTopicMass) {
         //	Make sure it actually gets set
 
         int newTopic = -1;
@@ -870,12 +887,23 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 //smoothingOnlyMass[i] += alpha[topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
                 samplingBucket = "SmoothingMass";
                 sample -= topicBetaMass[m];
-                newTopic = findNewTopicInSmoothingMass(sample, m, docLength);
+                if (sample < smoothingOnlyMass[m]) {
+                    newTopic = findNewTopicInSmoothingMass(sample, m, docLength);
+                } else {
+                    //totally new topic
+                    //synchronized (LOCK) {
+                    newTopic = numTopics;
+//Update topics count will take care of them
+//                        for (m = 0; m < numModalities; m++) {
+//                            alpha[m].set(numTopics + 1, alpha[m].get(numTopics));
+//                        }
+                    // }
 
+                }
             }
         }
 
-        if (newTopic == -1 || newTopic > numTopics - 1) {
+        if (newTopic == -1 || newTopic > numTopics) {
             System.err.println("WorkerRunnable sampling error for modality: " + m + " in " + samplingBucket + ": Sample:" + origSample + " Smoothing:" + (smoothingOnlyMass[m] / docLength[m]) + " Beta:"
                     + topicBetaMass[m] + " TopicTerm:" + topicTermMass);
             newTopic = oldTopic; //numCommonTopics + (m + 1) * numIndependentTopics - 1; // TODO is this appropriate
@@ -947,84 +975,94 @@ public class iMixLDAWorkerRunnable implements Runnable {
             byte m,
             double[][] p) {
 
-//        if (newTopic == numTopics) { //new topic in corpus
-//            for (byte i = 0; i < numModalities; i++) {
-//
-//                alpha[i].set(numTopics, alpha[i][numTopics - 1]);
-//
-//                if (i != m) { //Update smoothing for all other modalities, current modality will be updated at the end
-//                    smoothingOnlyMass[i] +=  alpha[i].get(newTopic) * beta[i]
-//                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
-//
-//                    smoothOnlyCachedCoefficients[i].set(newTopic,  alpha[i].get(newTopic) / (tokensPerTopic[i].get(newTopic) + betaSum[i]));
-//                    //ONLY Global counts should be updated
-////                    double normSumN = (localTopicCounts[i].get(newTopic) + totalMassOtherModalities.get(newTopic))
-////                            / (tokensPerTopic[i].get(newTopic) + betaSum[i]);
-////
-////                    topicBetaMass[i] += beta[i] * normSumN;
-////                    cachedCoefficients.set(newTopic, normSumN);
-//                }
-//            }
-//            numTopics++;
-//        }
-        //			Put that new topic into the counts
-        oneDocTopics[m][position] = newTopic;
+        if (newTopic == numTopics) { //new topic in corpus
 
-        // If this is a new topic for this document,
-        //  add the topic to the dense index.
-        boolean isNewTopic = (localTopicCounts[m][newTopic] == 0);
-        byte jj = 0;
-        while (isNewTopic && jj < numModalities) {
-            //if (jj != m) { // every other topic should have zero counts
-            isNewTopic = localTopicCounts[jj][newTopic] == 0;
-            //}
-            jj++;
-        }
+            //totalMassOtherModalities.add(0);
+            //cachedCoefficients.add(0);
+            for (Byte i = 0; i < numModalities; i++) {
+                localTopicCounts[i][numTopics] = 0;
+                //alpha[i][numTopics] = 1; //???
 
-        if (isNewTopic) {
+                tokensPerTopic[i][numTopics] = i == m ? 1 : 0;
+                //smoothOnlyCachedCoefficients[i].add(0);
 
-            // First find the point where we 
-            //  should insert the new topic by going to
-            //  the end (which is the only reason we're keeping
-            //  track of the number of non-zero
-            //  topics) and working backwards
-            int denseIndex = nonZeroTopics;
-
-            while (denseIndex > 0
-                    && localTopicIndex[denseIndex - 1] > newTopic) {
-
-                localTopicIndex[denseIndex]
-                        = localTopicIndex[denseIndex - 1];
-                denseIndex--;
             }
 
-            localTopicIndex[denseIndex] = newTopic;
+            localTopicIndex[nonZeroTopics] = newTopic;
             nonZeroTopics++;
+
+            updateAlphaAndSmoothing();
+
+            double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
+                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            topicBetaMass[m] += beta[m] * normSumN;
+            cachedCoefficients[newTopic] = normSumN;
+
+            oneDocTopics[m][position] = newTopic;
+
+            numTopics++;
+        } else {
+            //			Put that new topic into the counts
+            oneDocTopics[m][position] = newTopic;
+
+        // If this is a new topic for this document,
+            //  add the topic to the dense index.
+            boolean isNewTopic = (localTopicCounts[m][newTopic] == 0);
+            byte jj = 0;
+            while (isNewTopic && jj < numModalities) {
+                //if (jj != m) { // every other topic should have zero counts
+                isNewTopic = localTopicCounts[jj][newTopic] == 0;
+                //}
+                jj++;
+            }
+
+            if (isNewTopic) {
+
+            // First find the point where we 
+                //  should insert the new topic by going to
+                //  the end (which is the only reason we're keeping
+                //  track of the number of non-zero
+                //  topics) and working backwards
+                int denseIndex = nonZeroTopics;
+
+                while (denseIndex > 0
+                        && localTopicIndex[denseIndex - 1] > newTopic) {
+
+                    localTopicIndex[denseIndex]
+                            = localTopicIndex[denseIndex - 1];
+                    denseIndex--;
+                }
+
+                localTopicIndex[denseIndex] = newTopic;
+                nonZeroTopics++;
+            }
+            //TODO check here for totally new topic... 
+
+            double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
+                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            topicBetaMass[m] -= beta[m] * normSumN;
+
+            smoothingOnlyMass[m] -= gamma[m] * alpha[m][newTopic] * beta[m]
+                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            // }
+            localTopicCounts[m][newTopic]++;
+            tokensPerTopic[m][newTopic]++;
+
+            //	update the coefficients for the non-zero topics
+            smoothingOnlyMass[m] += gamma[m] * alpha[m][newTopic] * beta[m]
+                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            smoothOnlyCachedCoefficients[m][newTopic] = gamma[m] * alpha[m][newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
+                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+
+            topicBetaMass[m] += beta[m] * normSumN;
+            cachedCoefficients[newTopic] = normSumN;
         }
-
-        double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        topicBetaMass[m] -= beta[m] * normSumN;
-
-        smoothingOnlyMass[m] -= alpha[m][newTopic] * beta[m]
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        // }
-        localTopicCounts[m][newTopic]++;
-        tokensPerTopic[m][newTopic]++;
-
-        //	update the coefficients for the non-zero topics
-        smoothingOnlyMass[m] += alpha[m][newTopic] * beta[m]
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        smoothOnlyCachedCoefficients[m][newTopic] = alpha[m][newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
-                / (tokensPerTopic[m][newTopic] + betaSum[m]);
-
-        topicBetaMass[m] += beta[m] * normSumN;
-        cachedCoefficients[newTopic] = normSumN;
 
         return nonZeroTopics;
     }
@@ -1077,9 +1115,9 @@ public class iMixLDAWorkerRunnable implements Runnable {
         //int i;
         //int[] currentTypeTopicCounts;
         //	Iterate over the positions (words) in the document for each modality
-        double[] cachedCoefficients = new double[numTopics];
-        double[] totalMassOtherModalities = new double[numTopics];
-        double[] topicTermScores = new double[numTopics];
+        double[] cachedCoefficients = new double[maxNumTopics];
+        double[] totalMassOtherModalities = new double[maxNumTopics];
+        double[] topicTermScores = new double[maxNumTopics];
 
 //        TObjectIntHashMap<String> boostTopicSelection = new TObjectIntHashMap<String>();
         for (byte m = 0; m < numModalities; m++) // byte m = 0;
@@ -1106,8 +1144,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 type = tokenSequenceCurMod.getIndexAtPosition(position);
 
                 oldTopic = oneDocTopics[m][position];
-
-                long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
+                //long tmpPreviousTopics =0;
 
 //                String boostId = type + "_" + tmpPreviousTopics;
 //                long minTopic = (long) 1 << (63 - topicBits);
@@ -1141,12 +1178,9 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //                        docLength,
 //                        m,
 //                        p);
-                
                 //TOCheck: probably not needed Arrays.fill(topicTermScores, 0);
-                
                 //topicTermScores.fill(0, numTopics, 0);
                 // double termSkew = typeSkewIndexes[m][type];
-
                 int[] currentTypeTopicCounts = typeTopicCounts[m][type];
                 //int[] currentTypeTopicCounts = new int[typeTopicCounts[m][type].length]; //typeTopicCounts[m][type];
                 //System.arraycopy(typeTopicCounts[m][type], 0, currentTypeTopicCounts, 0, typeTopicCounts[m][type].length - 1);
@@ -1168,11 +1202,15 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //                    tmpValue.smoothingOnlyMass = smoothingOnlyMass[m];
 //                    tmpValue.topicBetaMass = topicBetaMass[m];
 //                    tmpValue.topicTermMass = topicTermMass;
-                
-                double sample = 
-                        //random.nextUniform() *
-                        ThreadLocalRandom.current().nextDouble() * 
-                        (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
+//                double sample
+//                        = //random.nextUniform() *
+//                        ThreadLocalRandom.current().nextDouble()
+//                        * (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
+                //double newTopicMass = gamma[m] * alpha[m].get(numTopics) / (docLength[m] * numTypes[m]);
+                double newTopicMass = gamma[m] * alpha[m][numTopics] / (numTypes[m]);
+
+                double sample = ThreadLocalRandom.current().nextDouble() * (newTopicMass + smoothingOnlyMass[m]
+                        + topicBetaMass[m] + topicTermMass);
 
 //                if (sample < 0) {
 //                    newTopic = 0;
@@ -1193,18 +1231,22 @@ public class iMixLDAWorkerRunnable implements Runnable {
                                 docLength,
                                 sample,
                                 p,
-                                oldTopic);
+                                oldTopic,
+                                newTopicMass);
 
 //                    boostTopicSelection.put(boostId, newTopic);
 //
 //                } else {
 //                    newTopic = boostTopicSelection.get(boostId);
 //                }
-                tmpPreviousTopics = tmpPreviousTopics >> topicBits;
-                long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
-                tmpPreviousTopics += newTopicTmp;
-                doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+                if (checkConvergenceRate) {
+                    long tmpPreviousTopics = doc.Assignments[m].prevTopicsSequence[position];
 
+                    tmpPreviousTopics = tmpPreviousTopics >> topicBits;
+                    long newTopicTmp = (long) newTopic << (63 - topicBits); //long is signed
+                    tmpPreviousTopics += newTopicTmp;
+                    doc.Assignments[m].prevTopicsSequence[position] = tmpPreviousTopics; //doc.Assignments[m].prevTopicsSequence[position] >> topicBits;
+                }
                 //doc.Assignments[m].prevTopicsSequence[position] = doc.Assignments[m].prevTopicsSequence[position] + newTopicTmp;
                 //assert(newTopic != -1);
                 nonZeroTopics = updateTopicCounts(
@@ -1245,1834 +1287,107 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         }
 
-//	Clean up our mess: reset the coefficients to values with only
-//	smoothing. The next doc will update its own non-zero topics...
-//not needed we have seperate smothOnlyCoefficients
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            int topic = localTopicIndex[denseIndex];
-//
-//            cachedCoefficients[topic] =
-//                    alpha[topic] / (tokensPerTopic[topic] + betaSum);
-//        }
     }
-//
-//    protected void sampleTopicsForOneDoc(MixTopicModelTopicAssignment doc, boolean a /* fast */) {
-//
-//        final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
-//        double[][] cachedCoefficients;
-//        int[][] oneDocTopics = new int[numModalities][];
-//        FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
-//
-//        int[] docLength = new int[numModalities];
-//        int[][] localTopicCounts = new int[numModalities][numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
-//        int type, oldTopic, newTopic;
-//
-//        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
-//        //FeatureSequence topicSequence =  (FeatureSequence) document.topicSequence;/
-//
-//        for (byte i = 0; i < numModalities; i++) {
-//            if (doc.Assignments[i] != null) {
-//                oneDocTopics[i] = doc.Assignments[i].topicSequence.getFeatures();
-//                tokenSequence[i] = ((FeatureSequence) doc.Assignments[i].instance.getData());
-//
-//                docLength[i] = tokenSequence[i].getLength();
-//
-//                //		populate topic counts
-//                for (int position = 0; position < docLength[i]; position++) {
-//                    if (oneDocTopics[i][position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                        continue;
-//                    }
-//                    localTopicCounts[i][oneDocTopics[i][position]]++;
-//                }
-//            }
-//        }
-//        // Build an array that densely lists the topics that
-//        //  have non-zero counts.
-//        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
-//            int i = 0;
-//            boolean topicFound = false;
-//            while (i < numModalities && !topicFound) {
-//                if (localTopicCounts[i][topic] != 0) {
-//                    localTopicIndex[denseIndex] = topic;
-//                    denseIndex++;
-//                    topicFound = true;
-//                }
-//                i++;
-//            }
-//        }
-//
-//        // Record the total number of non-zero topics
-//        int nonZeroTopics = denseIndex;
-//        cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
-//        //		Initialize the topic count/beta sampling bucket
-//        double[] topicBetaMass = new double[numModalities];
-//        Arrays.fill(topicBetaMass, 0);
-//        for (byte i = 0; i < numModalities; i++) {
-//            Arrays.fill(cachedCoefficients[i], 0);
-//
-//        }
-//
-//        //test compile
-//        // Initialize cached coefficients and the topic/beta 
-//        //  normalizing constant.
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            for (byte i = 0; i < numModalities; i++) {
-//                int topic = localTopicIndex[denseIndex];
-//                //double normSumN = 0;
-//                for (byte j = 0; j < numModalities; j++) {
-//                    if (docLength[j] > 0) {
-//                        //	initialize the normalization constant for the (B * n_{t|d}) term
-//                        double normSumN = p[i][j] * localTopicCounts[j][topic] // / docLength[j]
-//                                / (tokensPerTopic[i][topic] + betaSum[i]);
-//
-//                        topicBetaMass[i] += beta[i] * normSumN;
-//                        //	update the coefficients for the non-zero topics
-//                        cachedCoefficients[i][topic] += normSumN;
-//
-//                    }
-//                }
-//
-//                if (Double.isNaN(topicBetaMass[i])) {
-//                    topicBetaMass[i] = 0;
-//                }
-//                if (Double.isNaN(cachedCoefficients[i][topic])) {
-//                    cachedCoefficients[i][topic] = 0;
-//                }
-//            }
-//        }
-//
-//        double topicTermMass = 0.0;
-//
-//        double[] topicTermScores = new double[numTopics];
-//        //int[] topicTermIndices;
-//        //int[] topicTermValues;
-//        int i;
-//        double score;
-//
-//        int[] currentTypeTopicCounts;
-//        //	Iterate over the positions (words) in the document for each modality
-//        //for (byte m = 0; m < numModalities; m++) 
-//        byte m = 0;
-//        {
-//
-//            for (int position = 0; position < docLength[m]; position++) {
-//                if (tokenSequence[m] != null) {
-//                    type = tokenSequence[m].getIndexAtPosition(position);
-//
-//                    oldTopic = oneDocTopics[m][position];
-//
-//                    currentTypeTopicCounts = typeTopicCounts[m][type];
-//
-//                    if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                        //	Remove this token from all counts. 
-//
-//                        // Remove this topic's contribution to the 
-//                        //  normalizing constants
-//                        smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                        double tmp = localTopicCounts[m][oldTopic] // / docLength[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//                        topicBetaMass[m] -= beta[m] * tmp;
-//                        cachedCoefficients[m][oldTopic] -= tmp;
-//                        // Decrement the local doc/topic counts
-//
-//                        localTopicCounts[m][oldTopic]--;
-//
-//                        // Maintain the dense index, if we are deleting
-//                        //  the old topic
-//                        boolean isDeletedTopic = true;
-//                        for (byte j = 0; j < numModalities; j++) {
-//
-//                            if (localTopicCounts[j][oldTopic] != 0) {
-//                                isDeletedTopic = false;
-//                            }
-//
-//                        }
-//
-//                        if (isDeletedTopic) {
-//
-//                            // First get to the dense location associated with
-//                            //  the old topic.
-//
-//                            denseIndex = 0;
-//
-//                            // We know it's in there somewhere, so we don't 
-//                            //  need bounds checking.
-//                            while (localTopicIndex[denseIndex] != oldTopic) {
-//                                denseIndex++;
-//                            }
-//
-//                            // shift all remaining dense indices to the left.
-//                            while (denseIndex < nonZeroTopics) {
-//                                if (denseIndex < localTopicIndex.length - 1) {
-//                                    localTopicIndex[denseIndex] =
-//                                            localTopicIndex[denseIndex + 1];
-//                                }
-//                                denseIndex++;
-//                            }
-//
-//                            nonZeroTopics--;
-//                        }
-//
-//                        // Decrement the global topic count totals
-//                        tokensPerTopic[m][oldTopic]--;
-//                        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-//
-//
-//                        // Add the old topic's contribution back into the
-//                        //  normalizing constants.
-//                        smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                        topicBetaMass[m] += beta[m] * localTopicCounts[m][oldTopic] /// docLength[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                        // Reset the cached coefficient for this topic
-//                        cachedCoefficients[m][oldTopic] += localTopicCounts[m][oldTopic]// / docLength[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                    }
-//
-//
-//                    // Now go over the type/topic counts, decrementing
-//                    //  where appropriate, and calculating the score
-//                    //  for each topic at the same time.
-//
-//                    int index = 0;
-//                    int currentTopic, currentValue;
-//
-//                    boolean alreadyDecremented = (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC);
-//
-//                    topicTermMass = 0.0;
-//
-//                    while (index < currentTypeTopicCounts.length
-//                            && currentTypeTopicCounts[index] > 0) {
-//
-//                        currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                        currentValue = currentTypeTopicCounts[index] >> topicBits;
-//
-//                        if (!alreadyDecremented
-//                                && currentTopic == oldTopic) {
-//
-//                            // We're decrementing and adding up the 
-//                            //  sampling weights at the same time, but
-//                            //  decrementing may require us to reorder
-//                            //  the topics, so after we're done here,
-//                            //  look at this cell in the array again.
-//
-//                            currentValue--;
-//                            if (currentValue == 0) {
-//                                currentTypeTopicCounts[index] = 0;
-//                            } else {
-//                                currentTypeTopicCounts[index] =
-//                                        (currentValue << topicBits) + oldTopic;
-//                            }
-//
-//                            // Shift the reduced value to the right, if necessary.
-//
-//                            int subIndex = index;
-//                            while (subIndex < currentTypeTopicCounts.length - 1
-//                                    && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
-//                                int temp = currentTypeTopicCounts[subIndex];
-//                                currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
-//                                currentTypeTopicCounts[subIndex + 1] = temp;
-//
-//                                subIndex++;
-//                            }
-//
-//                            alreadyDecremented = true;
-//                        } else {
-//                            //add normalized smoothingOnly coefficient 
-//                            score =
-//                                    (cachedCoefficients[m][currentTopic] + smoothOnlyCachedCoefficientsLcl[m][currentTopic] /// docLength[m])
-//                                    ) * currentValue;
-//                            topicTermMass += score;
-//                            topicTermScores[index] = score;
-//
-//                            index++;
-//                        }
-//                    }
-//
-//
-//                    //normalize smoothing mass. 
-//                    //ThreadLocalRandom.current().nextDouble()
-//                    double sample = random.nextUniform() * (smoothingOnlyMass[m] //  / docLength[m] 
-//                            + topicBetaMass[m] + topicTermMass);
-//                    //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
-//
-//                    double origSample = sample;
-//
-//                    //	Make sure it actually gets set
-//                    newTopic = -1;
-//
-//                    if (sample < topicTermMass) {
-//                        //topicTermCount++;
-//
-//                        i = -1;
-//                        while (sample > 0) {
-//                            i++;
-//                            sample -= topicTermScores[i];
-//                        }
-//
-//                        newTopic = currentTypeTopicCounts[i] & topicMask;
-//                        currentValue = currentTypeTopicCounts[i] >> topicBits;
-//
-//                        currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                        // Bubble the new value up, if necessary
-//
-//                        while (i > 0
-//                                && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-//                            int temp = currentTypeTopicCounts[i];
-//                            currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-//                            currentTypeTopicCounts[i - 1] = temp;
-//
-//                            i--;
-//                        }
-//
-//                    } else {
-//                        sample -= topicTermMass;
-//
-//                        if (sample < topicBetaMass[m]) {
-//                            //betaTopicCount++;
-//
-//                            //sample /= beta[m];
-//
-//
-//                            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//
-//                                int topic = localTopicIndex[denseIndex];
-//
-//                                for (byte j = 0; j < numModalities; j++) {
-//                                    if (docLength[j] > 0) {
-//                                        double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]
-//                                                / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                                        sample -= beta[m] * normSumN;
-//                                        //sample -= p[m][j] * beta[j] * localTopicCounts[j][topic] / docLength[j]
-//                                        //        / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                                        //normSumN += p[m][j] * localTopicCounts[j][topic] / docLength[j];
-//                                    }
-//                                }
-////                                sample -= normSumN
-////                                        / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                                if (sample <= 0) {
-//                                    newTopic = topic;
-//                                    break;
-//                                }
-//                            }
-//                            if (sample > 0) {
-//                                newTopic = -1;
-//                            }
-//
-//
-//                        } else {
-//                            //smoothingOnlyCount++;
-//                            //smoothingOnlyMass[i] += alpha[topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
-//
-//                            sample -= topicBetaMass[m];
-//
-//                            // sample *= docLength[m];
-//                            sample /= beta[m];
-//
-//                            int topic = 0;
-//                            sample -= alpha[topic]
-//                                    / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                            while (sample > 0.0 && topic < numTopics - 1) {
-//                                topic++;
-//                                sample -= alpha[topic]
-//                                        / (tokensPerTopic[m][topic] + betaSum[m]);
-//                            }
-//
-//                            if (sample <= 0.0) {
-//                                newTopic = topic;
-//                                // break;
-//                            } else {
-//                                newTopic = -1;
-//                            }
-//
-//                        }
-//
-//                        // Move to the position for the new topic,
-//                        //  which may be the first empty position if this
-//                        //  is a new topic for this word.
-//
-//                        index = 0;
-//                        while (currentTypeTopicCounts[index] > 0
-//                                && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
-//                            index++;
-//                            if (index == currentTypeTopicCounts.length) {
-//                                System.err.println("type: " + type + " new topic: " + newTopic);
-//                                for (int k = 0; k < currentTypeTopicCounts.length; k++) {
-//                                    System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
-//                                            + (currentTypeTopicCounts[k] >> topicBits) + " ");
-//                                }
-//                                System.err.println();
-//
-//                            }
-//                        }
-//
-//
-//                        // index should now be set to the position of the new topic,
-//                        //  which may be an empty cell at the end of the list.
-//
-//                        if (currentTypeTopicCounts[index] == 0) {
-//                            // inserting a new topic, guaranteed to be in
-//                            //  order w.r.t. count, if not topic.
-//                            currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
-//                        } else {
-//                            currentValue = currentTypeTopicCounts[index] >> topicBits;
-//                            currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                            // Bubble the increased value left, if necessary
-//                            while (index > 0
-//                                    && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
-//                                int temp = currentTypeTopicCounts[index];
-//                                currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-//                                currentTypeTopicCounts[index - 1] = temp;
-//
-//                                index--;
-//                            }
-//                        }
-//
-//                    }
-//
-//                    if (newTopic == -1) {
-//                        System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
-//                                + topicBetaMass[m] + " " + topicTermMass);
-//                        newTopic = numTopics - 1; // TODO is this appropriate
-//                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//                    }
-//                    //assert(newTopic != -1);
-//
-//                    //			Put that new topic into the counts
-//                    oneDocTopics[m][position] = newTopic;
-//
-//                    smoothingOnlyMass[m] -= alpha[newTopic] * beta[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                    topicBetaMass[m] -= beta[m] * localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//
-//                    cachedCoefficients[m][newTopic] -= localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                    localTopicCounts[m][newTopic]++;
-//
-//                    // If this is a new topic for this document,
-//                    //  add the topic to the dense index.
-//
-//                    boolean isNewTopic = false;
-//                    if (localTopicCounts[m][newTopic] == 1) {
-//                        isNewTopic = true;
-//                        for (byte j = 0; j < numModalities; j++) {
-//                            if (j != m) {
-//                                if (localTopicCounts[j][newTopic] != 0) {
-//                                    isNewTopic = false;
-//                                }
-//                            }
-//                        }
-//                    }
-//
-//
-//                    if (isNewTopic) {
-//
-//                        // First find the point where we 
-//                        //  should insert the new topic by going to
-//                        //  the end (which is the only reason we're keeping
-//                        //  track of the number of non-zero
-//                        //  topics) and working backwards
-//
-//                        denseIndex = nonZeroTopics;
-//
-//                        while (denseIndex > 0
-//                                && localTopicIndex[denseIndex - 1] > newTopic) {
-//
-//                            localTopicIndex[denseIndex] =
-//                                    localTopicIndex[denseIndex - 1];
-//                            denseIndex--;
-//                        }
-//
-//                        localTopicIndex[denseIndex] = newTopic;
-//                        nonZeroTopics++;
-//                    }
-//
-//                    tokensPerTopic[m][newTopic]++;
-//
-//                    //	update the coefficients for the non-zero topics
-//                    smoothingOnlyMass[m] += alpha[newTopic] * beta[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                    topicBetaMass[m] += beta[m] * localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//
-//                    cachedCoefficients[m][newTopic] += localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                }
-//
-//            }
-//            if (shouldSaveState) {
-//                // Update the document-topic count histogram,
-//                //  for dirichlet estimation
-//                docLengthCounts[ docLength[m]]++;
-//
-//                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                    int topic = localTopicIndex[denseIndex];
-//                    topicDocCounts[topic][ localTopicCounts[m][topic]]++;
-//                }
-//            }
-//        }
-////	Clean up our mess: reset the coefficients to values with only
-////	smoothing. The next doc will update its own non-zero topics...
-////not needed we have seperate smothOnlyCoefficients
-////        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-////            int topic = localTopicIndex[denseIndex];
-////
-////            cachedCoefficients[topic] =
-////                    alpha[topic] / (tokensPerTopic[topic] + betaSum);
-////        }
-//    }
-//    protected void sampleTopicsForOneDoc(MixTopicModelTopicAssignment doc, String a /* not fast any more */) {
-//
-//        final double[][] smoothOnlyCachedCoefficientsLcl = this.smoothOnlyCachedCoefficients;
-//        double[][] cachedCoefficients;
-//        int[][] oneDocTopics = new int[numModalities][];
-//        FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
-//
-//        int[] docLength = new int[numModalities];
-//        int[][] localTopicCounts = new int[numModalities][numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
-//        int type, oldTopic, newTopic;
-//
-//        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
-//        //FeatureSequence topicSequence =  (FeatureSequence) document.topicSequence;/
-//
-//        for (byte i = 0; i < numModalities; i++) {
-//            if (doc.Assignments[i] != null) {
-//                oneDocTopics[i] = doc.Assignments[i].topicSequence.getFeatures();
-//                tokenSequence[i] = ((FeatureSequence) doc.Assignments[i].instance.getData());
-//
-//                docLength[i] = tokenSequence[i].getLength();
-//
-//                //		populate topic counts
-//                for (int position = 0; position < docLength[i]; position++) {
-//                    if (oneDocTopics[i][position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                        continue;
-//                    }
-//                    localTopicCounts[i][oneDocTopics[i][position]]++;
-//                }
-//            }
-//        }
-//        // Build an array that densely lists the topics that
-//        //  have non-zero counts.
-//        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
-//            int i = 0;
-//            boolean topicFound = false;
-//            while (i < numModalities && !topicFound) {
-//                if (localTopicCounts[i][topic] != 0) {
-//                    localTopicIndex[denseIndex] = topic;
-//                    denseIndex++;
-//                    topicFound = true;
-//                }
-//                i++;
-//            }
-//        }
-//
-//        // Record the total number of non-zero topics
-//        int nonZeroTopics = denseIndex;
-//        cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
-//        //		Initialize the topic count/beta sampling bucket
-//        double[] topicBetaMass = new double[numModalities];
-//        Arrays.fill(topicBetaMass, 0);
-//        for (byte i = 0; i < numModalities; i++) {
-//            Arrays.fill(cachedCoefficients[i], 0);
-//
-//        }
-//
-//        //test compile
-//        // Initialize cached coefficients and the topic/beta 
-//        //  normalizing constant.
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            for (byte i = 0; i < numModalities; i++) {
-//                int topic = localTopicIndex[denseIndex];
-//                //double normSumN = 0;
-//                for (byte j = 0; j < numModalities; j++) {
-//                    if (docLength[j] > 0) {
-//                        //	initialize the normalization constant for the (B * n_{t|d}) term
-//                        double normSumN = p[i][j] * localTopicCounts[j][topic] // / docLength[j]
-//                                / (docLength[j] * (tokensPerTopic[i][topic] + betaSum[i]));
-//
-//                        topicBetaMass[i] += beta[i] * normSumN;
-//                        //	update the coefficients for the non-zero topics
-//                        cachedCoefficients[i][topic] += normSumN;
-//
-//                    }
-//                }
-//
-//                if (Double.isNaN(topicBetaMass[i])) {
-//                    topicBetaMass[i] = 0;
-//                }
-//                if (Double.isNaN(cachedCoefficients[i][topic])) {
-//                    cachedCoefficients[i][topic] = 0;
-//                }
-//            }
-//        }
-//
-//        double topicTermMass = 0.0;
-//
-//        double[] topicTermScores = new double[numTopics];
-//        //int[] topicTermIndices;
-//        //int[] topicTermValues;
-//        int i;
-//        double score;
-//
-//        int[] currentTypeTopicCounts;
-//        //	Iterate over the positions (words) in the document for each modality
-//        //for (byte m = 0; m < numModalities; m++) 
-//        byte m = 0;
-//        {
-//
-//            for (int position = 0; position < docLength[m]; position++) {
-//                if (tokenSequence[m] != null) {
-//                    type = tokenSequence[m].getIndexAtPosition(position);
-//
-//                    oldTopic = oneDocTopics[m][position];
-//
-//                    currentTypeTopicCounts = typeTopicCounts[m][type];
-//
-//                    if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                        //	Remove this token from all counts. 
-//
-//                        // Remove this topic's contribution to the 
-//                        //  normalizing constants
-//                        smoothingOnlyMass[m] -= alpha[oldTopic] * beta[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                        double tmp = localTopicCounts[m][oldTopic] // / docLength[m]
-//                                / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-//                        topicBetaMass[m] -= beta[m] * tmp;
-//                        cachedCoefficients[m][oldTopic] -= tmp;
-//                        // Decrement the local doc/topic counts
-//
-//                        localTopicCounts[m][oldTopic]--;
-//
-//                        // Maintain the dense index, if we are deleting
-//                        //  the old topic
-//                        boolean isDeletedTopic = true;
-//                        for (byte j = 0; j < numModalities; j++) {
-//
-//                            if (localTopicCounts[j][oldTopic] != 0) {
-//                                isDeletedTopic = false;
-//                            }
-//
-//                        }
-//
-//                        if (isDeletedTopic) {
-//
-//                            // First get to the dense location associated with
-//                            //  the old topic.
-//
-//                            denseIndex = 0;
-//
-//                            // We know it's in there somewhere, so we don't 
-//                            //  need bounds checking.
-//                            while (localTopicIndex[denseIndex] != oldTopic) {
-//                                denseIndex++;
-//                            }
-//
-//                            // shift all remaining dense indices to the left.
-//                            while (denseIndex < nonZeroTopics) {
-//                                if (denseIndex < localTopicIndex.length - 1) {
-//                                    localTopicIndex[denseIndex] =
-//                                            localTopicIndex[denseIndex + 1];
-//                                }
-//                                denseIndex++;
-//                            }
-//
-//                            nonZeroTopics--;
-//                        }
-//
-//                        // Decrement the global topic count totals
-//                        tokensPerTopic[m][oldTopic]--;
-//                        assert (tokensPerTopic[m][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-//
-//
-//                        // Add the old topic's contribution back into the
-//                        //  normalizing constants.
-//                        smoothingOnlyMass[m] += alpha[oldTopic] * beta[m]
-//                                / (tokensPerTopic[m][oldTopic] + betaSum[m]);
-//
-//                        topicBetaMass[m] += beta[m] * localTopicCounts[m][oldTopic] /// docLength[m]
-//                                / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-//
-//                        // Reset the cached coefficient for this topic
-//                        cachedCoefficients[m][oldTopic] += localTopicCounts[m][oldTopic]// / docLength[m]
-//                                / (docLength[m] * (tokensPerTopic[m][oldTopic] + betaSum[m]));
-//
-//                    }
-//
-//
-//                    // Now go over the type/topic counts, decrementing
-//                    //  where appropriate, and calculating the score
-//                    //  for each topic at the same time.
-//
-//                    int index = 0;
-//                    int currentTopic, currentValue;
-//
-//                    boolean alreadyDecremented = (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC);
-//
-//                    topicTermMass = 0.0;
-//
-//                    while (index < currentTypeTopicCounts.length
-//                            && currentTypeTopicCounts[index] > 0) {
-//
-//                        currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                        currentValue = currentTypeTopicCounts[index] >> topicBits;
-//
-//                        if (!alreadyDecremented
-//                                && currentTopic == oldTopic) {
-//
-//                            // We're decrementing and adding up the 
-//                            //  sampling weights at the same time, but
-//                            //  decrementing may require us to reorder
-//                            //  the topics, so after we're done here,
-//                            //  look at this cell in the array again.
-//
-//                            currentValue--;
-//                            if (currentValue == 0) {
-//                                currentTypeTopicCounts[index] = 0;
-//                            } else {
-//                                currentTypeTopicCounts[index] =
-//                                        (currentValue << topicBits) + oldTopic;
-//                            }
-//
-//                            // Shift the reduced value to the right, if necessary.
-//
-//                            int subIndex = index;
-//                            while (subIndex < currentTypeTopicCounts.length - 1
-//                                    && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
-//                                int temp = currentTypeTopicCounts[subIndex];
-//                                currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
-//                                currentTypeTopicCounts[subIndex + 1] = temp;
-//
-//                                subIndex++;
-//                            }
-//
-//                            alreadyDecremented = true;
-//                        } else {
-//                            //add normalized smoothingOnly coefficient 
-//                            score =
-//                                    (cachedCoefficients[m][currentTopic] + (smoothOnlyCachedCoefficientsLcl[m][currentTopic] / docLength[m])) * currentValue;
-//                            topicTermMass += score;
-//                            topicTermScores[index] = score;
-//
-//                            index++;
-//                        }
-//                    }
-//
-//
-//                    //normalize smoothing mass. 
-//                    //ThreadLocalRandom.current().nextDouble()
-//                    double sample = random.nextUniform() * ((smoothingOnlyMass[m] / docLength[m])
-//                            + topicBetaMass[m] + topicTermMass);
-//                    //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
-//
-//                    double origSample = sample;
-//
-//                    //	Make sure it actually gets set
-//                    newTopic = -1;
-//
-//                    if (sample < topicTermMass) {
-//                        //topicTermCount++;
-//
-//                        i = -1;
-//                        while (sample > 0) {
-//                            i++;
-//                            sample -= topicTermScores[i];
-//                        }
-//
-//                        newTopic = currentTypeTopicCounts[i] & topicMask;
-//                        currentValue = currentTypeTopicCounts[i] >> topicBits;
-//
-//                        currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                        // Bubble the new value up, if necessary
-//
-//                        while (i > 0
-//                                && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-//                            int temp = currentTypeTopicCounts[i];
-//                            currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-//                            currentTypeTopicCounts[i - 1] = temp;
-//
-//                            i--;
-//                        }
-//
-//                    } else {
-//                        sample -= topicTermMass;
-//
-//                        if (sample < topicBetaMass[m]) {
-//                            //betaTopicCount++;
-//
-//                            sample /= beta[m];
-//
-//                            int topic = -1;
-//                            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//
-//                                topic = localTopicIndex[denseIndex];
-//
-//                                for (byte j = 0; j < numModalities; j++) {
-//                                    if (docLength[j] > 0) {
-//                                        double normSumN = p[m][j] * localTopicCounts[j][topic] /// docLength[j]
-//                                                / (docLength[j] * (tokensPerTopic[m][topic] + betaSum[m]));
-//
-//                                        sample -= normSumN;
-//                                        //sample -= p[m][j] * beta[j] * localTopicCounts[j][topic] / docLength[j]
-//                                        //        / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                                        //normSumN += p[m][j] * localTopicCounts[j][topic] / docLength[j];
-//                                    }
-//                                }
-////                                sample -= normSumN
-////                                        / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                                if (sample <= 0) {
-//                                    newTopic = topic;
-//                                    break;
-//                                }
-//                            }
-//                            if (sample > 0) {
-//                                newTopic = topic; // rounding error sometimes TODO: find a solution
-//                                //newTopic = -1;
-//                            }
-//
-//
-//                        } else {
-//                            //smoothingOnlyCount++;
-//                            //smoothingOnlyMass[i] += alpha[topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
-//
-//                            sample -= topicBetaMass[m];
-//
-//                            sample *= docLength[m];
-//                            sample /= beta[m];
-//
-//                            int topic = 0;
-//                            sample -= alpha[topic]
-//                                    / (tokensPerTopic[m][topic] + betaSum[m]);
-//
-//                            while (sample > 0.0 && topic < numTopics - 1) {
-//                                topic++;
-//                                sample -= alpha[topic]
-//                                        / (tokensPerTopic[m][topic] + betaSum[m]);
-//                            }
-//
-//                            if (sample <= 0.0) {
-//                                newTopic = topic;
-//                                // break;
-//                            } else {
-//                                newTopic = -1;
-//                            }
-//
-//                        }
-//
-//                        // Move to the position for the new topic,
-//                        //  which may be the first empty position if this
-//                        //  is a new topic for this word.
-//
-//                        index = 0;
-//                        while (currentTypeTopicCounts[index] > 0
-//                                && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
-//                            index++;
-//                            if (index == currentTypeTopicCounts.length) {
-//                                System.err.println("type: " + type + " new topic: " + newTopic);
-//                                for (int k = 0; k < currentTypeTopicCounts.length; k++) {
-//                                    System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
-//                                            + (currentTypeTopicCounts[k] >> topicBits) + " ");
-//                                }
-//                                System.err.println();
-//
-//                            }
-//                        }
-//
-//
-//                        // index should now be set to the position of the new topic,
-//                        //  which may be an empty cell at the end of the list.
-//
-//                        if (currentTypeTopicCounts[index] == 0) {
-//                            // inserting a new topic, guaranteed to be in
-//                            //  order w.r.t. count, if not topic.
-//                            currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
-//                        } else {
-//                            currentValue = currentTypeTopicCounts[index] >> topicBits;
-//                            currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                            // Bubble the increased value left, if necessary
-//                            while (index > 0
-//                                    && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
-//                                int temp = currentTypeTopicCounts[index];
-//                                currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-//                                currentTypeTopicCounts[index - 1] = temp;
-//
-//                                index--;
-//                            }
-//                        }
-//
-//                    }
-//
-//                    if (newTopic == -1) {
-//                        System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[m] + " "
-//                                + topicBetaMass[m] + " " + topicTermMass);
-//                        newTopic = numTopics - 1; // TODO is this appropriate
-//                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//                    }
-//                    //assert(newTopic != -1);
-//
-//                    //			Put that new topic into the counts
-//                    oneDocTopics[m][position] = newTopic;
-//
-//                    smoothingOnlyMass[m] -= alpha[newTopic] * beta[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                    topicBetaMass[m] -= beta[m] * localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-//
-//
-//                    cachedCoefficients[m][newTopic] -= localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-//
-//                    localTopicCounts[m][newTopic]++;
-//
-//                    // If this is a new topic for this document,
-//                    //  add the topic to the dense index.
-//
-//                    boolean isNewTopic = false;
-//                    if (localTopicCounts[m][newTopic] == 1) {
-//                        isNewTopic = true;
-//                        for (byte j = 0; j < numModalities; j++) {
-//                            if (j != m) {
-//                                if (localTopicCounts[j][newTopic] != 0) {
-//                                    isNewTopic = false;
-//                                }
-//                            }
-//                        }
-//                    }
-//
-//
-//                    if (isNewTopic) {
-//
-//                        // First find the point where we 
-//                        //  should insert the new topic by going to
-//                        //  the end (which is the only reason we're keeping
-//                        //  track of the number of non-zero
-//                        //  topics) and working backwards
-//
-//                        denseIndex = nonZeroTopics;
-//
-//                        while (denseIndex > 0
-//                                && localTopicIndex[denseIndex - 1] > newTopic) {
-//
-//                            localTopicIndex[denseIndex] =
-//                                    localTopicIndex[denseIndex - 1];
-//                            denseIndex--;
-//                        }
-//
-//                        localTopicIndex[denseIndex] = newTopic;
-//                        nonZeroTopics++;
-//                    }
-//
-//                    tokensPerTopic[m][newTopic]++;
-//
-//                    //	update the coefficients for the non-zero topics
-//                    smoothingOnlyMass[m] += alpha[newTopic] * beta[m]
-//                            / (tokensPerTopic[m][newTopic] + betaSum[m]);
-//
-//                    topicBetaMass[m] += beta[m] * localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-//
-//
-//                    cachedCoefficients[m][newTopic] += localTopicCounts[m][newTopic]// / docLength[m]
-//                            / (docLength[m] * (tokensPerTopic[m][newTopic] + betaSum[m]));
-//
-//                }
-//
-//            }
-//            if (shouldSaveState) {
-//                // Update the document-topic count histogram,
-//                //  for dirichlet estimation
-//                docLengthCounts[ docLength[m]]++;
-//
-//                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                    int topic = localTopicIndex[denseIndex];
-//                    topicDocCounts[topic][ localTopicCounts[m][topic]]++;
-//                }
-//            }
-//        }
-////	Clean up our mess: reset the coefficients to values with only
-////	smoothing. The next doc will update its own non-zero topics...
-////not needed we have seperate smothOnlyCoefficients
-////        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-////            int topic = localTopicIndex[denseIndex];
-////
-////            cachedCoefficients[topic] =
-////                    alpha[topic] / (tokensPerTopic[topic] + betaSum);
-////        }
-//    }
-////
-//    protected void sampleTopicsForOneDoc(FeatureSequence tokenSequence,
-//            FeatureSequence topicSequence) {
-//
-//        //double[][] cachedCoefficients;
-//        int[] oneDocTopics = topicSequence.getFeatures();
-//        //FeatureSequence[] tokenSequence = new FeatureSequence[numModalities];
-//
-//        //int docLength = new int[numModalities];
-//        int[] localTopicCounts = new int[numTopics];
-//        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
-//        int type, oldTopic, newTopic;
-//
-//        //FeatureSequence tokens = (FeatureSequence) document.instance.getData();
-//        //FeatureSequence topicSequence =  (FeatureSequence) document.topicSequence;/
-//
-//        //for (byte i = 0; i < numModalities; i++) {
-//        //if (doc.Assignments[i] != null) {
-//        //oneDocTopics = topicSequence.getFeatures();
-//        //tokenSequence[i] = ((FeatureSequence) doc.Assignments[i].instance.getData());
-//
-//        int docLength = tokenSequence.getLength();
-//
-//        //		populate topic counts
-//        for (int position = 0; position < docLength; position++) {
-//            if (oneDocTopics[position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                continue;
-//            }
-//            localTopicCounts[oneDocTopics[position]]++;
-//        }
-//        // }
-//        //}
-//        // Build an array that densely lists the topics that
-//        //  have non-zero counts.
-//        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
-//            if (localTopicCounts[topic] != 0) {
-//                localTopicIndex[denseIndex] = topic;
-//                denseIndex++;
-//            }
-//        }
-//
-//        // Record the total number of non-zero topics
-//        int nonZeroTopics = denseIndex;
-//        // cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
-//        //		Initialize the topic count/beta sampling bucket
-//        double topicBetaMass = 0.0;//new double[numModalities];
-//        //Arrays.fill(topicBetaMass, 0);
-//        // for (byte i = 0; i < numModalities; i++) {
-//        // Arrays.fill(cachedCoefficients[m], 0);
-//
-//        //}
-//        // Initialize cached coefficients and the topic/beta 
-//        //  normalizing constant.
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            int topic = localTopicIndex[denseIndex];
-//            int n = localTopicCounts[topic];
-//
-//            //	initialize the normalization constant for the (B * n_{t|d}) term
-//            topicBetaMass += beta[0] * n / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//            //	update the coefficients for the non-zero topics
-//            //cachedCoefficients[topic] =	(alpha[topic] + n) / (tokensPerTopic[topic] + betaSum);
-//        }
-////
-////                if (Double.isNaN(topicBetaMass[i])) {
-////                    topicBetaMass[i] = 0;
-////                }
-////                if (Double.isNaN(cachedCoefficients[i][topic])) {
-////                    cachedCoefficients[i][topic] = 0;
-////                }
-//
-//
-//
-//        double topicTermMass = 0.0;
-//
-//        double[] topicTermScores = new double[numTopics];
-//        //int[] topicTermIndices;
-//        //int[] topicTermValues;
-//        int i;
-//        double score;
-//
-//        int[] currentTypeTopicCounts;
-//        //	Iterate over the positions (words) in the document for each modality
-//        //for (byte m = 0; m < numModalities; m++) 
-//
-//        for (int position = 0; position < docLength; position++) {
-//            //if (tokenSequence[0] != null) {
-//            type = tokenSequence.getIndexAtPosition(position);
-//
-//            oldTopic = oneDocTopics[position];
-//
-//            currentTypeTopicCounts = typeTopicCounts[0][type];
-//
-//            if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                //	Remove this token from all counts. 
-//
-//                // Remove this topic's contribution to the 
-//                //  normalizing constants
-//                smoothingOnlyMass[0] -= alpha[oldTopic] * beta[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//                double tmp = localTopicCounts[oldTopic] /// docLength[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//                topicBetaMass -= beta[0] * tmp;
-//                // cachedCoefficients[0][oldTopic] -= tmp;
-//                // Decrement the local doc/topic counts
-//
-//                localTopicCounts[oldTopic]--;
-//
-//                // Maintain the dense index, if we are deleting
-//                //  the old topic
-////                        boolean isDeletedTopic = true;
-////                        for (byte j = 0; j < numModalities; j++) {
-////
-////                            if (localTopicCounts[oldTopic] != 0) {
-////                                isDeletedTopic = false;
-////                            }
-////
-////                        }
-//
-//                if (localTopicCounts[oldTopic] == 0) {
-//
-//                    // First get to the dense location associated with
-//                    //  the old topic.
-//
-//                    denseIndex = 0;
-//
-//                    // We know it's in there somewhere, so we don't 
-//                    //  need bounds checking.
-//                    while (localTopicIndex[denseIndex] != oldTopic) {
-//                        denseIndex++;
-//                    }
-//
-//                    // shift all remaining dense indices to the left.
-//                    while (denseIndex < nonZeroTopics) {
-//                        if (denseIndex < localTopicIndex.length - 1) {
-//                            localTopicIndex[denseIndex] =
-//                                    localTopicIndex[denseIndex + 1];
-//                        }
-//                        denseIndex++;
-//                    }
-//
-//                    nonZeroTopics--;
-//                }
-//
-//                // Decrement the global topic count totals
-//                tokensPerTopic[0][oldTopic]--;
-//                assert (tokensPerTopic[0][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-//
-//
-//                // Add the old topic's contribution back into the
-//                //  normalizing constants.
-//                smoothingOnlyMass[0] += alpha[oldTopic] * beta[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//                topicBetaMass += beta[0] * localTopicCounts[oldTopic] /// docLength[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//                // Reset the cached coefficient for this topic
-//                // cachedCoefficients[0][oldTopic] += localTopicCounts[oldTopic] /// docLength[0]
-//                //         / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//            }
-//
-//
-//            // Now go over the type/topic counts, decrementing
-//            //  where appropriate, and calculating the score
-//            //  for each topic at the same time.
-//
-//            int index = 0;
-//            int currentTopic, currentValue;
-//
-//            boolean alreadyDecremented = (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC);
-//
-//            topicTermMass = 0.0;
-//
-//            while (index < currentTypeTopicCounts.length
-//                    && currentTypeTopicCounts[index] > 0) {
-//
-//                currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                currentValue = currentTypeTopicCounts[index] >> topicBits;
-//
-//                if (!alreadyDecremented
-//                        && currentTopic == oldTopic) {
-//
-//                    // We're decrementing and adding up the 
-//                    //  sampling weights at the same time, but
-//                    //  decrementing may require us to reorder
-//                    //  the topics, so after we're done here,
-//                    //  look at this cell in the array again.
-//
-//                    currentValue--;
-//                    if (currentValue == 0) {
-//                        currentTypeTopicCounts[index] = 0;
-//                    } else {
-//                        currentTypeTopicCounts[index] =
-//                                (currentValue << topicBits) + oldTopic;
-//                    }
-//
-//                    // Shift the reduced value to the right, if necessary.
-//
-//                    int subIndex = index;
-//                    while (subIndex < currentTypeTopicCounts.length - 1
-//                            && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
-//                        int temp = currentTypeTopicCounts[subIndex];
-//                        currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
-//                        currentTypeTopicCounts[subIndex + 1] = temp;
-//
-//                        subIndex++;
-//                    }
-//
-//                    alreadyDecremented = true;
-//                } else {
-//                    //add normalized smoothingOnly coefficient 
-//                    score =
-//                            (smoothOnlyCachedCoefficients[0][currentTopic]// / docLength[0]
-//                            ) * currentValue;
-//                    topicTermMass += score;
-//                    topicTermScores[index] = score;
-//
-//                    index++;
-//                }
-//            }
-//
-//
-//            //normalize smoothing mass. 
-//            //ThreadLocalRandom.current().nextDouble()
-//            double sample = random.nextUniform() * (smoothingOnlyMass[0] // / docLength[0] 
-//                    + topicBetaMass + topicTermMass);
-//            //random.nextUniform() * (smoothingOnlyMass + topicBetaMass + topicTermMass);
-//
-//            double origSample = sample;
-//
-//            //	Make sure it actually gets set
-//            newTopic = -1;
-//
-//            if (sample < topicTermMass) {
-//                //topicTermCount++;
-//
-//                i = -1;
-//                while (sample > 0) {
-//                    i++;
-//                    sample -= topicTermScores[i];
-//                }
-//
-//                newTopic = currentTypeTopicCounts[i] & topicMask;
-//                currentValue = currentTypeTopicCounts[i] >> topicBits;
-//
-//                currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                // Bubble the new value up, if necessary
-//
-//                while (i > 0
-//                        && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-//                    int temp = currentTypeTopicCounts[i];
-//                    currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-//                    currentTypeTopicCounts[i - 1] = temp;
-//
-//                    i--;
-//                }
-//
+
+    private void updateAlphaAndSmoothing() {
+        double[][] mk = new double[numModalities][numTopics + 1];
+
+        //double[] tt = new double[maxTopic + 2];
+        for (int t = 0; t < numTopics; t++) {
+
+            //int k = kactive.get(kk);
+            for (int doc = startDoc;
+                    doc < data.size() && doc < startDoc + numDocs;
+                    doc++) {
+                //for (int j = 0; j < numDocuments; j++) {
+                for (byte m = 0; m < numModalities; m++) {
+                    if (tokensPerTopic[m][t] > 1) {
+                        //sample number of tables
+                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m][t], tokensPerTopic[m][t]);
+                        //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                        // nmk[m].get(k));
+                    } else //nmk[m].get(k) = 0 or 1
+                    {
+                        mk[m][t] += tokensPerTopic[m][t];
+                    }
+                }
+            }
+        }// end outter for loop
+
+        for (byte m = 0; m < numModalities; m++) {
+            //alpha[m].fill(0, numTopics, 0);
+
+            alphaSum[m] = 0;
+            mk[m][numTopics] = gammaRoot;
+            tablesPerModality[m] = Vectors.sum(mk[m]);
+
+            double[] tt = sampleDirichlet(mk[m]);
+
+            for (int kk = 0; kk <= numTopics; kk++) {
+                //int k = kactive.get(kk);
+                alpha[m][kk] = tt[kk];
+                alphaSum[m] += gamma[m] * tt[kk];
+                //tau.set(k, tt[kk]);
+            }
+
+//            if (alpha[m].size() < numTopics + 1) {
+//                alpha[m].add(tt[numTopics]);
 //            } else {
-//                sample -= topicTermMass;
-//
-//                if (sample < topicBetaMass) {
-//                    //betaTopicCount++;
-//
-//                    sample /= beta[0];
-//
-//
-//                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//
-//                        int topic = localTopicIndex[denseIndex];
-//
-//                        //for (byte j = 0; j < numModalities; j++) {
-//                        // if (docLength[j] > 0) {
-//                        double normSumN = localTopicCounts[topic] /// docLength[j]
-//                                / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//                        sample -= normSumN;
-//                        //sample -= p[0][j] * beta[j] * localTopicCounts[j][topic] / docLength[j]
-//                        //        / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//                        //normSumN += p[0][j] * localTopicCounts[j][topic] / docLength[j];
-//                        //}
-//                        //}
-////                                sample -= normSumN
-////                                        / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//                        if (sample <= 0) {
-//                            newTopic = topic;
-//                            break;
-//                        }
-//                    }
-//                    if (sample > 0) {
-//                        newTopic = -1;
-//                    }
-//
-//
-//                } else {
-//                    //smoothingOnlyCount++;
-//                    //smoothingOnlyMass[i] += alpha[topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
-//
-//                    sample -= topicBetaMass;
-//
-//                    //sample *= docLength[0];
-//                    sample /= beta[0];
-//
-//                    int topic = 0;
-//                    sample -= alpha[topic]
-//                            / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//                    while (sample > 0.0 && topic < numTopics - 1) {
-//                        topic++;
-//                        sample -= alpha[topic]
-//                                / (tokensPerTopic[0][topic] + betaSum[0]);
-//                    }
-//
-//                    if (sample <= 0.0) {
-//                        newTopic = topic;
-//                        break;
-//                    } else {
-//                        newTopic = -1;
-//                    }
-//
-//                }
-//
-//                // Move to the position for the new topic,
-//                //  which may be the first empty position if this
-//                //  is a new topic for this word.
-//
-//                index = 0;
-//                while (currentTypeTopicCounts[index] > 0
-//                        && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
-//                    index++;
-//                    if (index == currentTypeTopicCounts.length) {
-//                        System.err.println("type: " + type + " new topic: " + newTopic);
-//                        for (int k = 0; k < currentTypeTopicCounts.length; k++) {
-//                            System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
-//                                    + (currentTypeTopicCounts[k] >> topicBits) + " ");
-//                        }
-//                        System.err.println();
-//
-//                    }
-//                }
-//
-//
-//                // index should now be set to the position of the new topic,
-//                //  which may be an empty cell at the end of the list.
-//
-//                if (currentTypeTopicCounts[index] == 0) {
-//                    // inserting a new topic, guaranteed to be in
-//                    //  order w.r.t. count, if not topic.
-//                    currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
-//                } else {
-//                    currentValue = currentTypeTopicCounts[index] >> topicBits;
-//                    currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                    // Bubble the increased value left, if necessary
-//                    while (index > 0
-//                            && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
-//                        int temp = currentTypeTopicCounts[index];
-//                        currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-//                        currentTypeTopicCounts[index - 1] = temp;
-//
-//                        index--;
-//                    }
-//                }
-//
+//                alpha[m].set(numTopics, tt[numTopics]);
 //            }
-//
-//            if (newTopic == -1) {
-//                System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass[0] + " "
-//                        + topicBetaMass + " " + topicTermMass);
-//                newTopic = numTopics - 1; // TODO is this appropriate
-//                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//            }
-//            //assert(newTopic != -1);
-//
-//            //			Put that new topic into the counts
-//            oneDocTopics[position] = newTopic;
-//
-//            smoothingOnlyMass[0] -= alpha[newTopic] * beta[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//            topicBetaMass -= beta[0] * localTopicCounts[newTopic]// / docLength[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//
-//            // cachedCoefficients[0][newTopic] -= localTopicCounts[newTopic]// / docLength[0]
-//            //         / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//            localTopicCounts[newTopic]++;
-//
-//            // If this is a new topic for this document,
-//            //  add the topic to the dense index.
-////
-////                    boolean isNewTopic = false;
-////                    if (localTopicCounts[newTopic] == 1) {
-////                        isNewTopic = true;
-////                        for (byte j = 0; j < numModalities; j++) {
-////                            if (j != 0) {
-////                                if (localTopicCounts[newTopic] != 0) {
-////                                    isNewTopic = false;
-////                                }
-////                            }
-////                        }
-////                    }
-//
-//
-//            if (localTopicCounts[newTopic] == 1) {
-//
-//                // First find the point where we 
-//                //  should insert the new topic by going to
-//                //  the end (which is the only reason we're keeping
-//                //  track of the number of non-zero
-//                //  topics) and working backwards
-//
-//                denseIndex = nonZeroTopics;
-//
-//                while (denseIndex > 0
-//                        && localTopicIndex[denseIndex - 1] > newTopic) {
-//
-//                    localTopicIndex[denseIndex] =
-//                            localTopicIndex[denseIndex - 1];
-//                    denseIndex--;
-//                }
-//
-//                localTopicIndex[denseIndex] = newTopic;
-//                nonZeroTopics++;
-//            }
-//
-//            tokensPerTopic[0][newTopic]++;
-//
-//            //	update the coefficients for the non-zero topics
-//            smoothingOnlyMass[0] += alpha[newTopic] * beta[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//            topicBetaMass += beta[0] * localTopicCounts[newTopic]// / docLength[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//
-//            // cachedCoefficients[0][newTopic] += localTopicCounts[newTopic]// / docLength[0]
-//            //         / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//
-//
-//        }
-//        if (shouldSaveState) {
-//            // Update the document-topic count histogram,
-//            //  for dirichlet estimation
-//            docLengthCounts[ docLength]++;
-//
-//            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                int topic = localTopicIndex[denseIndex];
-//                topicDocCounts[topic][ localTopicCounts[topic]]++;
-//            }
-//        }
-//
-////	Clean up our mess: reset the coefficients to values with only
-////	smoothing. The next doc will update its own non-zero topics...
-////not needed we have seperate smothOnlyCoefficients
-////        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-////            int topic = localTopicIndex[denseIndex];
-////
-////            cachedCoefficients[topic] =
-////                    alpha[topic] / (tokensPerTopic[topic] + betaSum);
-////        }
-//    }
-    //    protected void sampleTopicsForOneDoc(FeatureSequence tokenSequence,
-//            FeatureSequence topicSequence,
-//            boolean readjustTopicsAndStats /* currently ignored */) {
-//
-//        int[] oneDocTopics = topicSequence.getFeatures();
-//
-//        int[] currentTypeTopicCounts;
-//        int type, oldTopic, newTopic;
-//        double topicWeightsSum;
-//        int docLength = tokenSequence.getLength();
-//
-//        int[] localTopicCounts = new int[numTopics];
-//        int[] localTopicIndex = new int[numTopics];
-//
-//        //		populate topic counts
-//        for (int position = 0; position < docLength; position++) {
-//            if (oneDocTopics[position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                continue;
-//            }
-//            localTopicCounts[oneDocTopics[position]]++;
-//        }
-//
-//        // Build an array that densely lists the topics that
-//        //  have non-zero counts.
-//        int denseIndex = 0;
-//        for (int topic = 0; topic < numTopics; topic++) {
-//            if (localTopicCounts[topic] != 0) {
-//                localTopicIndex[denseIndex] = topic;
-//                denseIndex++;
-//            }
-//        }
-//
-//        // Record the total number of non-zero topics
-//        int nonZeroTopics = denseIndex;
-//
-//        //		Initialize the topic count/beta sampling bucket
-//        double topicBetaMass = 0.0;
-//
-//        // Initialize cached coefficients and the topic/beta 
-//        //  normalizing constant.
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            int topic = localTopicIndex[denseIndex];
-//            int n = localTopicCounts[topic];
-//
-//            //	initialize the normalization constant for the (B * n_{t|d}) term
-//            topicBetaMass += beta[0] * n / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//            //	update the coefficients for the non-zero topics
-//            smoothOnlyCachedCoefficients[0][topic] = (alpha[topic] + n) / (tokensPerTopic[0][topic] + betaSum[0]);
-//        }
-//
-//        double topicTermMass = 0.0;
-//
-//        double[] topicTermScores = new double[numTopics];
-//        int[] topicTermIndices;
-//        int[] topicTermValues;
-//        int i;
-//        double score;
-//
-//        //	Iterate over the positions (words) in the document 
-//        for (int position = 0; position < docLength; position++) {
-//            type = tokenSequence.getIndexAtPosition(position);
-//            oldTopic = oneDocTopics[position];
-//
-//            currentTypeTopicCounts = typeTopicCounts[0][type];
-//
-//            if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                //	Remove this token from all counts. 
-//
-//                // Remove this topic's contribution to the 
-//                //  normalizing constants
-//                smoothingOnlyMass[0] -= alpha[oldTopic] * beta[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//                topicBetaMass -= beta[0] * localTopicCounts[oldTopic]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//                // Decrement the local doc/topic counts
-//
-//                localTopicCounts[oldTopic]--;
-//
-//                // Maintain the dense index, if we are deleting
-//                //  the old topic
-//                if (localTopicCounts[oldTopic] == 0) {
-//
-//                    // First get to the dense location associated with
-//                    //  the old topic.
-//
-//                    denseIndex = 0;
-//
-//                    // We know it's in there somewhere, so we don't 
-//                    //  need bounds checking.
-//                    while (localTopicIndex[denseIndex] != oldTopic) {
-//                        denseIndex++;
-//                    }
-//
-//                    // shift all remaining dense indices to the left.
-//                    while (denseIndex < nonZeroTopics) {
-//                        if (denseIndex < localTopicIndex.length - 1) {
-//                            localTopicIndex[denseIndex] =
-//                                    localTopicIndex[denseIndex + 1];
-//                        }
-//                        denseIndex++;
-//                    }
-//
-//                    nonZeroTopics--;
-//                }
-//
-//                // Decrement the global topic count totals
-//                tokensPerTopic[0][oldTopic]--;
-//                assert (tokensPerTopic[0][oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-//
-//
-//                // Add the old topic's contribution back into the
-//                //  normalizing constants.
-//                smoothingOnlyMass[0] += alpha[oldTopic] * beta[0]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//                topicBetaMass += beta[0] * localTopicCounts[oldTopic]
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//
-//                // Reset the cached coefficient for this topic
-//                smoothOnlyCachedCoefficients[0][oldTopic] =
-//                        (alpha[oldTopic] + localTopicCounts[oldTopic])
-//                        / (tokensPerTopic[0][oldTopic] + betaSum[0]);
-//            }
-//
-//
-//            // Now go over the type/topic counts, decrementing
-//            //  where appropriate, and calculating the score
-//            //  for each topic at the same time.
-//
-//            int index = 0;
-//            int currentTopic, currentValue;
-//
-//            boolean alreadyDecremented = (oldTopic == ParallelTopicModel.UNASSIGNED_TOPIC);
-//
-//            topicTermMass = 0.0;
-//
-//            while (index < currentTypeTopicCounts.length
-//                    && currentTypeTopicCounts[index] > 0) {
-//                currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                currentValue = currentTypeTopicCounts[index] >> topicBits;
-//
-//                if (!alreadyDecremented
-//                        && currentTopic == oldTopic) {
-//
-//                    // We're decrementing and adding up the 
-//                    //  sampling weights at the same time, but
-//                    //  decrementing may require us to reorder
-//                    //  the topics, so after we're done here,
-//                    //  look at this cell in the array again.
-//
-//                    currentValue--;
-//                    if (currentValue == 0) {
-//                        currentTypeTopicCounts[index] = 0;
-//                    } else {
-//                        currentTypeTopicCounts[index] =
-//                                (currentValue << topicBits) + oldTopic;
-//                    }
-//
-//                    // Shift the reduced value to the right, if necessary.
-//
-//                    int subIndex = index;
-//                    while (subIndex < currentTypeTopicCounts.length - 1
-//                            && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
-//                        int temp = currentTypeTopicCounts[subIndex];
-//                        currentTypeTopicCounts[subIndex] = currentTypeTopicCounts[subIndex + 1];
-//                        currentTypeTopicCounts[subIndex + 1] = temp;
-//
-//                        subIndex++;
-//                    }
-//
-//                    alreadyDecremented = true;
-//                } else {
-//                    score =
-//                            smoothOnlyCachedCoefficients[0][currentTopic] * currentValue;
-//                    topicTermMass += score;
-//                    topicTermScores[index] = score;
-//
-//                    index++;
-//                }
-//            }
-//
-//            double sample = random.nextUniform() * (smoothingOnlyMass[0] + topicBetaMass + topicTermMass);
-//            double origSample = sample;
-//
-//            //	Make sure it actually gets set
-//            newTopic = -1;
-//
-//            if (sample < topicTermMass) {
-//                //topicTermCount++;
-//
-//                i = -1;
-//                while (sample > 0) {
-//                    i++;
-//                    sample -= topicTermScores[i];
-//                }
-//
-//                newTopic = currentTypeTopicCounts[i] & topicMask;
-//                currentValue = currentTypeTopicCounts[i] >> topicBits;
-//
-//                currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                // Bubble the new value up, if necessary
-//
-//                while (i > 0
-//                        && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
-//                    int temp = currentTypeTopicCounts[i];
-//                    currentTypeTopicCounts[i] = currentTypeTopicCounts[i - 1];
-//                    currentTypeTopicCounts[i - 1] = temp;
-//
-//                    i--;
-//                }
-//
-//            } else {
-//                sample -= topicTermMass;
-//
-//                if (sample < topicBetaMass) {
-//                    //betaTopicCount++;
-//
-//                    sample /= beta[0];
-//
-//                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                        int topic = localTopicIndex[denseIndex];
-//
-//                        sample -= localTopicCounts[topic]
-//                                / (tokensPerTopic[0][topic] + betaSum[0]);
-//
-//                        if (sample <= 0.0) {
-//                            newTopic = topic;
-//                            break;
-//                        }
-//                    }
-//
-//                } else {
-//                    //smoothingOnlyCount++;
-//
-//                    sample -= topicBetaMass;
-//
-//                    sample /= beta[0];
-//
-//                    newTopic = 0;
-//                    sample -= alpha[newTopic]
-//                            / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//                    while (sample > 0.0) {
-//                        newTopic++;
-//                        sample -= alpha[newTopic]
-//                                / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//                    }
-//
-//                }
-//
-//                // Move to the position for the new topic,
-//                //  which may be the first empty position if this
-//                //  is a new topic for this word.
-//
-//                index = 0;
-//                while (currentTypeTopicCounts[index] > 0
-//                        && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
-//                    index++;
-//                    if (index == currentTypeTopicCounts.length) {
-//                        System.err.println("type: " + type + " new topic: " + newTopic);
-//                        for (int k = 0; k < currentTypeTopicCounts.length; k++) {
-//                            System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
-//                                    + (currentTypeTopicCounts[k] >> topicBits) + " ");
-//                        }
-//                        System.err.println();
-//
-//                    }
-//                }
-//
-//
-//                // index should now be set to the position of the new topic,
-//                //  which may be an empty cell at the end of the list.
-//
-//                if (currentTypeTopicCounts[index] == 0) {
-//                    // inserting a new topic, guaranteed to be in
-//                    //  order w.r.t. count, if not topic.
-//                    currentTypeTopicCounts[index] = (1 << topicBits) + newTopic;
-//                } else {
-//                    currentValue = currentTypeTopicCounts[index] >> topicBits;
-//                    currentTypeTopicCounts[index] = ((currentValue + 1) << topicBits) + newTopic;
-//
-//                    // Bubble the increased value left, if necessary
-//                    while (index > 0
-//                            && currentTypeTopicCounts[index] > currentTypeTopicCounts[index - 1]) {
-//                        int temp = currentTypeTopicCounts[index];
-//                        currentTypeTopicCounts[index] = currentTypeTopicCounts[index - 1];
-//                        currentTypeTopicCounts[index - 1] = temp;
-//
-//                        index--;
-//                    }
-//                }
-//
-//            }
-//
-//            if (newTopic == -1) {
-//                System.err.println("WorkerRunnable sampling error: " + origSample + " " + sample + " " + smoothingOnlyMass + " "
-//                        + topicBetaMass + " " + topicTermMass);
-//                newTopic = numTopics - 1; // TODO is this appropriate
-//                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//            }
-//            //assert(newTopic != -1);
-//
-//            //			Put that new topic into the counts
-//            oneDocTopics[position] = newTopic;
-//
-//            smoothingOnlyMass[0] -= alpha[newTopic] * beta[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//            topicBetaMass -= beta[0] * localTopicCounts[newTopic]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//            localTopicCounts[newTopic]++;
-//
-//            // If this is a new topic for this document,
-//            //  add the topic to the dense index.
-//            if (localTopicCounts[newTopic] == 1) {
-//
-//                // First find the point where we 
-//                //  should insert the new topic by going to
-//                //  the end (which is the only reason we're keeping
-//                //  track of the number of non-zero
-//                //  topics) and working backwards
-//
-//                denseIndex = nonZeroTopics;
-//
-//                while (denseIndex > 0
-//                        && localTopicIndex[denseIndex - 1] > newTopic) {
-//
-//                    localTopicIndex[denseIndex] =
-//                            localTopicIndex[denseIndex - 1];
-//                    denseIndex--;
-//                }
-//
-//                localTopicIndex[denseIndex] = newTopic;
-//                nonZeroTopics++;
-//            }
-//
-//            tokensPerTopic[0][newTopic]++;
-//
-//            //	update the coefficients for the non-zero topics
-//            smoothOnlyCachedCoefficients[0][newTopic] =
-//                    (alpha[newTopic] + localTopicCounts[newTopic])
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//            smoothingOnlyMass[0] += alpha[newTopic] * beta[0]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//            topicBetaMass += beta[0] * localTopicCounts[newTopic]
-//                    / (tokensPerTopic[0][newTopic] + betaSum[0]);
-//
-//        }
-//
-//        if (shouldSaveState) {
-//            // Update the document-topic count histogram,
-//            //  for dirichlet estimation
-//            docLengthCounts[ docLength]++;
-//
-//            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                int topic = localTopicIndex[denseIndex];
-//
-//                topicDocCounts[topic][ localTopicCounts[topic]]++;
-//            }
-//        }
-//
-//        //	Clean up our mess: reset the coefficients to values with only
-//        //	smoothing. The next doc will update its own non-zero topics...
-//
-//        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//            int topic = localTopicIndex[denseIndex];
-//
-//            smoothOnlyCachedCoefficients[0][topic] =
-//                    alpha[topic] / (tokensPerTopic[0][topic] + betaSum[0]);
-//        }
-//
-//    }
+            //tau.set(K, tt[K]);
+        }
+
+        // Initialize the smoothing-only sampling bucket
+        Arrays.fill(smoothingOnlyMass, 0d);
+
+        for (byte i = 0; i < numModalities; i++) {
+            for (int topic = 0; topic < numTopics; topic++) {
+                smoothingOnlyMass[i] += gamma[i] * alpha[i][topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
+                smoothOnlyCachedCoefficients[i][topic] = gamma[i] * alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
+            }
+            smoothingOnlyMass[i] += gamma[i] * alpha[i][numTopics] * beta[i] / (betaSum[i]);
+            smoothOnlyCachedCoefficients[i][numTopics] = gamma[i] * alpha[i][numTopics] / (betaSum[i]);
+
+        }
+
+    }
+
+    private double[] sampleDirichlet(double[] p) {
+        double magnitude = 1;
+        double[] partition;
+
+        magnitude = 0;
+        partition = new double[p.length];
+
+        // Add up the total
+        for (int i = 0; i < p.length; i++) {
+            magnitude += p[i];
+        }
+
+        for (int i = 0; i < p.length; i++) {
+            partition[i] = p[i] / magnitude;
+        }
+
+        double distribution[] = new double[partition.length];
+
+//		For each dimension, draw a sample from Gamma(mp_i, 1)
+        double sum = 0;
+        for (int i = 0; i < distribution.length; i++) {
+
+            distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
+            if (distribution[i] <= 0) {
+                distribution[i] = 0.0001;
+            }
+            sum += distribution[i];
+        }
+
+//		Normalize
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] /= sum;
+        }
+
+        return distribution;
+    }
+
 }
