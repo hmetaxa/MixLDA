@@ -167,8 +167,12 @@ public class iMixLDAParallelTopicModel implements Serializable {
         this(numberOfTopics, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities));
     }
 
-    public iMixLDAParallelTopicModel(int numberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
-        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities));
+    public iMixLDAParallelTopicModel(int maxNumberOfTopics, int numTopics, byte numModalities, double[] alphaSum, double[] beta) {
+        this(newLabelAlphabet(maxNumberOfTopics), numModalities, alphaSum, defaultBeta(numModalities), numTopics);
+    }
+    
+    public iMixLDAParallelTopicModel(int maxNumberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
+        this(newLabelAlphabet(maxNumberOfTopics), numModalities, alphaSum, defaultBeta(numModalities));
     }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
@@ -209,7 +213,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         this.gamma = new double[numModalities];
         this.totalDocsPerModality = new int[numModalities];
 
-        //this.typeTopicCounts = new int[numModalities][][];
+        this.typeTopicCounts = new int[numModalities][][];
         this.tokensPerTopic = new int[numModalities][];
         this.topicDocCounts = new int[numModalities][][];
         //this.docLengthCounts = new int[numModalities][];
@@ -377,7 +381,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
             typeTotals[i] = new int[tmpNumTypes];
             typeTopicCounts[i] = new int[tmpNumTypes][];
-            tokensPerTopic[i] = new int[numTopics];
+            tokensPerTopic[i] = new int[maxNumTopics];
 
             //typeSkewIndexes[i] = new double[tmpNumTypes];
 //            Randoms random = null;
@@ -464,9 +468,11 @@ public class iMixLDAParallelTopicModel implements Serializable {
         }
 
         //LabelSequence lblSequence =  new LabelSequence(topicAlphabet);
-        buildInitialTypeTopicCounts();
+        
 
         initializeHistograms();
+        initializeAlphaStatistics(histogramSize);
+        buildInitialTypeTopicCounts();
     }
 
     public void initializeAlphaStatistics(int size) {
@@ -523,9 +529,11 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         }
 
+        initializeHistograms();
+        initializeAlphaStatistics(histogramSize);
         buildInitialTypeTopicCounts();
 
-        initializeHistograms();
+       
     }
 
     public void buildInitialTypeTopicCounts() {
@@ -1105,10 +1113,20 @@ public class iMixLDAParallelTopicModel implements Serializable {
      */
     public void sumTypeTopicCounts(iMixLDAWorkerRunnable[] runnables, boolean calcSkew) {
 
+        // find new NumTopics
+        for (int thread = 0; thread < numThreads; thread++) {
+            numTopics = runnables[thread].getNumTopics()>numTopics?runnables[thread].getNumTopics():numTopics;
+        }
+        
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
         for (Byte i = 0; i < numModalities; i++) {
 
+            for (int t=0; t<numTopics; t++)
+            {
+                Arrays.fill(topicDocCounts[i][t], 0);
+            }
+            
             for (Byte m = 0; m < numModalities; m++) {
 
                 Arrays.fill(pDistr_Mean[i][m], 0);
@@ -1140,6 +1158,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
             // Handle the total-tokens-per-topic array
             int[][] sourceTotals = runnables[thread].getTokensPerTopic();
             int[][][] sourceTypeTopicCounts = runnables[thread].getTypeTopicCounts();
+            int[][][] sourceTopicDocCounts = runnables[thread].getTopicDocCounts();
 
             double[][][] distrP_Mean = runnables[thread].getPDistr_Mean();
 
@@ -1154,8 +1173,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
                 for (int topic = 0; topic < numTopics; topic++) {
                     tokensPerTopic[i][topic] += sourceTotals[i][topic];
+                    
+                    for (int l=0; l<topicDocCounts[i][topic].length; l++)
+                    {
+                        topicDocCounts[i][topic][l]+=  sourceTopicDocCounts[i][topic][l]/numThreads; //approximate counts
+                    }
                 }
 
+                
                 // Now handle the individual type topic counts
                 for (int type = 0; type < numTypes[i]; type++) {
 
@@ -1303,7 +1328,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
         histogramSize = maxTotalAllModalities + 1;
 
-        initializeAlphaStatistics(histogramSize);
+       
         //not needed
 //        docLengthCounts = new int[maxTotalAllModalities + 1];
 //        topicDocCounts = new TIntObjectHashMap<int[]>(numTopics); //[maxTotalAllModalities + 1];
@@ -2059,7 +2084,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
      */
     public ArrayList<TreeSet<IDSorter>> getSortedWords(int modality) {
 
-        ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>(numTopics);
+        ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>(maxNumTopics);
 
         // Initialize the tree sets
         for (int topic = 0; topic < numTopics; topic++) {

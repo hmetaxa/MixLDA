@@ -40,7 +40,7 @@ public class iMixWorkerRunnable implements Runnable {
     //boolean ignoreSkewness = false;
     ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
-    protected int numTopics; // Number of topics to be fit
+    public int numTopics; // Number of topics to be fit
     //protected int numCommonTopics;
     protected byte numModalities;
     //protected int numIndependentTopics;
@@ -185,6 +185,7 @@ public class iMixWorkerRunnable implements Runnable {
         return pDistr_Mean;
     }
 
+   
 //    public double[][][] getPDistr_Var() {
 //        return pDistr_Var;
 //    }

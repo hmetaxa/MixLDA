@@ -104,7 +104,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
         this.data = data;
         this.checkConvergenceRate = checkConvergenceRate;
         this.numTopics = numTopics;
-        this.maxNumTopics = numTopics;
+        this.maxNumTopics = maxNumTopics;
         //this.numIndependentTopics = numIndependentTopics;
         this.numModalities = numModalities;
         //this.numCommonTopics = numTopics - numIndependentTopics * numModalities;
@@ -167,6 +167,11 @@ public class iMixLDAWorkerRunnable implements Runnable {
         shouldBuildLocalCounts = false;
     }
 
+    public int getNumTopics()
+    {
+        return numTopics;
+    }
+     
     public double[] getTablesPerModality() {
         return tablesPerModality;
     }
@@ -1100,7 +1105,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         int[] docLength = new int[numModalities];
         int[][] localTopicCounts = new int[numModalities][];
-        int[] localTopicIndex = new int[numTopics]; //dense topic index for all modalities
+        int[] localTopicIndex = new int[maxNumTopics]; //dense topic index for all modalities
         Arrays.fill(localTopicIndex, 0);
         //localTopicIndex.fill(0, numTopics, 0);
         int type, oldTopic, newTopic;
@@ -1344,7 +1349,15 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
                     if (topicDocCounts[m][t][i] > 0 && i > 1) {
                         //sample number of tables
-                        mk[m][t] += topicDocCounts[m][t][i] * Samplers.randAntoniak(gamma[m] * alpha[m][t], i);
+                        int curTbls =0;
+                        try {
+                            curTbls = Samplers.randAntoniak(gamma[m] * alpha[m][t], i);
+                            
+                        } catch (Exception e) {
+                            curTbls=1;
+                        }
+                                
+                        mk[m][t] += topicDocCounts[m][t][i] * curTbls;
                         //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
                     } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
