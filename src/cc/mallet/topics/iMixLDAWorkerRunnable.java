@@ -69,10 +69,12 @@ public class iMixLDAWorkerRunnable implements Runnable {
     protected double[][] smoothOnlyCachedCoefficients;
     protected int[][][] typeTopicCounts; //per modality // indexed by <modalityIndex, feature index, topic index>
     protected int[][] tokensPerTopic; //per modality// indexed by <modalityIndex,topic index>
+    //protected int[][][] topicsPerDoc; //per modality// indexed by <modalityIndex,Doc, topic index>
+
     //protected int[][][] typeTopicCounts; // indexed by <modality index, feature index, topic index>
     //protected int[][] tokensPerTopic; // indexed by <modality index, topic index>
     // for dirichlet estimation
-    protected int[][] docLengthCounts; // histogram of document sizes
+    //protected int[][] docLengthCounts; // histogram of document sizes
     protected int[][][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
@@ -94,6 +96,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             final ArrayList<MixTopicModelTopicAssignment> data,
             int[][][] typeTopicCounts,
             int[][] tokensPerTopic,
+            int[][][] topicDocCounts,
             int startDoc, int numDocs, byte numModalities,
             //double[][] typeSkewIndexes, iMixParallelTopicModelFixTopics.SkewType skewOn, double[] skewWeight,
             double[][] p_a, double[][] p_b, boolean checkConvergenceRate, double[] gamma, double gammaRoot) {
@@ -140,6 +143,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
+        this.topicDocCounts = topicDocCounts;
 
         //this.alpha = alpha; not the global alpha anymore.. 
         this.beta = beta;
@@ -175,9 +179,9 @@ public class iMixLDAWorkerRunnable implements Runnable {
         return typeTopicCounts;
     }
 
-    public int[][] getDocLengthCounts() {
-        return docLengthCounts;
-    }
+//    public int[][] getDocLengthCounts() {
+//        return docLengthCounts;
+//    }
 
     public int[][][] getTopicDocCounts() {
         return topicDocCounts;
@@ -190,17 +194,17 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //    public double[][][] getPDistr_Var() {
 //        return pDistr_Var;
 //    }
-    public void initializeAlphaStatistics(int size) {
-        docLengthCounts = new int[numModalities][size];
-        topicDocCounts = new int[numModalities][maxNumTopics][];
-        for (byte i = 0; i < numModalities; i++) {
-            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
-            for (int topic = 0; topic < numTopics; topic++) {
-                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
-            }
-        }
-        //  [size];
-    }
+//    public void initializeAlphaStatistics(int size) {
+//        docLengthCounts = new int[numModalities][size];
+//        topicDocCounts = new int[numModalities][maxNumTopics][];
+//        for (byte i = 0; i < numModalities; i++) {
+//            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
+//            for (int topic = 0; topic < numTopics; topic++) {
+//                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
+//            }
+//        }
+//        //  [size];
+//    }
 
     public void collectAlphaStatistics() {
         shouldSaveState = true;
@@ -245,6 +249,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             //tokensPerTopic[i].reset();
             //tokensPerTopic[i].fill(0, numTopics, 0);
             Arrays.fill(tokensPerTopic[i], 0);
+            //Arrays.fill(topicsPerDoc[i], 0);
 
             for (int type = 0; type < typeTopicCounts[i].length; type++) {
 
@@ -431,7 +436,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             // Arrays.fill(totalMassPerModalityAndTopic[i], 0);
             //totalMassPerModalityAndTopic[i].fill(0, , 0);
 
-            localTopicCounts[i] = new int[numTopics];
+            localTopicCounts[i] = new int[maxNumTopics];
             //Arrays.fill( localTopicCounts[i], 0);
             //localTopicCounts[i].fill(0, numTopics, 0);
 
@@ -442,7 +447,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 //System.arraycopy(oneDocTopics[i], 0, doc.Assignments[i].topicSequence.getFeatures(), 0, doc.Assignments[i].topicSequence.getFeatures().length-1);
                 tokenSequence[i] = ((FeatureSequence) doc.Assignments[i].instance.getData());
 
-                docLength[i] = tokenSequence[i].getLength();
+                docLength[i] = tokenSequence[i].size(); //.getLength();
 
                 //		populate topic counts
                 for (int position = 0; position < docLength[i]; position++) {
@@ -563,6 +568,9 @@ public class iMixLDAWorkerRunnable implements Runnable {
         topicBetaMass[m] -= beta[m] * normSumN;
         //cachedCoefficients.set(oldTopic, normSumN);
 
+        //decrement local histogram
+        topicDocCounts[m][oldTopic][localTopicCounts[m][oldTopic]]--;
+
         // Decrement the local doc/topic counts
         localTopicCounts[m][oldTopic]--;
 
@@ -584,9 +592,15 @@ public class iMixLDAWorkerRunnable implements Runnable {
         topicBetaMass[m] += beta[m] * normSumN;
         cachedCoefficients[oldTopic] = normSumN;
 
+        if (localTopicCounts[m][oldTopic] > 0) {
+            topicDocCounts[m][oldTopic][localTopicCounts[m][oldTopic]]++;
+        }
         // Maintain the dense index, if we are deleting
         //  the old topic
         boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
+
+        
+
         byte jj = 0;
         while (isDeletedTopic && jj < numModalities) {
             // if (jj != m) { //do not check m twice
@@ -990,6 +1004,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
             localTopicIndex[nonZeroTopics] = newTopic;
             nonZeroTopics++;
+            topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]++;
 
             updateAlphaAndSmoothing();
 
@@ -1000,13 +1015,18 @@ public class iMixLDAWorkerRunnable implements Runnable {
             cachedCoefficients[newTopic] = normSumN;
 
             oneDocTopics[m][position] = newTopic;
+            
 
             numTopics++;
         } else {
             //			Put that new topic into the counts
             oneDocTopics[m][position] = newTopic;
 
-        // If this is a new topic for this document,
+            if (localTopicCounts[m][newTopic] > 0)
+            {
+                topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]--;
+            }
+            // If this is a new topic for this document,
             //  add the topic to the dense index.
             boolean isNewTopic = (localTopicCounts[m][newTopic] == 0);
             byte jj = 0;
@@ -1019,7 +1039,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
             if (isNewTopic) {
 
-            // First find the point where we 
+                // First find the point where we 
                 //  should insert the new topic by going to
                 //  the end (which is the only reason we're keeping
                 //  track of the number of non-zero
@@ -1036,7 +1056,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
                 localTopicIndex[denseIndex] = newTopic;
                 nonZeroTopics++;
-            }
+            } 
             //TODO check here for totally new topic... 
 
             double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
@@ -1050,6 +1070,8 @@ public class iMixLDAWorkerRunnable implements Runnable {
             // }
             localTopicCounts[m][newTopic]++;
             tokensPerTopic[m][newTopic]++;
+
+            topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]++;
 
             //	update the coefficients for the non-zero topics
             smoothingOnlyMass[m] += gamma[m] * alpha[m][newTopic] * beta[m]
@@ -1273,17 +1295,17 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 //}
             }
 
-            if (shouldSaveState) {
-                // Update the document-topic count histogram,
-                //  for dirichlet estimation
-                docLengthCounts[m][docLength[m]]++;
+           // if (shouldSaveState) {
+            // Update the document-topic count histogram,
+            //  for dirichlet estimation
+            //docLengthCounts[m][docLength[m]]++;
 
-                for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                    int topic = localTopicIndex[denseIndex];
-                    topicDocCounts[m][topic][localTopicCounts[m][topic]]++;
+            for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                int topic = localTopicIndex[denseIndex];
+                topicDocCounts[m][topic][localTopicCounts[m][topic]]++;
 
-                }
             }
+            // }
 
         }
 
@@ -1292,23 +1314,42 @@ public class iMixLDAWorkerRunnable implements Runnable {
     private void updateAlphaAndSmoothing() {
         double[][] mk = new double[numModalities][numTopics + 1];
 
-        //double[] tt = new double[maxTopic + 2];
-        for (int t = 0; t < numTopics; t++) {
+//        //double[] tt = new double[maxTopic + 2];
+//        for (int t = 0; t < numTopics; t++) {
+//
+//            //int k = kactive.get(kk);
+//            for (int doc = startDoc;
+//                    doc < data.size() && doc < startDoc + numDocs;
+//                    doc++) {
+//                //for (int j = 0; j < numDocuments; j++) {
+//                for (byte m = 0; m < numModalities; m++) {
+//                    if (tokensPerTopic[m][t] > 1) {
+//                        //sample number of tables
+//                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m][t], tokensPerTopic[m][t]);
+//                        //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+//                        // nmk[m].get(k));
+//                    } else //nmk[m].get(k) = 0 or 1
+//                    {
+//                        mk[m][t] += tokensPerTopic[m][t];
+//                    }
+//                }
+//            }
+//        }// end outter for loop
+        for (byte m = 0; m < numModalities; m++) {
+            for (int t = 0; t < numTopics; t++) {
 
-            //int k = kactive.get(kk);
-            for (int doc = startDoc;
-                    doc < data.size() && doc < startDoc + numDocs;
-                    doc++) {
-                //for (int j = 0; j < numDocuments; j++) {
-                for (byte m = 0; m < numModalities; m++) {
-                    if (tokensPerTopic[m][t] > 1) {
+                //int k = kactive.get(kk);
+                for (int i = 0; i < topicDocCounts[m][t].length; i++) {
+                    //for (int j = 0; j < numDocuments; j++) {
+
+                    if (topicDocCounts[m][t][i] > 0 && i > 1) {
                         //sample number of tables
-                        mk[m][t] += Samplers.randAntoniak(gamma[m] * alpha[m][t], tokensPerTopic[m][t]);
+                        mk[m][t] += topicDocCounts[m][t][i] * Samplers.randAntoniak(gamma[m] * alpha[m][t], i);
                         //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
-                    } else //nmk[m].get(k) = 0 or 1
+                    } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
                     {
-                        mk[m][t] += tokensPerTopic[m][t];
+                        mk[m][t] += topicDocCounts[m][t][i];
                     }
                 }
             }
