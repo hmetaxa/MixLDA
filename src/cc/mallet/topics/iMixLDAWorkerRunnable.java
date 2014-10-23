@@ -15,7 +15,7 @@ import cc.mallet.util.Randoms;
 //import gnu.trove.map.hash.TObjectIntHashMap;
 //import java.util.HashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import org.knowceans.util.Samplers;
+//import org.knowceans.util.Samplers;
 import org.knowceans.util.Vectors;
 
 /**
@@ -90,7 +90,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
     //double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     //double avgSkew = 0;
 
-    public iMixLDAWorkerRunnable(int numTopics, int maxNumTopics, int numIndependentTopics,
+    public iMixLDAWorkerRunnable(int numTopics, int maxNumTopics,
             double[][] alpha, double[] alphaSum,
             double[] beta, Randoms random,
             final ArrayList<MixTopicModelTopicAssignment> data,
@@ -254,7 +254,6 @@ public class iMixLDAWorkerRunnable implements Runnable {
             //tokensPerTopic[i].reset();
             //tokensPerTopic[i].fill(0, numTopics, 0);
             Arrays.fill(tokensPerTopic[i], 0);
-            //Arrays.fill(topicsPerDoc[i], 0);
 
             for (int type = 0; type < typeTopicCounts[i].length; type++) {
 
@@ -603,9 +602,6 @@ public class iMixLDAWorkerRunnable implements Runnable {
         // Maintain the dense index, if we are deleting
         //  the old topic
         boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
-
-        
-
         byte jj = 0;
         while (isDeletedTopic && jj < numModalities) {
             // if (jj != m) { //do not check m twice
@@ -870,8 +866,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             int[] docLength,
             double sample,
             double[][] p,
-            int oldTopic,
-            double newTopicMass) {
+            int oldTopic) {
         //	Make sure it actually gets set
 
         int newTopic = -1;
@@ -946,7 +941,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
             index++;
             if (index == currentTypeTopicCounts.length) { //TODO: Size is it OK
-                System.err.println("error in findind new poisition for topic: " + newTopic);
+                System.err.println("error in findind new position for topic: " + newTopic);
                 for (int k = 0; k < currentTypeTopicCounts.length; k++) {
                     System.err.print((currentTypeTopicCounts[k] & topicMask) + ":"
                             + (currentTypeTopicCounts[k] >> topicBits) + " ");
@@ -1258,8 +1253,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                                 docLength,
                                 sample,
                                 p,
-                                oldTopic,
-                                newTopicMass);
+                                oldTopic);
 
 //                    boostTopicSelection.put(boostId, newTopic);
 //
@@ -1300,16 +1294,16 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 //}
             }
 
-           // if (shouldSaveState) {
+//            if (shouldSaveState) {
             // Update the document-topic count histogram,
             //  for dirichlet estimation
             //docLengthCounts[m][docLength[m]]++;
 
-            for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                int topic = localTopicIndex[denseIndex];
-                topicDocCounts[m][topic][localTopicCounts[m][topic]]++;
+//            for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+//                int topic = localTopicIndex[denseIndex];
+//                topicDocCounts[m][topic][localTopicCounts[m][topic]]++;
 
-            }
+//            }
             // }
 
         }
@@ -1351,7 +1345,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                         //sample number of tables
                         int curTbls =0;
                         try {
-                            curTbls = Samplers.randAntoniak(gamma[m] * alpha[m][t], i);
+                            curTbls = randAntoniak(gamma[m] * alpha[m][t], i);
                             
                         } catch (Exception e) {
                             curTbls=1;
@@ -1443,5 +1437,95 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         return distribution;
     }
+    
+    	protected  int MAXSTIRLING = 20000;
+
+	/**
+	 * maximum stirling number in allss
+	 */
+	protected  int maxnn = 1;
+
+	/**
+	 * contains all stirling number iteratively calculated so far
+	 */
+	protected  double[][] allss = new double[MAXSTIRLING][];
+
+	/**
+     *
+     */
+	protected  double[] logmaxss = new double[MAXSTIRLING];
+
+	protected  double lmss = 0;
+
+	/**
+	 * [ss lmss] = stirling(nn) Gives unsigned Stirling numbers of the first
+	 * kind s(nn,*) in ss. ss(i) = s(nn,i-1). ss is normalized so that maximum
+	 * value is 1, and the log of normalization is given in lmss (static
+	 * variable). After Teh (npbayes).
+	 * 
+	 * @param nn
+	 * @return
+	 */
+	public  double[] stirling(int nn) {
+		if (allss[0] == null) {
+			allss[0] = new double[1];
+			allss[0][0] = 1;
+			logmaxss[0] = 0;
+		}
+
+		if (nn > maxnn) {
+			for (int mm = maxnn; mm < nn; mm++) {
+				int len = allss[mm - 1].length + 1;
+				allss[mm] = new double[len];
+				for (int xx = 0; xx < len; xx++) {
+					// allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
+					allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm
+							: 0;
+					// [0 allss{mm-1}];
+					allss[mm][xx] += (xx == 0) ? 0 : allss[mm - 1][xx - 1];
+				}
+				double mss = Vectors.max(allss[mm]);
+				Vectors.mult(allss[mm], 1 / mss);
+				logmaxss[mm] = logmaxss[mm - 1] + Math.log(mss);
+			}
+			maxnn = nn;
+		}
+		lmss = logmaxss[nn - 1];
+		return allss[nn - 1];
+	}
+
+	/**
+	 * sample number of components m that a DP(alpha, G0) has after n samples.
+	 * This was first published by Antoniak (1974). TODO: another check, as
+	 * direct simulation of CRP tables produces higher results
+	 * 
+	 * @param alpha
+	 * @param n
+	 * @return
+	 */
+	public  int randAntoniak(double alpha, int n) {
+		double[] p = stirling(n);
+		double aa = 1;
+		for (int m = 0; m < p.length; m++) {
+			p[m] *= aa;
+			aa *= alpha;
+		}
+		// alternatively using direct simulation of CRP
+		// int R = 20;
+		// double ainv = 1 / (alpha);
+		// double nt = 0;
+		// double[] p = new double[n];
+		// for (int r = 0; r < R; r++) {
+		// for (int m = 0; m < n; m++) {
+		// for (int t = 0; t < n; t++, nt += ainv) {
+		// p[m] += randBernoulli(1 / (nt + 1));
+		// }
+		// }
+		// }
+		// Vectors.mult(p, 1. / R);
+                
+		return random.nextDiscrete(p) + 1;
+	}
+
 
 }
