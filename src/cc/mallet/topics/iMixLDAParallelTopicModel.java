@@ -475,13 +475,13 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
     public void initializeAlphaStatistics(int size) {
         docLengthCounts = new int[numModalities][size];
-        topicDocCounts = new int[numModalities][maxNumTopics][size];
-//        for (byte i = 0; i < numModalities; i++) {
-//            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
-//            for (int topic = 0; topic < numTopics; topic++) {
-//                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
-//            }
-//        }
+        topicDocCounts = new int[numModalities][maxNumTopics][];
+        for (byte i = 0; i < numModalities; i++) {
+            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
+            for (int topic = 0; topic < maxNumTopics; topic++) {
+                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
+            }
+        }
         //  [size];
     }
 
@@ -587,8 +587,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
                         //int tmp = tmplist[topic];
                         //tokensPerTopic[i][topic] = tmp + 1;
                         tokensPerTopic[i][topic]++;
-
-                        topicDocCounts[i][topic][localTopicCounts[i][topic]]--;
+                        if (localTopicCounts[i][topic] > 0) {
+                            topicDocCounts[i][topic][localTopicCounts[i][topic]]--;
+                        }
                         localTopicCounts[i][topic]++;
                         topicDocCounts[i][topic][localTopicCounts[i][topic]]++;
 
@@ -643,6 +644,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     }
                 }
             }
+
         }
 
 //        ArrayList<String> docs = new ArrayList<String>();
@@ -1113,6 +1115,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
         for (int thread = 0; thread < numThreads; thread++) {
             numTopics = runnables[thread].getNumTopics() > numTopics ? runnables[thread].getNumTopics() : numTopics;
         }
+        
+        logger.info("Num of Topics: " + numTopics);
 
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
@@ -1701,7 +1705,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     random = new Randoms(randomSeed);
                 }
 
-                runnables[thread] = new iMixLDAWorkerRunnable(numTopics, maxNumTopics, 
+                runnables[thread] = new iMixLDAWorkerRunnable(numTopics, maxNumTopics,
                         alpha, alphaSum, beta,
                         random, data,
                         runnableTypeTopicCounts, runnableTokensPerTopic, runnableTopicDocCounts,
@@ -1725,7 +1729,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new iMixLDAWorkerRunnable(numTopics, maxNumTopics, 
+            runnables[0] = new iMixLDAWorkerRunnable(numTopics, maxNumTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic, topicDocCounts,

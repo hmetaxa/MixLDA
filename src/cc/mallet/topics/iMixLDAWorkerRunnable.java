@@ -118,6 +118,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
         this.smoothOnlyCachedCoefficients = new double[numModalities][];
         //this.typeSkewIndexes = typeSkewIndexes;
         this.gamma = gamma;
+        this.gammaRoot = gammaRoot;
 
         this.alpha = new double[numModalities][maxNumTopics];
         this.alphaSum = new double[numModalities];
@@ -131,13 +132,13 @@ public class iMixLDAWorkerRunnable implements Runnable {
         }
 
         //this.alphaSum = alphaSum;
-        if (Integer.bitCount(numTopics) == 1) {
+        if (Integer.bitCount(maxNumTopics) == 1) {
             // exact power of 2
-            topicMask = numTopics - 1;
+            topicMask = maxNumTopics - 1;
             topicBits = Integer.bitCount(topicMask);
         } else {
             // otherwise add an extra bit
-            topicMask = Integer.highestOneBit(numTopics) * 2 - 1;
+            topicMask = Integer.highestOneBit(maxNumTopics) * 2 - 1;
             topicBits = Integer.bitCount(topicMask);
         }
 
@@ -167,11 +168,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
         shouldBuildLocalCounts = false;
     }
 
-    public int getNumTopics()
-    {
+    public int getNumTopics() {
         return numTopics;
     }
-     
+
     public double[] getTablesPerModality() {
         return tablesPerModality;
     }
@@ -187,7 +187,6 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //    public int[][] getDocLengthCounts() {
 //        return docLengthCounts;
 //    }
-
     public int[][][] getTopicDocCounts() {
         return topicDocCounts;
     }
@@ -210,7 +209,6 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //        }
 //        //  [size];
 //    }
-
     public void collectAlphaStatistics() {
         shouldSaveState = true;
     }
@@ -451,7 +449,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 //System.arraycopy(oneDocTopics[i], 0, doc.Assignments[i].topicSequence.getFeatures(), 0, doc.Assignments[i].topicSequence.getFeatures().length-1);
                 tokenSequence[i] = ((FeatureSequence) doc.Assignments[i].instance.getData());
 
-                docLength[i] = tokenSequence[i].size(); //.getLength();
+                docLength[i] = tokenSequence[i].getLength(); //size is the same??
 
                 //		populate topic counts
                 for (int position = 0; position < docLength[i]; position++) {
@@ -781,7 +779,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             double[] totalMassOtherModalities,
             int nonZeroTopics,
             byte m,
-            int[] docLength,
+            //int[] docLength,
             double sample,
             double[][] p) {
 
@@ -810,8 +808,9 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
     protected int findNewTopicInSmoothingMass(
             double sample,
-            byte m,
-            int[] docLength) {
+            byte m
+    //        int[] docLength
+    ) {
 
         int newTopic = -1;
         //sample *= docLength[m];
@@ -863,7 +862,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             double topicTermMass,
             double[] topicTermScores,
             int[] currentTypeTopicCounts,
-            int[] docLength,
+            //int[] docLength,
             double sample,
             double[][] p,
             int oldTopic) {
@@ -892,7 +891,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                         totalMassOtherModalities,
                         nonZeroTopics,
                         m,
-                        docLength,
+                        //docLength,
                         sample,
                         p);
 
@@ -902,7 +901,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 samplingBucket = "SmoothingMass";
                 sample -= topicBetaMass[m];
                 if (sample < smoothingOnlyMass[m]) {
-                    newTopic = findNewTopicInSmoothingMass(sample, m, docLength);
+                    newTopic = findNewTopicInSmoothingMass(sample, m);
                 } else {
                     //totally new topic
                     //synchronized (LOCK) {
@@ -917,8 +916,8 @@ public class iMixLDAWorkerRunnable implements Runnable {
             }
         }
 
-        if (newTopic == -1 || newTopic > numTopics) {
-            System.err.println("WorkerRunnable sampling error for modality: " + m + " in " + samplingBucket + ": Sample:" + origSample + " Smoothing:" + (smoothingOnlyMass[m] / docLength[m]) + " Beta:"
+        if (newTopic == -1 || newTopic > numTopics ) {
+            System.err.println("WorkerRunnable sampling error for modality: " + m + " in " + samplingBucket + ": Sample:" + origSample + " Smoothing:" + (smoothingOnlyMass[m]) + " Beta:"
                     + topicBetaMass[m] + " TopicTerm:" + topicTermMass);
             newTopic = oldTopic; //numCommonTopics + (m + 1) * numIndependentTopics - 1; // TODO is this appropriate
             //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
@@ -1007,7 +1006,15 @@ public class iMixLDAWorkerRunnable implements Runnable {
             topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]++;
 
             updateAlphaAndSmoothing();
+            
+            //	update the coefficients for the non-zero topics
+//            smoothingOnlyMass[m] += gamma[m] * alpha[m][newTopic] * beta[m]
+//                    / (tokensPerTopic[m][newTopic] + betaSum[m]);
+//
+//            smoothOnlyCachedCoefficients[m][newTopic] = gamma[m] * alpha[m][newTopic] / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
+//******* updateAlphaAndSmoothing at the end of the doc
+            
             double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
                     / (tokensPerTopic[m][newTopic] + betaSum[m]);
 
@@ -1015,15 +1022,14 @@ public class iMixLDAWorkerRunnable implements Runnable {
             cachedCoefficients[newTopic] = normSumN;
 
             oneDocTopics[m][position] = newTopic;
-            
 
             numTopics++;
+             
         } else {
             //			Put that new topic into the counts
             oneDocTopics[m][position] = newTopic;
 
-            if (localTopicCounts[m][newTopic] > 0)
-            {
+            if (localTopicCounts[m][newTopic] > 0) {
                 topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]--;
             }
             // If this is a new topic for this document,
@@ -1056,7 +1062,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
                 localTopicIndex[denseIndex] = newTopic;
                 nonZeroTopics++;
-            } 
+            }
             //TODO check here for totally new topic... 
 
             double normSumN = (localTopicCounts[m][newTopic] + totalMassOtherModalities[newTopic])
@@ -1229,11 +1235,15 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //                        ThreadLocalRandom.current().nextDouble()
 //                        * (smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
                 //double newTopicMass = gamma[m] * alpha[m].get(numTopics) / (docLength[m] * numTypes[m]);
-                double newTopicMass = gamma[m] * alpha[m][numTopics] / (numTypes[m]);
+                double newTopicMass = numTopics + 1 == maxNumTopics ? 0 : gamma[m] * alpha[m][numTopics] / (numTypes[m]);
 
-                double sample = ThreadLocalRandom.current().nextDouble() * (newTopicMass + smoothingOnlyMass[m]
-                        + topicBetaMass[m] + topicTermMass);
+                double sample = ThreadLocalRandom.current().nextDouble() * 
+                        (newTopicMass + smoothingOnlyMass[m] + topicBetaMass[m] + topicTermMass);
 
+//                if (topicBetaMass[m]==0)
+//                {
+//                      newTopic = 0;
+//                }
 //                if (sample < 0) {
 //                    newTopic = 0;
 //                }
@@ -1250,7 +1260,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                                 topicTermMass,
                                 topicTermScores,
                                 currentTypeTopicCounts,
-                                docLength,
+                                //docLength,
                                 sample,
                                 p,
                                 oldTopic);
@@ -1298,14 +1308,11 @@ public class iMixLDAWorkerRunnable implements Runnable {
             // Update the document-topic count histogram,
             //  for dirichlet estimation
             //docLengthCounts[m][docLength[m]]++;
-
 //            for (int denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 //                int topic = localTopicIndex[denseIndex];
 //                topicDocCounts[m][topic][localTopicCounts[m][topic]]++;
-
 //            }
             // }
-
         }
 
     }
@@ -1343,14 +1350,14 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
                     if (topicDocCounts[m][t][i] > 0 && i > 1) {
                         //sample number of tables
-                        int curTbls =0;
+                        int curTbls = 0;
                         try {
                             curTbls = randAntoniak(gamma[m] * alpha[m][t], i);
-                            
+
                         } catch (Exception e) {
-                            curTbls=1;
+                            curTbls = 1;
                         }
-                                
+
                         mk[m][t] += topicDocCounts[m][t][i] * curTbls;
                         //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
@@ -1394,8 +1401,8 @@ public class iMixLDAWorkerRunnable implements Runnable {
                 smoothingOnlyMass[i] += gamma[i] * alpha[i][topic] * beta[i] / (tokensPerTopic[i][topic] + betaSum[i]);
                 smoothOnlyCachedCoefficients[i][topic] = gamma[i] * alpha[i][topic] / (tokensPerTopic[i][topic] + betaSum[i]);
             }
-            smoothingOnlyMass[i] += gamma[i] * alpha[i][numTopics] * beta[i] / (betaSum[i]);
-            smoothOnlyCachedCoefficients[i][numTopics] = gamma[i] * alpha[i][numTopics] / (betaSum[i]);
+          //not needed new mass is a seperate mass  smoothingOnlyMass[i] += gamma[i] * alpha[i][numTopics] * beta[i] / (betaSum[i]);
+          //  smoothOnlyCachedCoefficients[i][numTopics] = gamma[i] * alpha[i][numTopics] / (betaSum[i]);
 
         }
 
@@ -1437,95 +1444,94 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
         return distribution;
     }
-    
-    	protected  int MAXSTIRLING = 20000;
 
-	/**
-	 * maximum stirling number in allss
-	 */
-	protected  int maxnn = 1;
+    protected int MAXSTIRLING = 20000;
 
-	/**
-	 * contains all stirling number iteratively calculated so far
-	 */
-	protected  double[][] allss = new double[MAXSTIRLING][];
+    /**
+     * maximum stirling number in allss
+     */
+    protected int maxnn = 1;
 
-	/**
+    /**
+     * contains all stirling number iteratively calculated so far
+     */
+    protected double[][] allss = new double[MAXSTIRLING][];
+
+    /**
      *
      */
-	protected  double[] logmaxss = new double[MAXSTIRLING];
+    protected double[] logmaxss = new double[MAXSTIRLING];
 
-	protected  double lmss = 0;
+    protected double lmss = 0;
 
-	/**
-	 * [ss lmss] = stirling(nn) Gives unsigned Stirling numbers of the first
-	 * kind s(nn,*) in ss. ss(i) = s(nn,i-1). ss is normalized so that maximum
-	 * value is 1, and the log of normalization is given in lmss (static
-	 * variable). After Teh (npbayes).
-	 * 
-	 * @param nn
-	 * @return
-	 */
-	public  double[] stirling(int nn) {
-		if (allss[0] == null) {
-			allss[0] = new double[1];
-			allss[0][0] = 1;
-			logmaxss[0] = 0;
-		}
+    /**
+     * [ss lmss] = stirling(nn) Gives unsigned Stirling numbers of the first
+     * kind s(nn,*) in ss. ss(i) = s(nn,i-1). ss is normalized so that maximum
+     * value is 1, and the log of normalization is given in lmss (static
+     * variable). After Teh (npbayes).
+     *
+     * @param nn
+     * @return
+     */
+    public double[] stirling(int nn) {
+        if (allss[0] == null) {
+            allss[0] = new double[1];
+            allss[0][0] = 1;
+            logmaxss[0] = 0;
+        }
 
-		if (nn > maxnn) {
-			for (int mm = maxnn; mm < nn; mm++) {
-				int len = allss[mm - 1].length + 1;
-				allss[mm] = new double[len];
-				for (int xx = 0; xx < len; xx++) {
-					// allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
-					allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm
-							: 0;
-					// [0 allss{mm-1}];
-					allss[mm][xx] += (xx == 0) ? 0 : allss[mm - 1][xx - 1];
-				}
-				double mss = Vectors.max(allss[mm]);
-				Vectors.mult(allss[mm], 1 / mss);
-				logmaxss[mm] = logmaxss[mm - 1] + Math.log(mss);
-			}
-			maxnn = nn;
-		}
-		lmss = logmaxss[nn - 1];
-		return allss[nn - 1];
-	}
+        if (nn > maxnn) {
+            for (int mm = maxnn; mm < nn; mm++) {
+                int len = allss[mm - 1].length + 1;
+                allss[mm] = new double[len];
+                for (int xx = 0; xx < len; xx++) {
+                    // allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
+                    allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm
+                            : 0;
+                    // [0 allss{mm-1}];
+                    allss[mm][xx] += (xx == 0) ? 0 : allss[mm - 1][xx - 1];
+                }
+                double mss = Vectors.max(allss[mm]);
+                Vectors.mult(allss[mm], 1 / mss);
+                logmaxss[mm] = logmaxss[mm - 1] + Math.log(mss);
+            }
+            maxnn = nn;
+        }
+        lmss = logmaxss[nn - 1];
+        return allss[nn - 1];
+    }
 
-	/**
-	 * sample number of components m that a DP(alpha, G0) has after n samples.
-	 * This was first published by Antoniak (1974). TODO: another check, as
-	 * direct simulation of CRP tables produces higher results
-	 * 
-	 * @param alpha
-	 * @param n
-	 * @return
-	 */
-	public  int randAntoniak(double alpha, int n) {
-		double[] p = stirling(n);
-		double aa = 1;
-		for (int m = 0; m < p.length; m++) {
-			p[m] *= aa;
-			aa *= alpha;
-		}
+    /**
+     * sample number of components m that a DP(alpha, G0) has after n samples.
+     * This was first published by Antoniak (1974). TODO: another check, as
+     * direct simulation of CRP tables produces higher results
+     *
+     * @param alpha
+     * @param n
+     * @return
+     */
+    public int randAntoniak(double alpha, int n) {
+        double[] p = stirling(n);
+        double aa = 1;
+        for (int m = 0; m < p.length; m++) {
+            p[m] *= aa;
+            aa *= alpha;
+        }
 		// alternatively using direct simulation of CRP
-		// int R = 20;
-		// double ainv = 1 / (alpha);
-		// double nt = 0;
-		// double[] p = new double[n];
-		// for (int r = 0; r < R; r++) {
-		// for (int m = 0; m < n; m++) {
-		// for (int t = 0; t < n; t++, nt += ainv) {
-		// p[m] += randBernoulli(1 / (nt + 1));
-		// }
-		// }
-		// }
-		// Vectors.mult(p, 1. / R);
-                
-		return random.nextDiscrete(p) + 1;
-	}
+        // int R = 20;
+        // double ainv = 1 / (alpha);
+        // double nt = 0;
+        // double[] p = new double[n];
+        // for (int r = 0; r < R; r++) {
+        // for (int m = 0; m < n; m++) {
+        // for (int t = 0; t < n; t++, nt += ainv) {
+        // p[m] += randBernoulli(1 / (nt + 1));
+        // }
+        // }
+        // }
+        // Vectors.mult(p, 1. / R);
 
+        return random.nextDiscrete(p) + 1;
+    }
 
 }

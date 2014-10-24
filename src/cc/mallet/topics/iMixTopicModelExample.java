@@ -544,7 +544,7 @@ public class iMixTopicModelExample {
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(100, numTopics, numModalities, alphaSum, beta);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(numTopics+100, numTopics, numModalities, alphaSum, beta);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
