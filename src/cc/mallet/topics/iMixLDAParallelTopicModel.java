@@ -1574,6 +1574,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
             // (13)
             int u = samp.randBernoulli(pie);
             gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
+            logger.info("GammaRoot: " + formatter.format(gammaRoot));
 
             for (byte m = 0; m < numModalities; m++) {
                 // alpha: document level (Teh+06)
@@ -1589,6 +1590,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 }
                 // (47)
                 gamma[m] = samp.randGamma(aalpha + tablesPerModality[m] - qs, 1. / (balpha - qw));
+                logger.info("Gamma["+m+"]: " + formatter.format(gamma[m]));
             }
         }
     }
@@ -1880,7 +1882,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     && iteration % optimizeInterval == 0) {
 
                 //optimizeAlpha(runnables);
-                optimizeGamma(runnables);
+                //optimizeGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 

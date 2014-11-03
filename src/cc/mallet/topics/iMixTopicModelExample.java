@@ -51,10 +51,11 @@ public class iMixTopicModelExample {
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 10;
+        int maxNumTopics = 100;
         int numIterations = 650;
-        int independentIterations = 10;
-        int burnIn = 50;
-        int optimizeInterval = 50;
+        int independentIterations = 0;
+        int burnIn = 20;
+        int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -544,7 +545,7 @@ public class iMixTopicModelExample {
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(numTopics+100, numTopics, numModalities, alphaSum, beta);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, alphaSum, beta);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
@@ -680,8 +681,8 @@ public class iMixTopicModelExample {
                 HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
 
                 String labelId = "";
-                int[] topics = new int[numTopics];
-                double[] weights = new double[numTopics];
+                int[] topics = new int[maxNumTopics];
+                double[] weights = new double[maxNumTopics];
                 int cnt = 0;
                 double a;
                 while (rs.next()) {
