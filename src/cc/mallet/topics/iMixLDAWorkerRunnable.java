@@ -213,10 +213,18 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //        }
 //        //  [size];
 //    }
+    
+    
     public void collectAlphaStatistics() {
         shouldSaveState = true;
     }
 
+    public void resetNumTopics(int numTopics)
+    {
+        this.numTopics = numTopics;
+    }
+    
+    
     public void resetBeta(double[] beta, double[] betaSum) {
         this.beta = beta;
         this.betaSum = betaSum;
@@ -1011,7 +1019,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
             localTopicIndex[nonZeroTopics] = newTopic;
             nonZeroTopics++;
-            topicDocCounts[m][newTopic][localTopicCounts[m][newTopic]]++;
+            topicDocCounts[m][newTopic][1]=1;
 
             updateAlphaAndSmoothing();
 
@@ -1365,6 +1373,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                     if (topicDocCounts[m][t][i] > 0 && i > 1) {
                         inActiveTopicIndex.remove(t);
                         //sample number of tables
+                        // number of tables a CRP(alpha tau) produces for nmk items
                         int curTbls = 0;
                         try {
                             curTbls = randAntoniak(gamma[m] * alpha[m][t], i);
@@ -1373,7 +1382,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
                             curTbls = 1;
                         }
 
-                        mk[m][t] += topicDocCounts[m][t][i] * curTbls;
+                        mk[m][t] += (topicDocCounts[m][t][i] * curTbls);
                         //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                         // nmk[m].get(k));
                     } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1

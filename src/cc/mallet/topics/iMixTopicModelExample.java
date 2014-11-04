@@ -50,7 +50,7 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 10;
+        int numTopics = 50;
         int maxNumTopics = 100;
         int numIterations = 650;
         int independentIterations = 0;
@@ -112,7 +112,7 @@ public class iMixTopicModelExample {
                             + "                         where \n"
                             + "                        Grant.Category0='" + grantType + "'\n"
                             + "                         Group By Doc.DocId, Doc.text";
-                           // + " LIMIT 1000";
+                    // + " LIMIT 1000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
@@ -311,9 +311,8 @@ public class iMixTopicModelExample {
 
             tokenizer.stop("cid");
             tokenizer.stop("null");
-            
-            //tokenizer.
 
+            //tokenizer.
             pipeListText.add(tokenizer);
             Alphabet alphabet = new Alphabet();
             pipeListText.add(new StringList2FeatureSequence(alphabet));
@@ -419,17 +418,17 @@ public class iMixTopicModelExample {
 
             logger.info(" instances pruned");
             boolean splitCorpus = false;
-             InstanceList[] testInstances = null;
-              InstanceList[] trainingInstances = instances;
+            InstanceList[] testInstances = null;
+            InstanceList[] trainingInstances = instances;
             if (splitCorpus) {
-            //instances.addThruPipe(new FileIterator(inputDir));
+                //instances.addThruPipe(new FileIterator(inputDir));
                 //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
                 //
                 //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
                 // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
                 //  Note that the first parameter is passed as the sum over topics, while
                 //  the second is 
-            testInstances = new InstanceList[numModalities];
+                testInstances = new InstanceList[numModalities];
 
                 trainingInstances = new InstanceList[numModalities];
 
@@ -545,6 +544,8 @@ public class iMixTopicModelExample {
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
+            Arrays.fill(alphaSum, 1 * numTopics);
+
             iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, alphaSum, beta);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);

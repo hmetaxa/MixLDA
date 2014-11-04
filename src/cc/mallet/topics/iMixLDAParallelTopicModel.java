@@ -152,15 +152,15 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
     // Optimize gamma hyper params
     RandomSamplers samp;
-    double aalpha = 5;
-    double balpha = 0.1;
-    double abeta = 0.1;
-    double bbeta = 0.1;
-    // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
-    double agamma = 5;
-    double bgamma = 0.1;
-    // number of samples for parameter samplers
-    int R = 10;
+//    double aalpha = 5;
+//    double balpha = 0.1;
+//    double abeta = 0.1;
+//    double bbeta = 0.1;
+//    // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
+//    double agamma = 5;
+//    double bgamma = 0.1;
+//    // number of samples for parameter samplers
+//    int R = 10;
 
     //double lblSkewWeight = 1;
     public iMixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -374,10 +374,10 @@ public class iMixLDAParallelTopicModel implements Serializable {
             betaSum[i] = beta[i] * tmpNumTypes;
 
             alpha[i] = new double[maxNumTopics];
-            Arrays.fill(this.alpha[i], 0, numTopics, alphaSum[i] / numTopics);
-            Arrays.fill(this.alpha[i], numTopics, maxNumTopics, 0);
+            Arrays.fill(this.alpha[i], 0, numTopics, alphaSum[i] / numTopics); //not used in HDP
+            Arrays.fill(this.alpha[i], numTopics, maxNumTopics, 0);//not used in HDP
 
-            gamma[i] = 0.1;
+            gamma[i] = 1;
 
             typeTotals[i] = new int[tmpNumTypes];
             typeTopicCounts[i] = new int[tmpNumTypes][];
@@ -1115,7 +1115,11 @@ public class iMixLDAParallelTopicModel implements Serializable {
         for (int thread = 0; thread < numThreads; thread++) {
             numTopics = runnables[thread].getNumTopics() > numTopics ? runnables[thread].getNumTopics() : numTopics;
         }
-        
+
+        for (int thread = 0; thread < numThreads; thread++) {
+            runnables[thread].resetNumTopics(numTopics);
+        }
+
         logger.info("Num of Topics: " + numTopics);
 
         // Clear the type/topic counts, only 
@@ -1174,7 +1178,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     tokensPerTopic[i][topic] += sourceTotals[i][topic];
 
                     for (int l = 0; l < topicDocCounts[i][topic].length; l++) {
-                        topicDocCounts[i][topic][l] += sourceTopicDocCounts[i][topic][l] / numThreads; //approximate counts
+                        topicDocCounts[i][topic][l] += Math.ceil(sourceTopicDocCounts[i][topic][l] / (double) numThreads); //approximate counts
                     }
                 }
 
@@ -1542,28 +1546,30 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
     private void optimizeGamma(iMixLDAWorkerRunnable[] runnables) {
 
+        // hyperparameters for DP and Dirichlet samplers
+        // Teh+06: Docs: (1, 1), M1-3: (0.1, 0.1); HMM: (1, 1)
+        double aalpha = 5;
+        double balpha = 0.1;
+    //double abeta = 0.1;
+        //double bbeta = 0.1;
+        // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
+        double agamma = 5;
+        double bgamma = 0.1;
+        // number of samples for parameter samplers
+        int R = 10;
+
         //int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
         //int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
         double[] tablesPerModality = new double[numModalities];
         Arrays.fill(tablesPerModality, 0);
         double totalTables = 0;
 
-//        for (Byte mod = 0; mod < numModalities; mod++) {
-//            for (int thread = 0; thread < numThreads; thread++) {
-//                int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-//                //TIntObjectHashMap<int[]>[] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-//                tablesPerModality[mod] += runnables[thread].getTablesPerModality()[mod];
-//                totalTables += tablesPerModality[mod];
-//                for (int count = 0; count < sourceLengthCounts[mod].length; count++) {
-//                    // for (Byte i = 0; i < numModalities; i++) {
-//                    if (sourceLengthCounts[mod][count] > 0) {
-//                        docLengthCounts[mod][count] += sourceLengthCounts[mod][count];
-//                        sourceLengthCounts[mod][count] = 0;
-//                    }
-//                    //}
-//                }
-//            }
-//        }
+        for (Byte mod = 0; mod < numModalities; mod++) {
+            for (int thread = 0; thread < numThreads; thread++) {
+                tablesPerModality[mod] += Math.ceil(runnables[thread].getTablesPerModality()[mod]/(double)numThreads);
+            }
+            totalTables += tablesPerModality[mod];
+        }
         for (int r = 0; r < R; r++) {
             // gamma: root level (Escobar+West95) with n = T
             // (14)
@@ -1581,18 +1587,20 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 double qs = 0;
                 double qw = 0;
                 for (int j = 0; j < docLengthCounts[m].length; j++) {
-                    for (int i = 0; i <= docLengthCounts[m][j]; i++) {
-
-                        qs += samp.randBernoulli(docLengthCounts[m][j] / (docLengthCounts[m][j] + gamma[m]));
+                    for (int i = 0; i < docLengthCounts[m][j]; i++) {
+                        // (49) (corrected)
+                        qs += samp.randBernoulli(j / (j + gamma[m]));
                         // (48)
-                        qw += log(samp.randBeta(gamma[m] + 1, docLengthCounts[m][j]));
+                        qw += log(samp.randBeta(gamma[m] + 1, j));
                     }
                 }
                 // (47)
                 gamma[m] = samp.randGamma(aalpha + tablesPerModality[m] - qs, 1. / (balpha - qw));
-                logger.info("Gamma["+m+"]: " + formatter.format(gamma[m]));
+                logger.info("Gamma[" + m + "]: " + formatter.format(gamma[m]));
             }
         }
+        
+        
     }
 
     public void optimizeBeta(iMixLDAWorkerRunnable[] runnables) {
@@ -1882,7 +1890,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     && iteration % optimizeInterval == 0) {
 
                 //optimizeAlpha(runnables);
-                //optimizeGamma(runnables);
+                optimizeGamma(runnables);
                 optimizeBeta(runnables);
                 optimizeP(runnables);
 
