@@ -132,7 +132,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
             this.betaSum[i] = beta[i] * numTypes[i];
             this.smoothOnlyCachedCoefficients[i] = new double[maxNumTopics];
             Arrays.fill(this.smoothOnlyCachedCoefficients[i], 0);
-            Arrays.fill(this.alpha[i], 0, numTopics, 1);
+            Arrays.fill(this.alpha[i], 0, numTopics, 1.0 / numTopics);
         }
 
         //this.alphaSum = alphaSum;

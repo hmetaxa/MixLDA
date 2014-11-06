@@ -480,6 +480,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
             //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
             for (int topic = 0; topic < maxNumTopics; topic++) {
                 topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
+                Arrays.fill(topicDocCounts[i][topic], 0);
+
             }
         }
         //  [size];
@@ -1550,7 +1552,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         // Teh+06: Docs: (1, 1), M1-3: (0.1, 0.1); HMM: (1, 1)
         double aalpha = 5;
         double balpha = 0.1;
-    //double abeta = 0.1;
+        //double abeta = 0.1;
         //double bbeta = 0.1;
         // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
         double agamma = 5;
@@ -1566,7 +1568,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         for (Byte mod = 0; mod < numModalities; mod++) {
             for (int thread = 0; thread < numThreads; thread++) {
-                tablesPerModality[mod] += Math.ceil(runnables[thread].getTablesPerModality()[mod]/(double)numThreads);
+                tablesPerModality[mod] += Math.ceil(runnables[thread].getTablesPerModality()[mod] / (double) numThreads);
             }
             totalTables += tablesPerModality[mod];
         }
@@ -1580,7 +1582,6 @@ public class iMixLDAParallelTopicModel implements Serializable {
             // (13)
             int u = samp.randBernoulli(pie);
             gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
-            logger.info("GammaRoot: " + formatter.format(gammaRoot));
 
             for (byte m = 0; m < numModalities; m++) {
                 // alpha: document level (Teh+06)
@@ -1596,11 +1597,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 }
                 // (47)
                 gamma[m] = samp.randGamma(aalpha + tablesPerModality[m] - qs, 1. / (balpha - qw));
-                logger.info("Gamma[" + m + "]: " + formatter.format(gamma[m]));
+
             }
         }
-        
-        
+        logger.info("GammaRoot: " + formatter.format(gammaRoot));
+        for (byte m = 0; m < numModalities; m++) {
+            logger.info("Gamma[" + m + "]: " + formatter.format(gamma[m]));
+        }
+
     }
 
     public void optimizeBeta(iMixLDAWorkerRunnable[] runnables) {
