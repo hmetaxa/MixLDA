@@ -249,8 +249,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
         this.beta = beta;
 
         //this.tokensPerTopic = new  TIntArrayList[numModalities];
-        convergenceRates = new double[numModalities][120];
-        perplexities = new double[numModalities][120];
+        convergenceRates = new double[numModalities][200];
+        perplexities = new double[numModalities][200];
 
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
