@@ -180,6 +180,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
         return tablesPerModality;
     }
 
+    public double[][] getAlpha() {
+        return alpha;
+    }
+    
     public int[][] getTokensPerTopic() {
         return tokensPerTopic;
     }

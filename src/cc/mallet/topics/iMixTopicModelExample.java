@@ -51,7 +51,7 @@ public class iMixTopicModelExample {
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int maxNumTopics = 51;
+        int maxNumTopics = 150;
         int numIterations = 1999;
         int independentIterations = 0;
         int burnIn = 20;
@@ -296,7 +296,7 @@ public class iMixTopicModelExample {
                 }
             }
 
-            logger.info("Read " + instanceBuffer.get(0).size() + " instances modality 0");
+            logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: "+instanceBuffer.get(0).get(0).getSource().toString());
 
             //numModalities = 2;
             // Begin by importing documents from text to feature sequences
@@ -352,7 +352,7 @@ public class iMixTopicModelExample {
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
             for (byte m = 1; m < numModalities; m++) {
-                logger.info("Read " + instanceBuffer.get(m).size() + " instances modality " + m);
+                logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: "+ (instanceBuffer.get(m).size()>0?instanceBuffer.get(m).get(0).getSource().toString():m));
                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
                 instances[m].addThruPipe(instanceBuffer.get(m).iterator());
             }
@@ -514,15 +514,11 @@ public class iMixTopicModelExample {
                 hdp.runCrossValidation(10, 1000);
 
             }
-            double[] beta = new double[numModalities];
-            double[] alphaSum = new double[numModalities];
-            Arrays.fill(alphaSum, 1);
-
-            Arrays.fill(beta, 0.01);
+           
 
             boolean runOrigParallelModel = false;
             if (runOrigParallelModel) {
-                ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, beta[0]);
+                ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
 
                 modelOrig.addInstances(instances[0]);
 
@@ -540,13 +536,26 @@ public class iMixTopicModelExample {
                 modelOrig.estimate();
             }
 
+            double[] beta = new double[numModalities];
+            Arrays.fill(beta, 0.01);
+                         
+            double[] alphaSum = new double[numModalities];
+            Arrays.fill(alphaSum, 1);
+
+            double[] gamma = new double[numModalities];
+            Arrays.fill(gamma, 1);
+            
+            double gammaRoot = 4;
+            
             //Non parametric model
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
-            Arrays.fill(alphaSum, 1 * numTopics);
+            
 
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, alphaSum, beta);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta);
+            
+            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, alphaSum, beta);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             model.setNumIterations(numIterations);
@@ -910,7 +919,7 @@ public class iMixTopicModelExample {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("cidcid") || word.contains("nullnull")) {
+            if (word.contains("cidcid") || word.contains("nullnull")|| word.contains("usepackage")) {
                 prunedTokenizer.stop(word);
             }
         }

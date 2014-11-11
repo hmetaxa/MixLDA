@@ -91,6 +91,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
     public double[] betaSum; // per modality
     public boolean usingSymmetricAlpha = false;
     public static final double DEFAULT_BETA = 0.01;
+    public static final double DEFAULT_GAMMA = 1;
+    public static final double DEFAULT_GAMMAROOT = 4;
     //protected double gamma;   // Prior on per-topic multinomial distribution over labels
     //protected double gammaSum;
     //public static final double DEFAULT_GAMMA = 0.1;
@@ -164,16 +166,16 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
     //double lblSkewWeight = 1;
     public iMixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
-        this(numberOfTopics, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities));
+        this(newLabelAlphabet(numberOfTopics+1), numberOfTopics, numModalities, defaultGamma(numModalities), DEFAULT_GAMMA,  defaultBeta(numModalities));
     }
 
-    public iMixLDAParallelTopicModel(int maxNumberOfTopics, int numTopics, byte numModalities, double[] alphaSum, double[] beta) {
-        this(newLabelAlphabet(maxNumberOfTopics), numModalities, alphaSum, defaultBeta(numModalities), numTopics);
+    public iMixLDAParallelTopicModel(int maxNumberOfTopics, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta) {
+        this(newLabelAlphabet(maxNumberOfTopics), numTopics, numModalities, gamma, gammaRoot, beta);
     }
-
-    public iMixLDAParallelTopicModel(int maxNumberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
-        this(newLabelAlphabet(maxNumberOfTopics), numModalities, alphaSum, defaultBeta(numModalities));
-    }
+//
+//    public iMixLDAParallelTopicModel(int maxNumberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
+//        this(newLabelAlphabet(maxNumberOfTopics), numModalities, alphaSum, defaultBeta(numModalities));
+//    }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
         LabelAlphabet ret = new LabelAlphabet();
@@ -189,18 +191,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
         return ret;
     }
 
-    private static double[] defaultAlphaSum(int numModalities) {
+    private static double[] defaultGamma(int numModalities) {
         double[] ret = new double[numModalities];
-        Arrays.fill(ret, 1);
+        Arrays.fill(ret, DEFAULT_GAMMA);
         return ret;
     }
 
-    public iMixLDAParallelTopicModel(LabelAlphabet topicAlphabet, byte numModalities, double[] alphaSum, double[] beta) {
-
-        this(topicAlphabet, numModalities, alphaSum, beta, topicAlphabet.size());
-    }
-
-    public iMixLDAParallelTopicModel(LabelAlphabet topicAlphabet, byte numModalities, double[] alphaSum, double[] beta, int numTopics) {
+   
+    public iMixLDAParallelTopicModel(LabelAlphabet topicAlphabet, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta) {
 
         this.numModalities = numModalities;
         //this.numIndependentTopics = numberOfIndependentTopics;
@@ -210,7 +208,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
 
-        this.gamma = new double[numModalities];
+        this.gamma = gamma;
+        this.gammaRoot = gammaRoot;
+        
         this.totalDocsPerModality = new int[numModalities];
 
         this.typeTopicCounts = new int[numModalities][][];
@@ -243,7 +243,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
             topicBits = Integer.bitCount(topicMask);
         }
 
-        this.alphaSum = alphaSum;
+        this.alphaSum = new double[numModalities];
         this.alpha = new double[numModalities][];
 
         this.beta = beta;
@@ -374,8 +374,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
             betaSum[i] = beta[i] * tmpNumTypes;
 
             alpha[i] = new double[maxNumTopics];
-            Arrays.fill(this.alpha[i], 0, numTopics, alphaSum[i] / numTopics); //not used in HDP
-            Arrays.fill(this.alpha[i], numTopics, maxNumTopics, 0);//not used in HDP
+            Arrays.fill(this.alpha[i], 0, numTopics, alphaSum[i] / numTopics); // in HDP alpha is updated in WorkerRunnable
+            Arrays.fill(this.alpha[i], numTopics, maxNumTopics, 0);  // in HDP alpha is updated in WorkerRunnable
 
             gamma[i] = 1;
 
@@ -1116,17 +1116,21 @@ public class iMixLDAParallelTopicModel implements Serializable {
         // find new NumTopics
         for (int thread = 0; thread < numThreads; thread++) {
             numTopics = runnables[thread].getNumTopics() > numTopics ? runnables[thread].getNumTopics() : numTopics;
+
         }
 
         for (int thread = 0; thread < numThreads; thread++) {
             runnables[thread].resetNumTopics(numTopics);
         }
 
-        logger.info("Num of Topics: " + numTopics);
+        
 
+        Arrays.fill(this.alphaSum, 0);
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
         for (Byte i = 0; i < numModalities; i++) {
+
+            Arrays.fill(this.alpha[i], 0);  // in HDP alpha is updated in WorkerRunnable
 
             for (int t = 0; t < numTopics; t++) {
                 Arrays.fill(topicDocCounts[i][t], 0);
@@ -1164,6 +1168,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
             int[][] sourceTotals = runnables[thread].getTokensPerTopic();
             int[][][] sourceTypeTopicCounts = runnables[thread].getTypeTopicCounts();
             int[][][] sourceTopicDocCounts = runnables[thread].getTopicDocCounts();
+            double[][] sourceAlpha = runnables[thread].getAlpha();
 
             double[][][] distrP_Mean = runnables[thread].getPDistr_Mean();
 
@@ -1177,7 +1182,10 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 }
 
                 for (int topic = 0; topic < numTopics; topic++) {
+
                     tokensPerTopic[i][topic] += sourceTotals[i][topic];
+
+                    alpha[i][topic] += sourceAlpha[i][topic] / (double) numThreads;
 
                     for (int l = 0; l < topicDocCounts[i][topic].length; l++) {
                         topicDocCounts[i][topic][l] += Math.ceil(sourceTopicDocCounts[i][topic][l] / (double) numThreads); //approximate counts
@@ -1235,6 +1243,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 }
 
             }
+        }
+        
+        for (Byte m = 0; m < numModalities; m++) {
+            for (int topic = 0; topic < numTopics; topic++) {
+                alphaSum[m] += gamma[m] * alpha[m][topic];
+            }
+            //logger.info("[alpha[" + m + "]: " + formatter.format(alpha[m][0]) + "] ");
+            //logger.info("[alphaSum[" + m + "]: " + formatter.format(alphaSum[m]) + "] ");
         }
 
     }
@@ -1906,10 +1922,12 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     if (checkConvergenceRate) {
                         checkConvergence(0.8, 3, iteration / 10);
                     }
+                    logger.info("Num of Topics: " + numTopics);                  
                     for (Byte i = 0; i < numModalities; i++) {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
+                        logger.info("[alphaSum[" + i + "]: " + formatter.format(alphaSum[i]) + "] ");
                     }
                 } else {
                     logger.info("<" + iteration + ">");
@@ -2189,7 +2207,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 int word = 1;
                 Iterator<IDSorter> iterator = sortedWords.iterator();
                 if (usingNewLines) {
-                    out.append(topic + "\t" + formatter.format(alpha[m][topic]) + "\n");
+                    out.append(topic + "\t" + formatter.format(gamma[m] * alpha[m][topic]) + "\n");
                     while (iterator.hasNext() && word < numWords) {
                         IDSorter info = iterator.next();
                         out.append(alphabet[m].lookupObject(info.getID()) + "\t" + formatter.format(info.getWeight()) + "\n");
@@ -2197,7 +2215,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     }
 
                 } else {
-                    out.append(topic + "\t" + formatter.format(alpha[m][topic]) + "\t");
+                    out.append(topic + "\t" + formatter.format(gamma[m] * alpha[m][topic]) + "\t");
 
                     while (iterator.hasNext() && word < numWords) {
                         IDSorter info = iterator.next();
@@ -2223,7 +2241,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         out.println("<topicModel>");
         for (int topic = 0; topic < numTopics; topic++) {
             for (Byte m = 0; m < numModalities; m++) {
-                out.println("  <topic id='" + topic + "' alpha='" + alpha[m][topic] + "' modality='" + m
+                out.println("  <topic id='" + topic + "' alpha='" + gamma[m] * alpha[m][topic] + "' modality='" + m
                         + "' totalTokens='" + tokensPerTopic[m][topic]
                         + "'>");
                 int word = 1;
@@ -2315,7 +2333,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
         double[] probs = new double[alphabet.size()];
         for (int ti = 0; ti < numTopics; ti++) {
-            out.print("  <topic id=\"" + ti + "\" alpha=\"" + alpha[0][ti]
+            out.print("  <topic id=\"" + ti + "\" alpha=\"" + gamma[0] * alpha[0][ti]
                     + "\" totalTokens=\"" + tokensPerTopic[0][ti] + "\" ");
 
             // For gathering <term> and <phrase> output temporarily 
@@ -2493,7 +2511,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         // Add the smoothing parameters and normalize
         double sum = 0.0;
         for (int topic = 0; topic < numTopics; topic++) {
-            topicDistribution[topic] += alpha[modality][topic];
+            topicDistribution[topic] += gamma[modality] * alpha[modality][topic] * gamma[modality];
             sum += topicDistribution[topic];
         }
 
@@ -2587,7 +2605,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion += (double) alpha[m][topic] / alphaSum[m] + (double) topicCounts[m][topic] / docLen[m];
+                            topicProportion += (double) gamma[m] * alpha[m][topic] / alphaSum[m] + (double) topicCounts[m][topic] / docLen[m];
                         }
                         sortedTopics[topic].set(topic, (topicProportion / (cntEnd + 1)));
 
@@ -2680,7 +2698,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         for (Byte m = 0; m < numModalities; m++) {
             out.println("modality:" + m);
             for (int topic = 0; topic < numTopics; topic++) {
-                out.print(alpha[m][topic] + " ");
+                out.print(gamma[m] * alpha[m][topic] + " ");
             }
         }
         out.println();
@@ -2732,7 +2750,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
-                topicLogGammas[topic] = alpha[m][topic] == 0 ? 0 : Dirichlet.logGammaStirling(alpha[m][topic]);
+                topicLogGammas[topic] = gamma[m] * alpha[m][topic] == 0 ? 0 : Dirichlet.logGammaStirling(gamma[m] * alpha[m][topic]);
             }
             int[] topicCounts = new int[numTopics];
 
@@ -2749,7 +2767,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
                         for (int topic = 0; topic < numTopics; topic++) {
                             if (topicCounts[topic] > 0) {
-                                double tmp_a = alpha[m][topic] + topicCounts[topic];
+                                double tmp_a = gamma[m] * alpha[m][topic] + topicCounts[topic];
                                 logLikelihood[m] += (tmp_a == 0 ? 0 : Dirichlet.logGammaStirling(tmp_a)
                                         - topicLogGammas[topic]);
                             }
@@ -2885,6 +2903,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
         out.writeObject(beta);
         out.writeObject(betaSum);
 
+        out.writeObject(gamma);
+        out.writeObject(gammaRoot);
+
         out.writeObject(typeTopicCounts);
         out.writeObject(tokensPerTopic);
 
@@ -2929,6 +2950,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
         alphaSum = (double[]) in.readObject();
         beta = (double[]) in.readObject();
         betaSum = (double[]) in.readObject();
+
+        gamma = (double[]) in.readObject();
+        gammaRoot = in.readDouble();
 
         typeTopicCounts = (int[][][]) in.readObject();
         tokensPerTopic = (int[][]) in.readObject();
