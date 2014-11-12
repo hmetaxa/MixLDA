@@ -183,7 +183,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
     public double[][] getAlpha() {
         return alpha;
     }
-    
+
     public int[][] getTokensPerTopic() {
         return tokensPerTopic;
     }
@@ -217,18 +217,14 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //        }
 //        //  [size];
 //    }
-    
-    
     public void collectAlphaStatistics() {
         shouldSaveState = true;
     }
 
-    public void resetNumTopics(int numTopics)
-    {
+    public void resetNumTopics(int numTopics) {
         this.numTopics = numTopics;
     }
-    
-    
+
     public void resetBeta(double[] beta, double[] betaSum) {
         this.beta = beta;
         this.betaSum = betaSum;
@@ -1023,7 +1019,7 @@ public class iMixLDAWorkerRunnable implements Runnable {
 
             localTopicIndex[nonZeroTopics] = newTopic;
             nonZeroTopics++;
-            topicDocCounts[m][newTopic][1]=1;
+            topicDocCounts[m][newTopic][1] = 1;
 
             updateAlphaAndSmoothing();
 
@@ -1042,10 +1038,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
             oneDocTopics[m][position] = newTopic;
             if (newTopic == numTopics) {
                 numTopics++;
-            } 
+            }
             //else { //Already done in UpdateAlphaAndSmoothing
             //    inActiveTopicIndex.remove(newTopic);
-           // }
+            // }
 
         } else {
             //			Put that new topic into the counts
@@ -1512,7 +1508,11 @@ public class iMixLDAWorkerRunnable implements Runnable {
         if (nn > maxnn) {
             for (int mm = maxnn; mm < nn; mm++) {
                 int len = allss[mm - 1].length + 1;
-                allss[mm] = new double[len];
+                if (allss[mm] == null) {
+                    allss[mm] = new double[len];
+                }
+                Arrays.fill(allss[mm], 0);
+
                 for (int xx = 0; xx < len; xx++) {
                     // allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
                     allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm

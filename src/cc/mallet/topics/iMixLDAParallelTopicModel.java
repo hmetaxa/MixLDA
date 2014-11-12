@@ -6,7 +6,7 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-import cc.mallet.topics.TopicAssignment;
+//import cc.mallet.topics.TopicAssignment;
 //import static cc.mallet.topics.iMixParallelTopicModel.logger;
 import cc.mallet.types.*;
 import cc.mallet.util.MalletLogger;
@@ -40,15 +40,40 @@ import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.zip.*;
 import org.knowceans.util.RandomSamplers;
-import org.knowceans.util.Samplers;
+
 
 /**
- * Mix Parallel semi supervised, multi modal topic modal based on MALLET
- * Parallel topic model, which is a simple parallel threaded implementation of
+ * Mix Parallel, non parametric, multi modal topic modal extending MALLET
+ * Parallel topic model & HDP implementation as analyzed in G. Heinrich. "Infinite LDA" , 
+ * 
+ * We follow a simple parallel threaded implementation of
  * LDA, following Newman, Asuncion, Smyth and Welling, Distributed Algorithms
- * for Topic Models JMLR (2009), with SparseLDA sampling scheme and data
+ * for Topic Models JMLR (2009), 
+ * 
+ * retaining SparseLDA sampling scheme and data
  * structure from Yao, Mimno and McCallum, Efficient Methods for Topic Model
  * Inference on Streaming Document Collections, KDD (2009).
+ * 
+ * Non parametric implementation is using Teh et al. (2006) approach for the direct assignment sampler, with
+ * modular LDA parametric sampler first published by Griffiths (2002) and
+ * explained in Heinrich (2005). For the original LDA paper, see Blei et al. (2002).
+ * 
+ * Statistical strength between different modalities is share based on an interacting polya urn model as described in ...
+ * 
+ * Scaling, perfomance, simplicity and memory management are top criteria
+ * <p>
+ * T. Griffiths. Gibbs sampling in the generative model of Latent Dirichlet
+ * Allocation. TR, 2002, www-psych.stanford.edu/~gruffydd/cogsci02/lda.ps
+ * <p>
+ * G. Heinrich. Parameter estimation for text analysis. TR, 2009,
+ * www.arbylon.net/publications/textest2.pdf
+ * <p>
+ * G. Heinrich. "Infinite LDA" -- implementing the HDP with minimum code
+ * complexity. TN2011/1, www.arbylon.net/publications/ilda.pdf
+ * <p>
+ * Y.W. Teh, M.I. Jordan, M.J. Beal, D.M. Blei. Hierarchical Dirichlet
+ * Processes. JASA, 101:1566-1581, 2006
+ * D.M. Blei, A. Ng, M.I. Jordan. Latent Dirichlet Allocation. NIPS, 2002
  *
  * @author Omiros Metaxas
  */
@@ -93,6 +118,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
     public static final double DEFAULT_BETA = 0.01;
     public static final double DEFAULT_GAMMA = 1;
     public static final double DEFAULT_GAMMAROOT = 4;
+    public static final double DEFAULT_ITER = 500;
     //protected double gamma;   // Prior on per-topic multinomial distribution over labels
     //protected double gammaSum;
     //public static final double DEFAULT_GAMMA = 0.1;
@@ -124,6 +150,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
     public int randomSeed = -1;
     public NumberFormat formatter;
     public boolean printLogLikelihood = true;
+    public StringBuilder expMetadata = new StringBuilder(1000);
     //public boolean ignoreLabels = false;
 //    public SkewType skewOn = SkewType.None;
     // The number of times each type appears in the corpus
@@ -154,23 +181,15 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
     // Optimize gamma hyper params
     RandomSamplers samp;
-//    double aalpha = 5;
-//    double balpha = 0.1;
-//    double abeta = 0.1;
-//    double bbeta = 0.1;
-//    // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
-//    double agamma = 5;
-//    double bgamma = 0.1;
-//    // number of samples for parameter samplers
-//    int R = 10;
+
 
     //double lblSkewWeight = 1;
     public iMixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
-        this(newLabelAlphabet(numberOfTopics+1), numberOfTopics, numModalities, defaultGamma(numModalities), DEFAULT_GAMMA,  defaultBeta(numModalities));
+        this(newLabelAlphabet(numberOfTopics + 1), numberOfTopics, numModalities, defaultGamma(numModalities), DEFAULT_GAMMA, defaultBeta(numModalities), 500);
     }
 
-    public iMixLDAParallelTopicModel(int maxNumberOfTopics, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta) {
-        this(newLabelAlphabet(maxNumberOfTopics), numTopics, numModalities, gamma, gammaRoot, beta);
+    public iMixLDAParallelTopicModel(int maxNumberOfTopics, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta, int iterationsNum) {
+        this(newLabelAlphabet(maxNumberOfTopics), numTopics, numModalities, gamma, gammaRoot, beta, iterationsNum);
     }
 //
 //    public iMixLDAParallelTopicModel(int maxNumberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
@@ -197,8 +216,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         return ret;
     }
 
-   
-    public iMixLDAParallelTopicModel(LabelAlphabet topicAlphabet, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta) {
+    public iMixLDAParallelTopicModel(LabelAlphabet topicAlphabet, int numTopics, byte numModalities, double[] gamma, double gammaRoot, double[] beta, int iterationsNum) {
 
         this.numModalities = numModalities;
         //this.numIndependentTopics = numberOfIndependentTopics;
@@ -210,7 +228,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         this.gamma = gamma;
         this.gammaRoot = gammaRoot;
-        
+
         this.totalDocsPerModality = new int[numModalities];
 
         this.typeTopicCounts = new int[numModalities][][];
@@ -229,6 +247,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         this.topicAlphabet = topicAlphabet;
         this.numTopics = numTopics;
         this.maxNumTopics = topicAlphabet.size();
+        this.numIterations = iterationsNum;
         //this.numCommonTopics = this.numTopics - numModalities * numberOfIndependentTopics;
 
         this.alphabet = new Alphabet[numModalities];
@@ -257,6 +276,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         logger.info("Coded LDA: " + maxNumTopics + " topics, " + topicBits + " topic bits, "
                 + Integer.toBinaryString(topicMask) + " topic mask");
+
+        appendMetadata("Initial NumTopics: " + numTopics + ", Max NumTopics: " + maxNumTopics + ", Modalities: " + this.numModalities + ", Iterations: " + this.numIterations);
 
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
@@ -306,6 +327,23 @@ public class iMixLDAParallelTopicModel implements Serializable {
         randomSeed = seed;
     }
 
+    public StringBuilder getExpMetadata() {
+        return expMetadata;
+    }
+
+    private void appendMetadata(String line) {
+        expMetadata.append(line + "\n");
+    }
+
+    /**
+     * Return a tool for evaluating the marginal probability of new documents
+     * under this model //TODO: build a MixMarginalProbEstimator
+     */
+    public MarginalProbEstimator getProbEstimator() {
+        return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
+                typeTopicCounts[0], tokensPerTopic[0]);
+    }
+    
     /**
      * Interval for optimizing Dirichlet hyperparameters
      */
@@ -368,7 +406,10 @@ public class iMixLDAParallelTopicModel implements Serializable {
             Alphabet tmpAlphabet = training[i].getDataAlphabet();
             Integer tmpNumTypes = tmpAlphabet.size();
             alphabet[i] = tmpAlphabet;
-            logger.info("Modality: " + i + " Alphabet count: " + tmpAlphabet.size());
+            //logger.info("Read " + training[i].size() + " instances modality: "+ (training[i].size()>0?training[i].get(0).getSource().toString():i));
+            String modInfo = "Modality<" + i + ">[" + (training[i].size() > 0 ? training[i].get(0).getSource().toString() : "-") + "] Size:" + training[i].size() + " Alphabet count: " + tmpAlphabet.size();
+            logger.info(modInfo);
+            appendMetadata(modInfo);
 
             numTypes[i] = tmpNumTypes;
             betaSum[i] = beta[i] * tmpNumTypes;
@@ -1123,8 +1164,6 @@ public class iMixLDAParallelTopicModel implements Serializable {
             runnables[thread].resetNumTopics(numTopics);
         }
 
-        
-
         Arrays.fill(this.alphaSum, 0);
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
@@ -1244,7 +1283,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
             }
         }
-        
+
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
                 alphaSum[m] += gamma[m] * alpha[m][topic];
@@ -1339,9 +1378,12 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
             //int maxSize = Math.max(maxLabels, maxTokens);
         }
+
         for (Byte i = 0; i < numModalities; i++) {
-            logger.info(" modality: " + i + " max tokens: " + maxTotal[i]);
-            logger.info(" modality: " + i + " total tokens: " + totalTokens[i]);
+            String infoStr = "Modality<" + i + "> Max tokens per entity: " + maxTotal[i] + ", Total tokens: " + totalTokens[i];
+            logger.info(infoStr);
+            appendMetadata(infoStr);
+            //logger.info(" modality: " + i + " total tokens: " + totalTokens[i]);
             maxTotalAllModalities += maxTotal[i];
         }
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
@@ -1922,12 +1964,16 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     if (checkConvergenceRate) {
                         checkConvergence(0.8, 3, iteration / 10);
                     }
-                    logger.info("Num of Topics: " + numTopics);                  
+                    logger.info("Num of Topics: " + numTopics);
                     for (Byte i = 0; i < numModalities; i++) {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
                         logger.info("[alphaSum[" + i + "]: " + formatter.format(alphaSum[i]) + "] ");
+                        if (iteration + 10 > numIterations) {
+                            appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
+                            //logger.info("[alphaSum[" + i + "]: " + formatter.format(alphaSum[i]) + "] ");
+                        }
                     }
                 } else {
                     logger.info("<" + iteration + ">");
@@ -1936,6 +1982,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         }
 
         executor.shutdownNow();
+        appendMetadata("Final NumTopics:" + numTopics);
 
         long seconds = Math.round((System.currentTimeMillis() - startTime) / 1000.0);
         long minutes = seconds / 60;
@@ -1946,7 +1993,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         hours %= 24;
 
         StringBuilder timeReport = new StringBuilder();
-        timeReport.append("\nTotal time: ");
+        timeReport.append("Total execution time: ");
         if (days != 0) {
             timeReport.append(days);
             timeReport.append(" days ");
@@ -1963,6 +2010,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         timeReport.append(" seconds");
 
         logger.info(timeReport.toString());
+        appendMetadata(timeReport.toString());
     }
 
     public void printTopWords(File file, int numWords, int numLabels, boolean useNewLines) throws IOException {
@@ -1970,6 +2018,71 @@ public class iMixLDAParallelTopicModel implements Serializable {
         printTopWords(out, numWords, numLabels, useNewLines);
 
         out.close();
+    }
+
+    public void saveExperiment(String SQLLiteDB, String experimentId, String experimentDescription) {
+
+        Connection connection = null;
+        Statement statement = null;
+        try {
+            // create a database connection
+            if (!SQLLiteDB.isEmpty()) {
+                connection = DriverManager.getConnection(SQLLiteDB);
+                statement = connection.createStatement();
+                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+                //statement.executeUpdate("drop table if exists TopicAnalysis");
+                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500)) ");
+                String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                PreparedStatement bulkInsert = null;
+                String sql = "insert into Experiment values(?,?,? );";
+
+                try {
+                    connection.setAutoCommit(false);
+                    bulkInsert = connection.prepareStatement(sql);
+
+                    bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, experimentDescription);
+                    bulkInsert.setString(3, expMetadata.toString());
+
+                    bulkInsert.executeUpdate();
+
+                    connection.commit();
+
+                } catch (SQLException e) {
+
+                    if (connection != null) {
+                        try {
+                            System.err.print("Transaction is being rolled back");
+                            connection.rollback();
+                        } catch (SQLException excep) {
+                            System.err.print("Error in insert experiment details");
+                        }
+                    }
+                } finally {
+
+                    if (bulkInsert != null) {
+                        bulkInsert.close();
+                    }
+                    connection.setAutoCommit(true);
+                }
+            }
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+
+        }
     }
 
     public void saveTopics(String SQLLiteDB, String experimentId) {

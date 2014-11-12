@@ -6,7 +6,7 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-import cc.mallet.topics.TopicAssignment;
+//import cc.mallet.topics.TopicAssignment;
 //import static cc.mallet.topics.iMixParallelTopicModel.logger;
 import cc.mallet.types.*;
 import cc.mallet.util.MalletLogger;
@@ -120,6 +120,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 //    public SkewType skewOn = SkewType.None;
     // The number of times each type appears in the corpus
     public int[][] typeTotals; //per modality
+    public StringBuilder expMetadata = new StringBuilder(1000);
     // The skew index of eachType
     //public double[][] typeSkewIndexes; //<modality, type>
     // The skew index of each Lbl Type
@@ -146,11 +147,11 @@ public class MixLDAParallelTopicModel implements Serializable {
 
     //double lblSkewWeight = 1;
     public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
-        this(numberOfTopics, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities));
+        this(numberOfTopics, numModalities, defaultAlphaSum(numModalities), defaultBeta(numModalities), 500);
     }
 
-    public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities, double[] alphaSum, double[] beta) {
-        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities));
+    public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities, double[] alphaSum, double[] beta, int numIterations) {
+        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities),numIterations);
     }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
@@ -173,7 +174,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public MixLDAParallelTopicModel(LabelAlphabet topicAlphabet, byte numModalities, double[] alphaSum, double[] beta) {
+    public MixLDAParallelTopicModel(LabelAlphabet topicAlphabet, byte numModalities, double[] alphaSum, double[] beta, int numIterations) {
 
         this.numModalities = numModalities;
         //this.numIndependentTopics = numberOfIndependentTopics;
@@ -182,6 +183,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         this.numTypes = new int[numModalities];
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
+        this.numIterations = numIterations;
 
         //this.gamma = new double[numModalities];
         this.totalDocsPerModality = new int[numModalities];
@@ -228,12 +230,20 @@ public class MixLDAParallelTopicModel implements Serializable {
 
         logger.info("Coded LDA: " + numTopics + " topics, " + topicBits + " topic bits, "
                 + Integer.toBinaryString(topicMask) + " topic mask");
-
+        appendMetadata("Initial NumTopics: " + numTopics + ", Modalities: " + this.numModalities + ", Iterations: " + this.numIterations);
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
 
     }
 
+    public StringBuilder getExpMetadata() {
+        return expMetadata;
+    }
+
+    private void appendMetadata(String line) {
+        expMetadata.append(line + "\n");
+    }
+    
     public Alphabet[] getAlphabet() {
         return alphabet;
     }
@@ -271,6 +281,15 @@ public class MixLDAParallelTopicModel implements Serializable {
         randomSeed = seed;
     }
 
+        /**
+     * Return a tool for evaluating the marginal probability of new documents
+     * under this model //TODO: build a MixMarginalProbEstimator
+     */
+    public MarginalProbEstimator getProbEstimator() {
+        return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
+                typeTopicCounts[0], tokensPerTopic[0]);
+    }
+    
     /**
      * Interval for optimizing Dirichlet hyperparameters
      */
@@ -333,8 +352,10 @@ public class MixLDAParallelTopicModel implements Serializable {
             Alphabet tmpAlphabet = training[i].getDataAlphabet();
             Integer tmpNumTypes = tmpAlphabet.size();
             alphabet[i] = tmpAlphabet;
-            logger.info("Modality: " + i + " Alphabet count: " + tmpAlphabet.size());
-
+            
+            String modInfo = "Modality<" + i + ">[" + (training[i].size() > 0 ? training[i].get(0).getSource().toString() : "-") + "] Size:" + training[i].size() + " Alphabet count: " + tmpAlphabet.size();
+            logger.info(modInfo);
+            appendMetadata(modInfo);
             numTypes[i] = tmpNumTypes;
             betaSum[i] = beta[i] * tmpNumTypes;
 
@@ -1267,8 +1288,10 @@ public class MixLDAParallelTopicModel implements Serializable {
             //int maxSize = Math.max(maxLabels, maxTokens);
         }
         for (Byte i = 0; i < numModalities; i++) {
-            logger.info(" modality: " + i + " max tokens: " + maxTotal[i]);
-            logger.info(" modality: " + i + " total tokens: " + totalTokens[i]);
+            String infoStr = "Modality<" + i + "> Max tokens per entity: " + maxTotal[i] + ", Total tokens: " + totalTokens[i];
+            logger.info(infoStr);
+            appendMetadata(infoStr);
+            
             maxTotalAllModalities += maxTotal[i];
         }
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
@@ -1785,6 +1808,11 @@ public class MixLDAParallelTopicModel implements Serializable {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
+                        
+                        if (iteration + 10 > numIterations) {
+                            appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
+                            //logger.info("[alphaSum[" + i + "]: " + formatter.format(alphaSum[i]) + "] ");
+                        }
                     }
                 } else {
                     logger.info("<" + iteration + ">");
@@ -1803,7 +1831,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         hours %= 24;
 
         StringBuilder timeReport = new StringBuilder();
-        timeReport.append("\nTotal time: ");
+        timeReport.append("Total time: ");
         if (days != 0) {
             timeReport.append(days);
             timeReport.append(" days ");
@@ -1820,6 +1848,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         timeReport.append(" seconds");
 
         logger.info(timeReport.toString());
+        appendMetadata(timeReport.toString());
     }
 
     public void printTopWords(File file, int numWords, int numLabels, boolean useNewLines) throws IOException {
@@ -1829,6 +1858,71 @@ public class MixLDAParallelTopicModel implements Serializable {
         out.close();
     }
 
+       public void saveExperiment(String SQLLiteDB, String experimentId, String experimentDescription) {
+
+        Connection connection = null;
+        Statement statement = null;
+        try {
+            // create a database connection
+            if (!SQLLiteDB.isEmpty()) {
+                connection = DriverManager.getConnection(SQLLiteDB);
+                statement = connection.createStatement();
+                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+                //statement.executeUpdate("drop table if exists TopicAnalysis");
+                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500)) ");
+                String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                PreparedStatement bulkInsert = null;
+                String sql = "insert into Experiment values(?,?,? );";
+
+                try {
+                    connection.setAutoCommit(false);
+                    bulkInsert = connection.prepareStatement(sql);
+
+                    bulkInsert.setString(1, experimentId);
+                    bulkInsert.setString(2, experimentDescription);
+                    bulkInsert.setString(3, expMetadata.toString());
+
+                    bulkInsert.executeUpdate();
+
+                    connection.commit();
+
+                } catch (SQLException e) {
+
+                    if (connection != null) {
+                        try {
+                            System.err.print("Transaction is being rolled back");
+                            connection.rollback();
+                        } catch (SQLException excep) {
+                            System.err.print("Error in insert experiment details");
+                        }
+                    }
+                } finally {
+
+                    if (bulkInsert != null) {
+                        bulkInsert.close();
+                    }
+                    connection.setAutoCommit(true);
+                }
+            }
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+
+        }
+    }
+       
     public void saveTopics(String SQLLiteDB, String experimentId) {
 
         Connection connection = null;

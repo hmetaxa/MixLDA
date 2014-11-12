@@ -51,8 +51,8 @@ public class iMixTopicModelExample {
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 50;
-        int maxNumTopics = 150;
-        int numIterations = 1999;
+        int maxNumTopics = 151;
+        int numIterations = 500;
         int independentIterations = 0;
         int burnIn = 20;
         int optimizeInterval = 20;
@@ -63,6 +63,7 @@ public class iMixTopicModelExample {
 
         boolean DBLP_PPR = false;
         String experimentId = numTopics + "T_" + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
+        String experimentDescription="";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -105,6 +106,8 @@ public class iMixTopicModelExample {
                 String sql = "";
 
                 if (experimentType == ExperimentType.Grants) {
+                    experimentDescription = "Topic modeling based on:\n 1)Full text publications related to "+grantType+ "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+                    
                     sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
                             + "                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n"
@@ -122,6 +125,8 @@ public class iMixTopicModelExample {
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
                 } else if (experimentType == ExperimentType.Authors) {
+                    experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
+                    
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                             + "from Doc \n"
                             + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
@@ -553,12 +558,12 @@ public class iMixTopicModelExample {
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
             
 
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
             
-            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, alphaSum, beta);
+           // MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta,numIterations );
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
-            model.setNumIterations(numIterations);
+            //model.setNumIterations(numIterations);
             model.setIndependentIterations(independentIterations);
             model.optimizeInterval = optimizeInterval;
             model.burninPeriod = burnIn;
@@ -578,7 +583,11 @@ public class iMixTopicModelExample {
             //model.saveModelInterval=250;
             model.estimate();
 
-            logger.info("model estimated");
+            logger.info("Model Metadata: \n"+ model.getExpMetadata());
+            
+            model.saveExperiment(SQLLitedb,experimentId,experimentDescription );
+                    
+            logger.info("Model estimated");
             model.saveTopics(SQLLitedb, experimentId);
 
             logger.info("Topics Saved");
@@ -634,11 +643,13 @@ public class iMixTopicModelExample {
                     PrintStream docProbabilityStream = null;
                     docProbabilityStream = new PrintStream(modelEvaluationFile);
 //TODO...
-                    //double perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                    double perplexity =0;
+                    if (splitCorpus)
+                      perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
-                    //MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, topWords);
-                    //diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
+                    iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
 
                 } catch (Exception e) {
@@ -956,6 +967,9 @@ public class iMixTopicModelExample {
         }
 
     }
+    
+ 
+
 
     public void createCitationGraphFile(String outputCsv, String SQLLitedb) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";

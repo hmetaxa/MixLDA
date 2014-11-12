@@ -16,7 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-public class MixTopicModelDiagnostics {
+public class iMixLDATopicModelDiagnostics {
 
     int numTopics;
     int numTopWords;
@@ -32,7 +32,7 @@ public class MixTopicModelDiagnostics {
      */
     String[][] topicTopWords;
     ArrayList<TopicScores> diagnostics;
-    MixParallelTopicModel model;
+    iMixLDAParallelTopicModel model;
     Alphabet alphabet;
     int[][][] topicCodocumentMatrices;
     int[] numRank1Documents;
@@ -43,8 +43,8 @@ public class MixTopicModelDiagnostics {
     int[] wordTypeCounts;
     int numTokens = 0;
 
-    public MixTopicModelDiagnostics(MixParallelTopicModel model, int numTopWords) {
-        numTopics =  model.getNumTopics() - (model.numModalities -1) * model.numIndependentTopics;
+    public iMixLDATopicModelDiagnostics(iMixLDAParallelTopicModel model, int numTopWords) {
+        numTopics =  model.getNumTopics();
         this.numTopWords = numTopWords;
 
         this.model = model;
@@ -174,7 +174,7 @@ public class MixTopicModelDiagnostics {
 
                             sumCountTimesLogCount[topic] += topicCounts[topic] * Math.log(topicCounts[topic]);
 
-                            double proportion = (model.alpha[topic] + topicCounts[topic]) / (model.alphaSum + docLength);
+                            double proportion = (model.gamma[0]*model.alpha[0][topic] + topicCounts[topic]) / (model.alphaSum[0] + docLength);
                             for (int i = 0; i < DEFAULT_DOC_PROPORTIONS.length; i++) {
                                 if (proportion < DEFAULT_DOC_PROPORTIONS[i]) {
                                     break;
@@ -788,13 +788,13 @@ public class MixTopicModelDiagnostics {
         InstanceList[] training = new InstanceList[1];
         training[0] = InstanceList.load(new File(args[0]));
         int numTopics = Integer.parseInt(args[1]);
-        MixParallelTopicModel model = new MixParallelTopicModel(numTopics, (byte) 1);
+        iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(numTopics, (byte) 1);
         model.addInstances(training);
         model.setNumIterations(1000);
 
         model.estimate();
 
-        MixTopicModelDiagnostics diagnostics = new MixTopicModelDiagnostics(model, 20);
+        iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, 20);
 
         if (args.length == 3) {
             PrintWriter out = new PrintWriter(args[2]);
