@@ -41,7 +41,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -50,17 +50,18 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
+        int numTopics = 100;
         int maxNumTopics = 151;
-        int numIterations = 500;
-        int independentIterations = 0;
-        int burnIn = 20;
-        int optimizeInterval = 20;
-        ExperimentType experimentType = ExperimentType.Authors;
+        int numIterations = 100;
+        int independentIterations = 20;
+        int burnIn = 40;
+        int optimizeInterval = 40;
+        ExperimentType experimentType = ExperimentType.Grants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
-
+//boolean runParametric = true;
+        
         boolean DBLP_PPR = false;
         String experimentId = numTopics + "T_" + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
         String experimentDescription="";
@@ -114,8 +115,8 @@ public class iMixTopicModelExample {
                             + "			 INNER JOIN Grant on Grant.GrantId= GrantPerDoc.GrantId\n"
                             + "                         where \n"
                             + "                        Grant.Category0='" + grantType + "'\n"
-                            + "                         Group By Doc.DocId, Doc.text";
-                    // + " LIMIT 1000";
+                            + "                         Group By Doc.DocId, Doc.text" 
+                     + " LIMIT 10000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
@@ -558,9 +559,9 @@ public class iMixTopicModelExample {
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
             
 
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
+           // iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
             
-           // MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta,numIterations );
+            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta,numIterations );
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             //model.setNumIterations(numIterations);
@@ -648,7 +649,8 @@ public class iMixTopicModelExample {
                       perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
-                    iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
                     diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
 
