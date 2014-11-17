@@ -33,7 +33,8 @@ public class iMixTopicModelExample {
         DBLP,
         PM_pdb,
         DBLP_ACM,
-        ACM
+        ACM,
+        FullGrants
     }
 
     public iMixTopicModelExample() throws IOException {
@@ -52,26 +53,26 @@ public class iMixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 100;
         int maxNumTopics = 151;
-        int numIterations = 100;
-        int independentIterations = 20;
-        int burnIn = 40;
+        int numIterations = 800;
+        int independentIterations = 50;
+        int burnIn = 100;
         int optimizeInterval = 40;
-        ExperimentType experimentType = ExperimentType.Grants;
+        ExperimentType experimentType = ExperimentType.FullGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        int similarityType = 0; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
 //boolean runParametric = true;
-        
+
         boolean DBLP_PPR = false;
         String experimentId = numTopics + "T_" + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + "_" + experimentType.toString(); // + "_" + skewOn.toString();
-        String experimentDescription="";
+        String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         if (experimentType == ExperimentType.Grants) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/fundedarxiv.db";
-        }
-        if (experimentType == ExperimentType.DBLP) {
+        } else if (experimentType == ExperimentType.DBLP) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/citation-network2.db";
         } else if (experimentType == ExperimentType.PM_pdb) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/europepmc.db";
@@ -79,6 +80,8 @@ public class iMixTopicModelExample {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db";
         } else if (experimentType == ExperimentType.ACM) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/acmdata1.db";
+        } else if (experimentType == ExperimentType.FullGrants) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         }
         Connection connection = null;
 
@@ -107,16 +110,43 @@ public class iMixTopicModelExample {
                 String sql = "";
 
                 if (experimentType == ExperimentType.Grants) {
-                    experimentDescription = "Topic modeling based on:\n 1)Full text publications related to "+grantType+ "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
-                    
+                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+
                     sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
                             + "                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n"
                             + "			 INNER JOIN Grant on Grant.GrantId= GrantPerDoc.GrantId\n"
                             + "                         where \n"
                             + "                        Grant.Category0='" + grantType + "'\n"
-                            + "                         Group By Doc.DocId, Doc.text" 
-                     + " LIMIT 10000";
+                            + "                         Group By Doc.DocId, Doc.text"
+                            + " LIMIT 10000";
+
+//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+//                        + " from Doc inner join "
+//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
+//                        //  + " where  "
+//                        //  + " Doc.source='" + docSource + "' and "
+//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
+//                        + " Group By Doc.DocId, Doc.text";
+                } else if (experimentType == ExperimentType.FullGrants) {
+                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+
+                    sql = "select pubs.originalid AS DocId, \n" +
+"GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(FP7projectarea.CD_ABBR,'\t') as Areas, pubs.repository AS Venue\n" +
+"from pubs \n" +
+"inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n" +
+"inner join FP7Project on links.project_code=FP7Project.CD_PROJECT_NUMBER and links.funder='FP7'\n" +
+"inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n" +
+"Group By pubs.originalid\n" +
+"\n" +
+"UNION \n" +
+"\n" +
+"select 'FP7_'||Fp7project.CD_PROJECT_NUMBER AS DocId, Fp7project.LB_ABSTRACT AS TEXT, Fp7project.CD_PROJECT_NUMBER AS GrantIds , FP7projectarea.CD_ABBR AS Areas, '' AS Venue\n" +
+"from Fp7project\n" +
+"inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n" +
+"where IFNULL(LB_ABSTRACT,'')<>''  and (Fp7project.CD_PROJECT_NUMBER in (SELECT links.project_code from Links where links.funder='FP7'))";
+                   // + " LIMIT 10000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
@@ -127,7 +157,7 @@ public class iMixTopicModelExample {
 //                        + " Group By Doc.DocId, Doc.text";
                 } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
-                    
+
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
                             + "from Doc \n"
                             + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
@@ -196,6 +226,22 @@ public class iMixTopicModelExample {
                             ;
                             if (numModalities > 3) {
                                 instanceBuffer.get(3).add(new Instance(rs.getString("Source"), null, rs.getString("DocId"), "source"));
+                            }
+                            ;
+                            break;
+                        case FullGrants:
+                            instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
+                            if (numModalities > 1) {
+                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
+                            }
+                            if (numModalities > 2) {
+                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
+                            }
+                            ;
+                            if (numModalities > 3) {
+                                if (!rs.getString("Venue").equals("")) {
+                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
+                                }
                             }
                             ;
                             break;
@@ -302,7 +348,7 @@ public class iMixTopicModelExample {
                 }
             }
 
-            logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: "+instanceBuffer.get(0).get(0).getSource().toString());
+            logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
 
             //numModalities = 2;
             // Begin by importing documents from text to feature sequences
@@ -358,7 +404,7 @@ public class iMixTopicModelExample {
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
             for (byte m = 1; m < numModalities; m++) {
-                logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: "+ (instanceBuffer.get(m).size()>0?instanceBuffer.get(m).get(0).getSource().toString():m));
+                logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
                 instances[m].addThruPipe(instanceBuffer.get(m).iterator());
             }
@@ -520,7 +566,6 @@ public class iMixTopicModelExample {
                 hdp.runCrossValidation(10, 1000);
 
             }
-           
 
             boolean runOrigParallelModel = false;
             if (runOrigParallelModel) {
@@ -544,24 +589,21 @@ public class iMixTopicModelExample {
 
             double[] beta = new double[numModalities];
             Arrays.fill(beta, 0.01);
-                         
+
             double[] alphaSum = new double[numModalities];
             Arrays.fill(alphaSum, 1);
 
             double[] gamma = new double[numModalities];
             Arrays.fill(gamma, 1);
-            
+
             double gammaRoot = 4;
-            
+
             //Non parametric model
             //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
             //parametric model
             //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
-            
-
-           // iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
-            
-            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta,numIterations );
+            // iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
+            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             //model.setNumIterations(numIterations);
@@ -584,10 +626,10 @@ public class iMixTopicModelExample {
             //model.saveModelInterval=250;
             model.estimate();
 
-            logger.info("Model Metadata: \n"+ model.getExpMetadata());
-            
-            model.saveExperiment(SQLLitedb,experimentId,experimentDescription );
-                    
+            logger.info("Model Metadata: \n" + model.getExpMetadata());
+
+            model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
+
             logger.info("Model estimated");
             model.saveTopics(SQLLitedb, experimentId);
 
@@ -644,9 +686,10 @@ public class iMixTopicModelExample {
                     PrintStream docProbabilityStream = null;
                     docProbabilityStream = new PrintStream(modelEvaluationFile);
 //TODO...
-                    double perplexity =0;
-                    if (splitCorpus)
-                      perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                    double perplexity = 0;
+                    if (splitCorpus) {
+                        perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                    }
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
                     //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
@@ -661,6 +704,7 @@ public class iMixTopicModelExample {
             }
         }
         if (calcSimilarities) {
+
             //calc similarities
             logger.info("similarities calculation Started");
             try {
@@ -701,7 +745,13 @@ public class iMixTopicModelExample {
                 // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
                 ResultSet rs = statement.executeQuery(sql);
 
-                HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
+                HashMap<String, SparseVector> labelVectors = null;
+                HashMap<String, double[]> similarityVectors = null;
+                if (similarityType == 0) {
+                    labelVectors = new HashMap<String, SparseVector>();
+                } else {
+                    similarityVectors = new HashMap<String, double[]>();
+                }
 
                 String labelId = "";
                 int[] topics = new int[maxNumTopics];
@@ -729,9 +779,13 @@ public class iMixTopicModelExample {
                     }
 
                     if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
-                        labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
-                        topics = new int[numTopics];
-                        weights = new double[numTopics];
+                        if (similarityType == 0) {
+                            labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
+                        } else {
+                            similarityVectors.put(labelId, weights);
+                        }
+                        topics = new int[maxNumTopics];
+                        weights = new double[maxNumTopics];
                         cnt = 0;
                     }
                     labelId = newLabelId;
@@ -758,22 +812,45 @@ public class iMixTopicModelExample {
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
 
-                    for (String fromGrantId : labelVectors.keySet()) {
-                        boolean startCalc = false;
+                    if (similarityType > 0) {
+                        for (String fromGrantId : similarityVectors.keySet()) {
+                            boolean startCalc = false;
 
-                        for (String toGrantId : labelVectors.keySet()) {
-                            if (!fromGrantId.equals(toGrantId) && !startCalc) {
-                                continue;
-                            } else {
-                                startCalc = true;
-                                similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
-                                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                    bulkInsert.setInt(1, experimentType.ordinal());
-                                    bulkInsert.setString(2, fromGrantId);
-                                    bulkInsert.setString(3, toGrantId);
-                                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
-                                    bulkInsert.setString(5, experimentId);
-                                    bulkInsert.executeUpdate();
+                            for (String toGrantId : similarityVectors.keySet()) {
+                                if (!fromGrantId.equals(toGrantId) && !startCalc) {
+                                    continue;
+                                } else {
+                                    startCalc = true;
+                                    similarity = Maths.jensenShannonDivergence(similarityVectors.get(fromGrantId), similarityVectors.get(toGrantId)); // the function returns distance not similarity
+                                    if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+                                        bulkInsert.setInt(1, experimentType.ordinal());
+                                        bulkInsert.setString(2, fromGrantId);
+                                        bulkInsert.setString(3, toGrantId);
+                                        bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                                        bulkInsert.setString(5, experimentId);
+                                        bulkInsert.executeUpdate();
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        for (String fromGrantId : labelVectors.keySet()) {
+                            boolean startCalc = false;
+
+                            for (String toGrantId : labelVectors.keySet()) {
+                                if (!fromGrantId.equals(toGrantId) && !startCalc) {
+                                    continue;
+                                } else {
+                                    startCalc = true;
+                                    similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
+                                    if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+                                        bulkInsert.setInt(1, experimentType.ordinal());
+                                        bulkInsert.setString(2, fromGrantId);
+                                        bulkInsert.setString(3, toGrantId);
+                                        bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                                        bulkInsert.setString(5, experimentId);
+                                        bulkInsert.executeUpdate();
+                                    }
                                 }
                             }
                         }
@@ -932,7 +1009,7 @@ public class iMixTopicModelExample {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("cidcid") || word.contains("nullnull")|| word.contains("usepackage")) {
+            if (word.contains("cidcid") || word.contains("nullnull") || word.contains("usepackage")) {
                 prunedTokenizer.stop(word);
             }
         }
@@ -969,9 +1046,6 @@ public class iMixTopicModelExample {
         }
 
     }
-    
- 
-
 
     public void createCitationGraphFile(String outputCsv, String SQLLitedb) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
