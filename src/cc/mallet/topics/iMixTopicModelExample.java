@@ -48,11 +48,11 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
-        int maxNumTopics = 351;
+        int numTopics = 200;
+        int maxNumTopics = 201;
         int numIterations = 1000;
         int independentIterations = 0;
         int burnIn = 100;
@@ -131,22 +131,22 @@ public class iMixTopicModelExample {
                 } else if (experimentType == ExperimentType.FullGrants) {
                     experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
 
-                    sql = "select pubs.originalid AS DocId, \n" +
-"GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
-"GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(FP7projectarea.CD_ABBR,'\t') as Areas, pubs.repository AS Venue\n" +
-"from pubs \n" +
-"inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n" +
-"inner join FP7Project on links.project_code=FP7Project.CD_PROJECT_NUMBER and links.funder='FP7'\n" +
-"inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n" +
-"Group By pubs.originalid\n" +
-"\n" +
-"UNION \n" +
-"\n" +
-"select 'FP7_'||Fp7project.CD_PROJECT_NUMBER AS DocId, Fp7project.LB_ABSTRACT AS TEXT, Fp7project.CD_PROJECT_NUMBER AS GrantIds , FP7projectarea.CD_ABBR AS Areas, '' AS Venue\n" +
-"from Fp7project\n" +
-"inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n" +
-"where IFNULL(LB_ABSTRACT,'')<>''  and (Fp7project.CD_PROJECT_NUMBER in (SELECT links.project_code from Links where links.funder='FP7'))";
-                   // + " LIMIT 10000";
+                    sql = "select pubs.originalid AS DocId, \n"
+                            + "GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
+                            + "GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(FP7projectarea.CD_ABBR,'\t') as Areas, pubs.repository AS Venue\n"
+                            + "from pubs \n"
+                            + "inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
+                            + "inner join FP7Project on links.project_code=FP7Project.CD_PROJECT_NUMBER and links.funder='FP7'\n"
+                            + "inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n"
+                            + "Group By pubs.originalid\n"
+                            + "\n"
+                            + "UNION \n"
+                            + "\n"
+                            + "select 'FP7_'||Fp7project.CD_PROJECT_NUMBER AS DocId, Fp7project.LB_ABSTRACT AS TEXT, Fp7project.CD_PROJECT_NUMBER AS GrantIds , FP7projectarea.CD_ABBR AS Areas, '' AS Venue\n"
+                            + "from Fp7project\n"
+                            + "inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n"
+                            + "where IFNULL(LB_ABSTRACT,'')<>''  and (Fp7project.CD_PROJECT_NUMBER in (SELECT links.project_code from Links where links.funder='FP7'))";
+                    // + " LIMIT 10000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
@@ -725,6 +725,12 @@ public class iMixTopicModelExample {
                         sql = "select    GrantId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join GrantPerDoc on topicsPerDoc.DocId= GrantPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
                         break;
+                    case FullGrants:
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                                + " where weight>0.02 AND ExperimentId='" + experimentId
+                                + "' group By project_code , TopicId order by  project_code, TopicId";
+
+                        break;
                     case Authors:
                         sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join AuthorPerDoc on topicsPerDoc.DocId= AuthorPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
@@ -764,7 +770,11 @@ public class iMixTopicModelExample {
 
                     switch (experimentType) {
                         case Grants:
+
                             newLabelId = rs.getString("GrantId");
+                            break;
+                        case FullGrants:
+                            newLabelId = rs.getString("project_code");
                             break;
                         case Authors:
                             newLabelId = rs.getString("AuthorId");
