@@ -48,11 +48,11 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 200;
-        int maxNumTopics = 201;
+        int numTopics = 150;
+        int maxNumTopics = 251;
         int numIterations = 1000;
         int independentIterations = 0;
         int burnIn = 100;
@@ -129,23 +129,39 @@ public class iMixTopicModelExample {
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
                 } else if (experimentType == ExperimentType.FullGrants) {
+                    
+                    
+                    String fullFP7 ="select pubs.originalid AS DocId, \n" +
+"                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
+"                            GROUP_CONCAT(links.project_code,'\\t') as GrantIds,GROUP_CONCAT(Category2,'\\t') as Areas, pubs.repository AS Venue\n" +
+"                            from pubs \n" +
+"                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n" +
+"			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'\n" +
+"                            Group By pubs.originalid\n" +
+"                            \n" +
+"                            UNION \n" +
+"                            \n" +
+"                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds , projectView.Category2 AS Areas, '' AS Venue\n" +
+"                            from projectView\n" +
+"                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))";
+                    
                     experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
 
-                    sql = "select pubs.originalid AS DocId, \n"
-                            + "GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
-                            + "GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(FP7projectarea.CD_ABBR,'\t') as Areas, pubs.repository AS Venue\n"
-                            + "from pubs \n"
-                            + "inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
-                            + "inner join FP7Project on links.project_code=FP7Project.CD_PROJECT_NUMBER and links.funder='FP7'\n"
-                            + "inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n"
-                            + "Group By pubs.originalid\n"
-                            + "\n"
-                            + "UNION \n"
-                            + "\n"
-                            + "select 'FP7_'||Fp7project.CD_PROJECT_NUMBER AS DocId, Fp7project.LB_ABSTRACT AS TEXT, Fp7project.CD_PROJECT_NUMBER AS GrantIds , FP7projectarea.CD_ABBR AS Areas, '' AS Venue\n"
-                            + "from Fp7project\n"
-                            + "inner join FP7projectarea on FP7projectarea.CD_DIVNAME = FP7Project.CD_WORK_PROGRAMME\n"
-                            + "where IFNULL(LB_ABSTRACT,'')<>''  and (Fp7project.CD_PROJECT_NUMBER in (SELECT links.project_code from Links where links.funder='FP7'))";
+                    sql = "select pubs.originalid AS DocId, \n" +
+"                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
+"                            GROUP_CONCAT(links.project_code,'\\t') as GrantIds,GROUP_CONCAT(Category2,'\\t') as Areas, pubs.repository AS Venue\n" +
+"                            from pubs \n" +
+"                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n" +
+"			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n" +
+"			    and projectView.Category1='FET'\n" +
+"                            Group By pubs.originalid\n" +
+"                            \n" +
+"                            UNION \n" +
+"                            \n" +
+"                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds , projectView.Category2 AS Areas, '' AS Venue\n" +
+"                            from projectView\n" +
+"                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n" +
+"			    and projectView.Category1='FET'";
                     // + " LIMIT 10000";
 
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
