@@ -51,12 +51,12 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
-        int maxNumTopics = 151;
-        int numIterations = 800;
-        int independentIterations = 50;
+        int numTopics = 300;
+        int maxNumTopics = 351;
+        int numIterations = 1000;
+        int independentIterations = 0;
         int burnIn = 100;
-        int optimizeInterval = 40;
+        int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.FullGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
@@ -132,7 +132,7 @@ public class iMixTopicModelExample {
                     experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
 
                     sql = "select pubs.originalid AS DocId, \n" +
-"GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
 "GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(FP7projectarea.CD_ABBR,'\t') as Areas, pubs.repository AS Venue\n" +
 "from pubs \n" +
 "inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n" +
