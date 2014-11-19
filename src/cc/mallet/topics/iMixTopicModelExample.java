@@ -52,13 +52,13 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 60;
-        int maxNumTopics = 100;
-        int numIterations = 1900; //Max 2000
+        int numTopics = 50;
+        int maxNumTopics = 80;
+        int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FETGrants;
+        ExperimentType experimentType = ExperimentType.FullGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
