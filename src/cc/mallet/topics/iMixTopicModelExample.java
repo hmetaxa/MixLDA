@@ -52,13 +52,13 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 150;
-        int maxNumTopics = 251;
-        int numIterations = 1000;
+        int numTopics = 60;
+        int maxNumTopics = 100;
+        int numIterations = 1900; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FullGrants;
+        ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -66,7 +66,8 @@ public class iMixTopicModelExample {
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
-        String experimentId =  experimentType.toString()+"_"+numTopics + "T_" + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M" ; // + "_" + skewOn.toString();
+        String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
+                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M"; // + "_" + skewOn.toString();
         String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
@@ -135,11 +136,12 @@ public class iMixTopicModelExample {
 
                     grantType = experimentType == ExperimentType.FullGrants ? "FP7" : "FP7 FET";
 
-                    experimentDescription = "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
+                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
 
                     sql = "select pubs.originalid AS DocId, \n"
                             + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
-                            + "                            GROUP_CONCAT(links.project_code,'\\t') as GrantIds,GROUP_CONCAT(Category2,'\\t') as Areas, pubs.repository AS Venue\n"
+                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(Category2,'\t') as Areas, pubs.repository AS Venue\n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
                             + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
@@ -606,11 +608,10 @@ public class iMixTopicModelExample {
             double gammaRoot = 4;
 
             //Non parametric model
-            //iMixParallelTopicModel model = new iMixParallelTopicModel(numTopics, numIndependentTopics, numModalities, alphaSum, beta, ignoreLabels, skewOn);
-            //parametric model
-            //iMixParallelTopicModelFixTopics model = new iMixParallelTopicModelFixTopics(numTopics, numModalities, alphaSum, beta);
-            // iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta,numIterations);
-            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
+            
+//parametric model
+            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             //model.setNumIterations(numIterations);
@@ -699,8 +700,8 @@ public class iMixTopicModelExample {
                     }
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
-                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                    MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                    iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
                     diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
 
