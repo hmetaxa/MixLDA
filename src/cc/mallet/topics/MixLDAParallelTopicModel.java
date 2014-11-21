@@ -97,8 +97,9 @@ public class MixLDAParallelTopicModel implements Serializable {
     //protected int[][] lbltypeTopicCounts; // indexed by <label index, topic index>
     //protected int[] labelsPerTopic; // indexed by <topic index>
     // for dirichlet estimation
-    //public int[] docLengthCounts; // histogram of document sizes taking into consideration (summing up) all modalities
-    //public TIntObjectHashMap<int[]> topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
+    public int[][] docLengthCounts; // histogram of document sizes taking into consideration (summing up) all modalities
+    public int[][][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
+
     public int numIterations = 990;
     public int burninPeriod = 200;
     public int independentIterations = 50;
@@ -142,7 +143,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
-    private int histogramSize = 0;
+    private int[] histogramSize ;//= 0;
     boolean checkConvergenceRate = false;
 
     //double lblSkewWeight = 1;
@@ -151,7 +152,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     }
 
     public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities, double[] alphaSum, double[] beta, int numIterations) {
-        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities),numIterations);
+        this(newLabelAlphabet(numberOfTopics), numModalities, alphaSum, defaultBeta(numModalities), numIterations);
     }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
@@ -243,7 +244,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     private void appendMetadata(String line) {
         expMetadata.append(line + "\n");
     }
-    
+
     public Alphabet[] getAlphabet() {
         return alphabet;
     }
@@ -281,7 +282,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         randomSeed = seed;
     }
 
-        /**
+    /**
      * Return a tool for evaluating the marginal probability of new documents
      * under this model //TODO: build a MixMarginalProbEstimator
      */
@@ -289,7 +290,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
                 typeTopicCounts[0], tokensPerTopic[0]);
     }
-    
+
     /**
      * Interval for optimizing Dirichlet hyperparameters
      */
@@ -352,7 +353,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             Alphabet tmpAlphabet = training[i].getDataAlphabet();
             Integer tmpNumTypes = tmpAlphabet.size();
             alphabet[i] = tmpAlphabet;
-            
+
             String modInfo = "Modality<" + i + ">[" + (training[i].size() > 0 ? training[i].get(0).getSource().toString() : "-") + "] Size:" + training[i].size() + " Alphabet count: " + tmpAlphabet.size();
             logger.info(modInfo);
             appendMetadata(modInfo);
@@ -1258,12 +1259,12 @@ public class MixLDAParallelTopicModel implements Serializable {
     private void initializeHistograms() {
 
         int maxTotalAllModalities = 0;
-        int[] maxTokens = new int[numModalities];
-        int[] maxTotal = new int[numModalities];
+        //int[] maxTokens = new int[numModalities];
+        histogramSize = new int[numModalities];
 
         Arrays.fill(totalTokens, 0);
-        Arrays.fill(maxTokens, 0);
-        Arrays.fill(maxTotal, 0);
+       // Arrays.fill(maxTokens, 0);
+        Arrays.fill(histogramSize, 0);
 
         for (MixTopicModelTopicAssignment entity : data) {
             for (Byte i = 0; i < numModalities; i++) {
@@ -1277,8 +1278,8 @@ public class MixLDAParallelTopicModel implements Serializable {
                     // }
 
                     totalTokens[i] += seqLen;
-                    if (seqLen > maxTotal[i]) {
-                        maxTotal[i] = seqLen;
+                    if (seqLen > histogramSize[i]) {
+                        histogramSize[i] = seqLen;
                     }
 
                 }
@@ -1288,17 +1289,21 @@ public class MixLDAParallelTopicModel implements Serializable {
             //int maxSize = Math.max(maxLabels, maxTokens);
         }
         for (Byte i = 0; i < numModalities; i++) {
-            String infoStr = "Modality<" + i + "> Max tokens per entity: " + maxTotal[i] + ", Total tokens: " + totalTokens[i];
+            String infoStr = "Modality<" + i + "> Max tokens per entity: " + histogramSize[i] + ", Total tokens: " + totalTokens[i];
             logger.info(infoStr);
             appendMetadata(infoStr);
-            
-            maxTotalAllModalities += maxTotal[i];
+
+            maxTotalAllModalities += histogramSize[i];
         }
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
-        histogramSize = maxTotalAllModalities + 1;
-        //not needed
-//        docLengthCounts = new int[maxTotalAllModalities + 1];
-//        topicDocCounts = new TIntObjectHashMap<int[]>(numTopics); //[maxTotalAllModalities + 1];
+        //histogramSize = maxTotalAllModalities + 1;
+        
+        docLengthCounts = new int[numModalities][];
+        topicDocCounts = new int[numModalities][][];
+        for (Byte m = 0; m < numModalities; m++) {
+            docLengthCounts[m] = new int[histogramSize[m] + 1];
+            topicDocCounts[m] = new int[numTopics][histogramSize[m] + 1];
+        }
 //        for (int topic = 0; topic < topicDocCounts.size(); topic++) {
 //            topicDocCounts.put(topic, new int[docLengthCounts.length]);
 //        }
@@ -1306,10 +1311,15 @@ public class MixLDAParallelTopicModel implements Serializable {
 
     public void optimizeAlpha(MixLDAWorkerRunnable[] runnables) {
 
-        int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
-        int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
-
+        //int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
+        //int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
         for (Byte m = 0; m < numModalities; m++) {
+
+            Arrays.fill(docLengthCounts[m], 0);
+            for (int topic = 0; topic < topicDocCounts[m].length; topic++) {
+                Arrays.fill(topicDocCounts[m][topic], 0);
+            }
+
             for (int thread = 0; thread < numThreads; thread++) {
                 int[][] sourceLengthCounts = runnables[thread].getDocLengthCounts();
                 int[][][] sourceTopicCounts = runnables[thread].getTopicDocCounts();
@@ -1808,7 +1818,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
-                        
+
                         if (iteration + 10 > numIterations) {
                             appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
                             //logger.info("[alphaSum[" + i + "]: " + formatter.format(alphaSum[i]) + "] ");
@@ -1858,7 +1868,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         out.close();
     }
 
-       public void saveExperiment(String SQLLiteDB, String experimentId, String experimentDescription) {
+    public void saveExperiment(String SQLLiteDB, String experimentId, String experimentDescription) {
 
         Connection connection = null;
         Statement statement = null;
@@ -1922,7 +1932,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
         }
     }
-       
+
     public void saveTopics(String SQLLiteDB, String experimentId) {
 
         Connection connection = null;
