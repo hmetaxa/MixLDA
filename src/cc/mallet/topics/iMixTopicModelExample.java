@@ -37,7 +37,16 @@ public class iMixTopicModelExample {
         FullGrants,
         FETGrants
     }
+    
+    public enum SimilarityType {
 
+        cos,
+        Jen_Sha_Div,
+        symKL
+    }
+    
+
+     
     public iMixTopicModelExample() throws IOException {
 
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
@@ -52,9 +61,9 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 150;
-        int maxNumTopics = 150;
-        int numIterations = 1200; //Max 2000
+        int numTopics = 80;
+        int maxNumTopics = 80;
+        int numIterations = 500; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -62,12 +71,12 @@ public class iMixTopicModelExample {
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
-        int similarityType = 0; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
+        SimilarityType similarityType = SimilarityType.Jen_Sha_Div; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
         String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
-                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M"; // + "_" + skewOn.toString();
+                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_"+ similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
@@ -114,7 +123,7 @@ public class iMixTopicModelExample {
                 String sql = "";
 
                 if (experimentType == ExperimentType.Grants) {
-                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
 
                     sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
@@ -137,7 +146,7 @@ public class iMixTopicModelExample {
                     grantType = experimentType == ExperimentType.FullGrants ? "FP7" : "FP7 FET";
 
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links ";
+                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
                             + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
@@ -763,7 +772,7 @@ public class iMixTopicModelExample {
 
                 HashMap<String, SparseVector> labelVectors = null;
                 HashMap<String, double[]> similarityVectors = null;
-                if (similarityType == 0) {
+                if (similarityType == SimilarityType.cos) {
                     labelVectors = new HashMap<String, SparseVector>();
                 } else {
                     similarityVectors = new HashMap<String, double[]>();
@@ -800,7 +809,7 @@ public class iMixTopicModelExample {
                     }
 
                     if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
-                        if (similarityType == 0) {
+                        if (similarityType == SimilarityType.cos) {
                             labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
                         } else {
                             similarityVectors.put(labelId, weights);
@@ -833,7 +842,7 @@ public class iMixTopicModelExample {
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
 
-                    if (similarityType > 0) {
+                    if (similarityType == SimilarityType.Jen_Sha_Div) {
                         for (String fromGrantId : similarityVectors.keySet()) {
                             boolean startCalc = false;
 
@@ -854,7 +863,7 @@ public class iMixTopicModelExample {
                                 }
                             }
                         }
-                    } else {
+                    } else if (similarityType == SimilarityType.cos){
                         for (String fromGrantId : labelVectors.keySet()) {
                             boolean startCalc = false;
 
