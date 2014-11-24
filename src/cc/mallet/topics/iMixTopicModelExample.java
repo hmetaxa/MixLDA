@@ -52,8 +52,8 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
-        int maxNumTopics = 80;
+        int numTopics = 210;
+        int maxNumTopics = 210;
         int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
@@ -608,10 +608,10 @@ public class iMixTopicModelExample {
             double gammaRoot = 4;
 
             //Non parametric model
-            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
+            //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
             
 //parametric model
-            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             //model.setNumIterations(numIterations);
@@ -700,8 +700,8 @@ public class iMixTopicModelExample {
                     }
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
-                    iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                    //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
                     diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
 
