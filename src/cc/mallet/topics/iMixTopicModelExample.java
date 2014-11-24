@@ -58,7 +58,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FullGrants;
+        ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -239,7 +239,8 @@ public class iMixTopicModelExample {
                             break;
                         case FullGrants:
                         case FETGrants:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
+                            String txt = rs.getString("text");
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 10000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }

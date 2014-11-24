@@ -26,6 +26,10 @@ import org.knowceans.util.Vectors;
  * @author Omiros Metaxas extending MALLET Parallel topic model of David Mimno,
  * Andrew McCallum
  *
+ * TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
+                        Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
+                        Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
+                        
  */
 public class iMixLDAWorkerRunnable implements Runnable {
 //
@@ -1374,9 +1378,13 @@ public class iMixLDAWorkerRunnable implements Runnable {
                         inActiveTopicIndex.remove(t);
                         //sample number of tables
                         // number of tables a CRP(alpha tau) produces for nmk items
+                        //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
+                        //Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
+                        //Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
+                        
                         int curTbls = 0;
                         try {
-                            curTbls = randAntoniak(gamma[m] * alpha[m][t], i);
+                            curTbls =  random.nextAntoniak(gamma[m] * alpha[m][t], i);
 
                         } catch (Exception e) {
                             curTbls = 1;
@@ -1470,97 +1478,99 @@ public class iMixLDAWorkerRunnable implements Runnable {
         return distribution;
     }
 
-    protected int MAXSTIRLING = 20000;
-
-    /**
-     * maximum stirling number in allss
-     */
-    protected int maxnn = 1;
-
-    /**
-     * contains all stirling number iteratively calculated so far
-     */
-    protected double[][] allss = new double[MAXSTIRLING][];
-
-    /**
-     *
-     */
-    protected double[] logmaxss = new double[MAXSTIRLING];
-
-    protected double lmss = 0;
-
-    /**
-     * [ss lmss] = stirling(nn) Gives unsigned Stirling numbers of the first
-     * kind s(nn,*) in ss. ss(i) = s(nn,i-1). ss is normalized so that maximum
-     * value is 1, and the log of normalization is given in lmss (static
-     * variable). After Teh (npbayes).
-     *
-     * @param nn
-     * @return
-     */
-    public double[] stirling(int nn) {
-        if (allss[0] == null) {
-            allss[0] = new double[1];
-            allss[0][0] = 1;
-            logmaxss[0] = 0;
-        }
-
-        if (nn > maxnn) {
-            for (int mm = maxnn; mm < nn; mm++) {
-                int len = allss[mm - 1].length + 1;
-                if (allss[mm] == null) {
-                    allss[mm] = new double[len];
-                }
-                Arrays.fill(allss[mm], 0);
-
-                for (int xx = 0; xx < len; xx++) {
-                    // allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
-                    allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm
-                            : 0;
-                    // [0 allss{mm-1}];
-                    allss[mm][xx] += (xx == 0) ? 0 : allss[mm - 1][xx - 1];
-                }
-                double mss = Vectors.max(allss[mm]);
-                Vectors.mult(allss[mm], 1 / mss);
-                logmaxss[mm] = logmaxss[mm - 1] + Math.log(mss);
-            }
-            maxnn = nn;
-        }
-        lmss = logmaxss[nn - 1];
-        return allss[nn - 1];
-    }
-
-    /**
-     * sample number of components m that a DP(alpha, G0) has after n samples.
-     * This was first published by Antoniak (1974). TODO: another check, as
-     * direct simulation of CRP tables produces higher results
-     *
-     * @param alpha
-     * @param n
-     * @return
-     */
-    public int randAntoniak(double alpha, int n) {
-        double[] p = stirling(n);
-        double aa = 1;
-        for (int m = 0; m < p.length; m++) {
-            p[m] *= aa;
-            aa *= alpha;
-        }
-        // alternatively using direct simulation of CRP
-        // int R = 20;
-        // double ainv = 1 / (alpha);
-        // double nt = 0;
-        // double[] p = new double[n];
-        // for (int r = 0; r < R; r++) {
-        // for (int m = 0; m < n; m++) {
-        // for (int t = 0; t < n; t++, nt += ainv) {
-        // p[m] += randBernoulli(1 / (nt + 1));
-        // }
-        // }
-        // }
-        // Vectors.mult(p, 1. / R);
-
-        return random.nextDiscrete(p) + 1;
-    }
+//    
+//    protected int MAXSTIRLING = 20000;
+//
+//    /**
+//     * maximum stirling number in allss
+//     */
+//    protected int maxnn = 1;
+//
+//    /**
+//     * contains all stirling number iteratively calculated so far
+//     */
+//    protected double[][] allss = new double[MAXSTIRLING][];
+//
+//    /**
+//     *
+//     */
+//    //protected double[] logmaxss = new double[MAXSTIRLING];
+//
+//    //protected double lmss = 0;
+//
+//    /**
+//     * [ss lmss] = stirling(nn) Gives unsigned Stirling numbers of the first
+//     * kind s(nn,*) in ss. ss(i) = s(nn,i-1). ss is normalized so that maximum
+//     * value is 1, and the log of normalization is given in lmss (static
+//     * variable). After Teh (npbayes).
+//     *
+//     * @param nn
+//     * @return
+//     */
+//    public double[] stirling(int nn) {
+//        if (allss[0] == null) {
+//            allss[0] = new double[1];
+//            allss[0][0] = 1;
+//            //logmaxss[0] = 0;
+//        }
+//
+//        if (nn > maxnn) {
+//            for (int mm = maxnn; mm < nn; mm++) {
+//                int len = allss[mm - 1].length + 1;
+//                if (allss[mm] == null) {
+//                    allss[mm] = new double[len];
+//                }
+//                Arrays.fill(allss[mm], 0);
+//
+//                for (int xx = 0; xx < len; xx++) {
+//                    // allss{mm} = [allss{mm-1}*(mm-1) 0] + ...
+//                    allss[mm][xx] += (xx < len - 1) ? allss[mm - 1][xx] * mm
+//                            : 0;
+//                    // [0 allss{mm-1}];
+//                    allss[mm][xx] += (xx == 0) ? 0 : allss[mm - 1][xx - 1];
+//                }
+//                double mss = Vectors.max(allss[mm]);
+//                Vectors.mult(allss[mm], 1 / mss);
+//                //logmaxss[mm] = logmaxss[mm - 1] + Math.log(mss);
+//            }
+//            maxnn = nn;
+//        }
+//        //lmss = logmaxss[nn - 1];
+//        return allss[nn - 1];
+//    }
+//
+//    /**
+//     * sample number of components m that a DP(alpha, G0) has after n samples.
+//     * This was first published by Antoniak (1974). TODO: another check, as
+//     * direct simulation of CRP tables produces higher results
+//     *
+//     * @param alpha
+//     * @param n
+//     * @return
+//     */
+//    public int randAntoniak(double alpha, int n) {
+////        double[] p = stirling(n);
+////        double aa = 1;
+////        for (int m = 0; m < p.length; m++) {
+////            p[m] *= aa;
+////            aa *= alpha;
+////        }
+////        
+//        //alternatively using direct simulation of CRP// OMIROS: too SLOWWW
+//        int R = 20;
+//        double ainv = 1 / (alpha);
+//        double nt = 0;
+//        double[] p = new double[n];
+//        for (int r = 0; r < R; r++) {
+//            for (int m = 0; m < n; m++) {
+//                for (int t = 0; t < n; t++, nt += ainv) {
+//                    p[m] +=   random.nextBernoulli(1 / (nt + 1));
+//                }
+//            }
+//        }
+//        Vectors.mult(p, 1. / R);
+//
+//        return random.nextDiscrete(p) + 1;
+//    }
 
 }

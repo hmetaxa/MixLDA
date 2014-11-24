@@ -174,15 +174,23 @@ public class MixLDAWorkerRunnable implements Runnable {
 //    public double[][][] getPDistr_Var() {
 //        return pDistr_Var;
 //    }
-    public void initializeAlphaStatistics(int size) {
-        docLengthCounts = new int[numModalities][size];
-        topicDocCounts = new int[numModalities][numTopics][];
-        for (byte i = 0; i < numModalities; i++) {
-            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
-            for (int topic = 0; topic < numTopics; topic++) {
-                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
-            }
+    public void initializeAlphaStatistics(int[] size) {
+        
+        docLengthCounts = new int[numModalities][];
+        topicDocCounts = new int[numModalities][][];
+        for (Byte m = 0; m < numModalities; m++) {
+            docLengthCounts[m] = new int[size[m] + 1];
+            topicDocCounts[m] = new int[numTopics][size[m] + 1];
         }
+        
+//        docLengthCounts = new int[numModalities][size];
+//        topicDocCounts = new int[numModalities][numTopics][];
+//        for (byte i = 0; i < numModalities; i++) {
+//            //topicDocCounts[i] = new TIntObjectHashMap<int[]>(numTopics);
+//            for (int topic = 0; topic < numTopics; topic++) {
+//                topicDocCounts[i][topic] = new int[docLengthCounts[i].length];
+//            }
+//        }
         //  [size];
     }
 
