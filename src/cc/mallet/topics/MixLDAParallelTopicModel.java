@@ -2536,7 +2536,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                 bulkInsert = connection.prepareStatement(sql);
 
                 for (int doc = 0; doc < data.size(); doc++) {
-                    int cntEnd = 1;//numModalities;
+                    int cntEnd = numModalities;
                     StringBuilder builder = new StringBuilder();
                     builder.append(doc);
                     builder.append("\t");
@@ -2552,13 +2552,16 @@ public class MixLDAParallelTopicModel implements Serializable {
                         if (data.get(doc).Assignments[m] != null) {
                             Arrays.fill(topicCounts[m], 0);
                             LabelSequence topicSequence = (LabelSequence) data.get(doc).Assignments[m].topicSequence;
+                            
                             int[] currentDocTopics = topicSequence.getFeatures();
-                            docLen[m] = currentDocTopics.length;
+                            
+                            
+                            docLen[m] = data.get(doc).Assignments[m].topicSequence.getLength();// currentDocTopics.length;
 
                             // Count up the tokens
                             for (int token = 0; token < docLen[m]; token++) {
                                 topicCounts[m][currentDocTopics[token]]++;
-                            }
+                            }                                                               
                         }
                     }
 
@@ -2566,7 +2569,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion +=  (double) topicCounts[m][topic] / docLen[m]; //+(double) alpha[m][topic] / alphaSum[m]
+                            topicProportion +=  (double) topicCounts[m][topic] / docLen[m];//+(double) alpha[m][topic] / alphaSum[m]
                         }
                         sortedTopics[topic].set(topic, (topicProportion / cntEnd));
 

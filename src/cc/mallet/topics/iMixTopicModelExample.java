@@ -61,9 +61,9 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 90;
-        int maxNumTopics = 90;
-        int numIterations = 1000; //Max 2000
+        int numTopics = 50;
+        int maxNumTopics = 50;
+        int numIterations = 500; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
