@@ -61,17 +61,17 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 350;
-        int maxNumTopics = 350;
-        int numIterations = 1500; //Max 2000
+        int numTopics = 90;
+        int maxNumTopics = 90;
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FullGrants;
+        ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
-        SimilarityType similarityType = SimilarityType.Jen_Sha_Div; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
+        SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;

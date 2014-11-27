@@ -2536,7 +2536,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                 bulkInsert = connection.prepareStatement(sql);
 
                 for (int doc = 0; doc < data.size(); doc++) {
-                    int cntEnd = numModalities;
+                    int cntEnd = 1;//numModalities;
                     StringBuilder builder = new StringBuilder();
                     builder.append(doc);
                     builder.append("\t");
@@ -2566,9 +2566,9 @@ public class MixLDAParallelTopicModel implements Serializable {
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion += (double) alpha[m][topic] / alphaSum[m] + (double) topicCounts[m][topic] / docLen[m];
+                            topicProportion +=  (double) topicCounts[m][topic] / docLen[m]; //+(double) alpha[m][topic] / alphaSum[m]
                         }
-                        sortedTopics[topic].set(topic, (topicProportion / (cntEnd + 1)));
+                        sortedTopics[topic].set(topic, (topicProportion / cntEnd));
 
                     }
 
