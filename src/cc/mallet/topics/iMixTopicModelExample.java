@@ -35,7 +35,8 @@ public class iMixTopicModelExample {
         DBLP_ACM,
         ACM,
         FullGrants,
-        FETGrants
+        FETGrants,
+        HEALTHTender
     }
     
     public enum SimilarityType {
@@ -52,7 +53,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 3;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -67,7 +68,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FETGrants;
+        ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -94,6 +95,9 @@ public class iMixTopicModelExample {
         } else if (experimentType == ExperimentType.FullGrants) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         } else if (experimentType == ExperimentType.FETGrants) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
+        }
+         else if (experimentType == ExperimentType.HEALTHTender) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         }
         Connection connection = null;
@@ -163,6 +167,8 @@ public class iMixTopicModelExample {
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
                             + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n");
+                    
+                   
 
                     // + " LIMIT 10000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
@@ -172,7 +178,25 @@ public class iMixTopicModelExample {
 //                        //  + " Doc.source='" + docSource + "' and "
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.Authors) {
+                } 
+                else if (experimentType == ExperimentType.HEALTHTender) {
+                
+                    grantType = "FP7 HEALTH";
+                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
+                    experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
+                    
+                     sql = "select pubs.originalid AS DocId,\n" +
+"                                                      GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"                                                       GROUP_CONCAT(GrantId,'\\t') as GrantIds,\n" +
+"                                                       GROUP_CONCAT(Category2,'\\t') as Areas, \n" +
+"                                                       IFNULL(Journal, pubs.repository) as Venue\n" +
+"                                                         from pubs \n" +
+"                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
+"                                                        inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
+"                                                        LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n" +
+"                                                         Group By pubs.originalid, repository, journal ";
+                }
+                else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
@@ -224,6 +248,7 @@ public class iMixTopicModelExample {
                 Statement statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 ResultSet rs = statement.executeQuery(sql);
+                String txt = "";
                 while (rs.next()) {
                     // read the result set
                     //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
@@ -248,7 +273,7 @@ public class iMixTopicModelExample {
                             break;
                         case FullGrants:
                         case FETGrants:
-                            String txt = rs.getString("text");
+                             txt = rs.getString("text");
                             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 10000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
@@ -262,6 +287,21 @@ public class iMixTopicModelExample {
                                     instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
                                 }
                             }
+                            ;
+                            break;
+                        case HEALTHTender:
+                            txt = rs.getString("text");
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 15000)), null, rs.getString("DocId"), "text"));
+                            
+                            if (numModalities > 1) {
+                                if (!rs.getString("Venue").equals("")) {
+                                    instanceBuffer.get(1).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
+                                }
+                            }
+                            if (numModalities > 2) {
+                                instanceBuffer.get(2).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
+                            }
+
                             ;
                             break;
                         case Authors:
@@ -745,6 +785,7 @@ public class iMixTopicModelExample {
                         break;
                     case FullGrants:
                     case FETGrants:
+                    case HEALTHTender:
                         sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
@@ -794,6 +835,7 @@ public class iMixTopicModelExample {
                             break;
                         case FullGrants:
                         case FETGrants:
+                        case HEALTHTender:
                             newLabelId = rs.getString("project_code");
                             break;
                         case Authors:
