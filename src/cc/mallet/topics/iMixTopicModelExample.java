@@ -53,7 +53,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 3;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -62,9 +62,9 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
-        int maxNumTopics = 50;
-        int numIterations = 500; //Max 2000
+        int numTopics = 150;
+        int maxNumTopics = 150;
+        int numIterations = 1500; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -185,17 +185,28 @@ public class iMixTopicModelExample {
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
                     experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
                     
-                     sql = "select pubs.originalid AS DocId,\n" +
-"                                                      GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
-"                                                       GROUP_CONCAT(GrantId,'\\t') as GrantIds,\n" +
-"                                                       GROUP_CONCAT(Category2,'\\t') as Areas, \n" +
-"                                                       IFNULL(Journal, pubs.repository) as Venue\n" +
-"                                                         from pubs \n" +
-"                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
-"                                                        inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
-"                                                        LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n" +
-"                                                         Group By pubs.originalid, repository, journal ";
-                }
+                     sql = "Select pubs.originalid AS DocId,\n" +
+"GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
+"GROUP_CONCAT(Category3,'\t') as Areas, \n" +
+"GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
+"IFNULL(Journal, pubs.repository) as Venue\n" +
+"     from pubs \n" +
+"  inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
+" inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
+" LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n" +
+"                                                         Group By pubs.originalid, repository, journal \n" 
+                             
++"                                                          UNION \n" +
+" select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, \n" +
+"projectView.GrantId AS GrantIds ,                                                        \n" +
+"projectView.Category3 AS Areas,\n" +
+"projectView.Category3Descr AS AreasDescr,\n" +
+" '' AS Venue\n" +
+"from projectView\n" +
+"where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
+"and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))";
+                } 
                 else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
@@ -246,7 +257,7 @@ public class iMixTopicModelExample {
 
                 // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
                 Statement statement = connection.createStatement();
-                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+                statement.setQueryTimeout(60);  // set timeout to 30 sec.
                 ResultSet rs = statement.executeQuery(sql);
                 String txt = "";
                 while (rs.next()) {
@@ -293,15 +304,18 @@ public class iMixTopicModelExample {
                             txt = rs.getString("text");
                             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 15000)), null, rs.getString("DocId"), "text"));
                             
-                            if (numModalities > 1) {
-                                if (!rs.getString("Venue").equals("")) {
-                                    instanceBuffer.get(1).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
-                                }
+                             if (numModalities > 1) {
+                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
                             if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
+                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
                             }
-
+                            ;
+                            if (numModalities > 3) {
+                                if (!rs.getString("Venue").equals("")) {
+                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
+                                }
+                            }
                             ;
                             break;
                         case Authors:
