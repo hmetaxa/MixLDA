@@ -38,16 +38,14 @@ public class iMixTopicModelExample {
         FETGrants,
         HEALTHTender
     }
-    
+
     public enum SimilarityType {
 
         cos,
         Jen_Sha_Div,
         symKL
     }
-    
 
-     
     public iMixTopicModelExample() throws IOException {
 
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
@@ -62,22 +60,24 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 150;
-        int maxNumTopics = 150;
-        int numIterations = 1500; //Max 2000
+        int numTopics = 250;
+        int maxNumTopics = 250;
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.HEALTHTender;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
+        boolean ACMAuthorSimilarity = true;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
-        String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
-                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_"+ similarityType.toString(); // + "_" + skewOn.toString();
+        //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
+        String experimentId = experimentType.toString()  + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
+                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
@@ -96,8 +96,7 @@ public class iMixTopicModelExample {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         } else if (experimentType == ExperimentType.FETGrants) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
-        }
-         else if (experimentType == ExperimentType.HEALTHTender) {
+        } else if (experimentType == ExperimentType.HEALTHTender) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         }
         Connection connection = null;
@@ -127,7 +126,7 @@ public class iMixTopicModelExample {
                 String sql = "";
 
                 if (experimentType == ExperimentType.Grants) {
-                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
+                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
                             + "                         from Doc inner join \n"
@@ -150,7 +149,7 @@ public class iMixTopicModelExample {
                     grantType = experimentType == ExperimentType.FullGrants ? "FP7" : "FP7 FET";
 
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
+                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
                             + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
@@ -167,8 +166,6 @@ public class iMixTopicModelExample {
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
                             + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n");
-                    
-                   
 
                     // + " LIMIT 10000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
@@ -178,36 +175,33 @@ public class iMixTopicModelExample {
 //                        //  + " Doc.source='" + docSource + "' and "
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
-                } 
-                else if (experimentType == ExperimentType.HEALTHTender) {
-                
+                } else if (experimentType == ExperimentType.HEALTHTender) {
+
                     grantType = "FP7 HEALTH";
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-                    experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:"+similarityType.toString();
-                    
-                     sql = "Select pubs.originalid AS DocId,\n" +
-"GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
-"GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
-"GROUP_CONCAT(Category3,'\t') as Areas, \n" +
-"GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
-"IFNULL(Journal, pubs.repository) as Venue\n" +
-"     from pubs \n" +
-"  inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
-" inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
-" LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n" +
-"                                                         Group By pubs.originalid, repository, journal \n" 
-                             
-+"                                                          UNION \n" +
-" select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, \n" +
-"projectView.GrantId AS GrantIds ,                                                        \n" +
-"projectView.Category3 AS Areas,\n" +
-"projectView.Category3Descr AS AreasDescr,\n" +
-" '' AS Venue\n" +
-"from projectView\n" +
-"where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
-"and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))";
-                } 
-                else if (experimentType == ExperimentType.Authors) {
+                    experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
+
+                    sql = "Select pubs.originalid AS DocId,\n"
+                            + "GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n"
+                            + "GROUP_CONCAT(GrantId,'\t') as GrantIds,\n"
+                            + "GROUP_CONCAT(Category3,'\t') as Areas, \n"
+                            + "GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n"
+                            + "IFNULL(Journal, pubs.repository) as Venue\n"
+                            + "     from pubs \n"
+                            + "  inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
+                            + " inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
+                            + " LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n"
+                            + "                                                         Group By pubs.originalid, repository, journal \n"
+                            + "                                                          UNION \n"
+                            + " select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, \n"
+                            + "projectView.GrantId AS GrantIds ,                                                        \n"
+                            + "projectView.Category3 AS Areas,\n"
+                            + "projectView.Category3Descr AS AreasDescr,\n"
+                            + " '' AS Venue\n"
+                            + "from projectView\n"
+                            + "where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
+                            + "and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))";
+                } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
@@ -248,10 +242,15 @@ public class iMixTopicModelExample {
                             // + " LIMIT 20000"
                             ;
                 } else if (experimentType == ExperimentType.ACM) {
+                    experimentDescription = "Topic modeling based on:\n1)Abstracts from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
+                            + similarityType.toString()
+                            + "\n Similarity on:"
+                            + (ACMAuthorSimilarity ? "Authors" : "Categories");
+
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
-                            + "                          ref_objid as citations, primarycategory||'\t'||othercategory AS categories \n"
+                            + "                          ref_objid as citations, primarycategory||'\t'||primarycategory||'\t'||othercategory AS categories \n"
                             + "                          from ACMData1 \n";
-                    //+ " LIMIT 1000";
+                    // + " LIMIT 10000";
 
                 }
 
@@ -284,8 +283,8 @@ public class iMixTopicModelExample {
                             break;
                         case FullGrants:
                         case FETGrants:
-                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 10000)), null, rs.getString("DocId"), "text"));
+                            txt = rs.getString("text");
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
@@ -302,9 +301,9 @@ public class iMixTopicModelExample {
                             break;
                         case HEALTHTender:
                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length()-1, 15000)), null, rs.getString("DocId"), "text"));
-                            
-                             if (numModalities > 1) {
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
+
+                            if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
                             if (numModalities > 2) {
@@ -391,16 +390,15 @@ public class iMixTopicModelExample {
                                 String tmpStr = rs.getString("Citations");//.replace("\t", ",");
                                 instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
                             }
-
+                            if (numModalities > 2) {
+                                String tmpStr = rs.getString("Categories");//.replace("\t", ",");
+                                instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                            }
                             if (numModalities > 3) {
                                 String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                                 instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                             }
 
-                            if (numModalities > 2) {
-                                String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                                instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
-                            }
                             break;
                         default:
                     }
@@ -673,7 +671,6 @@ public class iMixTopicModelExample {
 
             //Non parametric model
             //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
-            
             //parametric model
             MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
 
@@ -809,6 +806,16 @@ public class iMixTopicModelExample {
                         sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join AuthorPerDoc on topicsPerDoc.DocId= AuthorPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
                         break;
+                    case ACM:
+                        if (ACMAuthorSimilarity) {
+                            sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId "
+                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
+                        } else {
+                            sql = "select    Category, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId"
+                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Category , TopicId order by  Category   , TopicId";
+                        }
+
+                        break;
                     case PM_pdb:
                         sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
@@ -855,6 +862,13 @@ public class iMixTopicModelExample {
                         case Authors:
                             newLabelId = rs.getString("AuthorId");
                             break;
+                        case ACM:
+                            if (ACMAuthorSimilarity) {
+                                newLabelId = rs.getString("AuthorId");
+                            } else {
+                                newLabelId = rs.getString("Category");
+                            }
+                            break;
                         case PM_pdb:
                             newLabelId = rs.getString("pdbCode");
                             break;
@@ -897,6 +911,7 @@ public class iMixTopicModelExample {
 
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
+                    int entityType = 1;
 
                     if (similarityType == SimilarityType.Jen_Sha_Div) {
                         for (String fromGrantId : similarityVectors.keySet()) {
@@ -909,7 +924,11 @@ public class iMixTopicModelExample {
                                     startCalc = true;
                                     similarity = Maths.jensenShannonDivergence(similarityVectors.get(fromGrantId), similarityVectors.get(toGrantId)); // the function returns distance not similarity
                                     if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                        bulkInsert.setInt(1, experimentType.ordinal());
+                                        entityType = experimentType.ordinal();
+                                        if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
+                                        };
+                                        entityType += 100;
+                                        bulkInsert.setInt(1, entityType);
                                         bulkInsert.setString(2, fromGrantId);
                                         bulkInsert.setString(3, toGrantId);
                                         bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
@@ -919,7 +938,7 @@ public class iMixTopicModelExample {
                                 }
                             }
                         }
-                    } else if (similarityType == SimilarityType.cos){
+                    } else if (similarityType == SimilarityType.cos) {
                         for (String fromGrantId : labelVectors.keySet()) {
                             boolean startCalc = false;
 
