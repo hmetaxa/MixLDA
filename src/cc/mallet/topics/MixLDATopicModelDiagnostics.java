@@ -654,10 +654,10 @@ public class MixLDATopicModelDiagnostics {
 
             if (connection != null) {
                 try {
-                    System.err.print("Transaction is being rolled back");
+                    System.err.print("Transaction is being rolled back\n");
                     connection.rollback();
                 } catch (SQLException excep) {
-                    System.err.print("Error in insert grantSimilarity");
+                    System.err.print("Error in insert grantSimilarity\n");
                 }
             }
         } finally {

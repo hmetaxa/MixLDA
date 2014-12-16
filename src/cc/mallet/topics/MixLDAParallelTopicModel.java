@@ -143,7 +143,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
-    private int[] histogramSize ;//= 0;
+    private int[] histogramSize;//= 0;
     boolean checkConvergenceRate = false;
 
     //double lblSkewWeight = 1;
@@ -1263,7 +1263,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         histogramSize = new int[numModalities];
 
         Arrays.fill(totalTokens, 0);
-       // Arrays.fill(maxTokens, 0);
+        // Arrays.fill(maxTokens, 0);
         Arrays.fill(histogramSize, 0);
 
         for (MixTopicModelTopicAssignment entity : data) {
@@ -1297,7 +1297,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         }
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
         //histogramSize = maxTotalAllModalities + 1;
-        
+
         docLengthCounts = new int[numModalities][];
         topicDocCounts = new int[numModalities][][];
         for (Byte m = 0; m < numModalities; m++) {
@@ -2501,7 +2501,9 @@ public class MixLDAParallelTopicModel implements Serializable {
      * @param max	Print no more than this many topics
      */
     public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, double lblWeight) {
-        out.print("#doc name topic proportion ...\n");
+        if (out != null) {
+            out.print("#doc name topic proportion ...\n");
+        }
         int[] docLen = new int[numModalities];
 
         int[][] topicCounts = new int[numModalities][numTopics];
@@ -2552,16 +2554,15 @@ public class MixLDAParallelTopicModel implements Serializable {
                         if (data.get(doc).Assignments[m] != null) {
                             Arrays.fill(topicCounts[m], 0);
                             LabelSequence topicSequence = (LabelSequence) data.get(doc).Assignments[m].topicSequence;
-                            
+
                             int[] currentDocTopics = topicSequence.getFeatures();
-                            
-                            
+
                             docLen[m] = data.get(doc).Assignments[m].topicSequence.getLength();// currentDocTopics.length;
 
                             // Count up the tokens
                             for (int token = 0; token < docLen[m]; token++) {
                                 topicCounts[m][currentDocTopics[token]]++;
-                            }                                                               
+                            }
                         }
                     }
 
@@ -2569,7 +2570,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion +=  (double) topicCounts[m][topic] / docLen[m];//+(double) alpha[m][topic] / alphaSum[m]
+                            topicProportion += (double) topicCounts[m][topic] / docLen[m];//+(double) alpha[m][topic] / alphaSum[m]
                         }
                         sortedTopics[topic].set(topic, (topicProportion / cntEnd));
 
@@ -2587,7 +2588,9 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                         builder.append(sortedTopics[i].getID() + "\t"
                                 + sortedTopics[i].getWeight() + "\t");
-                        out.println(builder);
+                        if (out != null) {
+                            out.println(builder);
+                        }
 
                         if (!SQLLiteDB.isEmpty()) {
                             //  sql += String.format(Locale.ENGLISH, "insert into TopicsPerDoc values('%s',%d,%.4f,'%s' );", docId, sortedTopics[i].getID(), sortedTopics[i].getWeight(), experimentId);

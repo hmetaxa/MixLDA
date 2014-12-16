@@ -57,7 +57,7 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 250;
@@ -76,7 +76,7 @@ public class iMixTopicModelExample {
 
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
-        String experimentId = experimentType.toString()  + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
+        String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
                 + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
 
@@ -244,13 +244,13 @@ public class iMixTopicModelExample {
                 } else if (experimentType == ExperimentType.ACM) {
                     experimentDescription = "Topic modeling based on:\n1)Abstracts from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
                             + similarityType.toString()
-                            + "\n Similarity on:"
-                            + (ACMAuthorSimilarity ? "Authors" : "Categories");
+                            + "\n Similarity on Authors & Categories";
+                            //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
                             + "                          ref_objid as citations, primarycategory||'\t'||primarycategory||'\t'||othercategory AS categories \n"
                             + "                          from ACMData1 \n";
-                    // + " LIMIT 10000";
+                            //+ " LIMIT 10000";
 
                 }
 
@@ -710,25 +710,27 @@ public class iMixTopicModelExample {
             //model.printTopWords(new File(topicKeysFile), topWords,  false);
             //model.printTopicWordWeights(new File(topicWordWeightsFile));
             //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
-            model.printState(
-                    new File(stateFileZip));
 
-            logger.info("printState finished");
-
-            PrintWriter outState = new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
+            //No printing state 
+            //model.printState(
+            //        new File(stateFileZip));
+            // logger.info("printState finished");
+            PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
 
             model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
                     0.1);
 
-            outState.close();
+            if (outState != null) {
+                outState.close();
+            }
+
             logger.info("printDocumentTopics finished");
 
             PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
 
             model.topicPhraseXMLReport(outXMLPhrase, topWords);
 
-            outState.close();
-
+            //outState.close();
             logger.info("topicPhraseXML report finished");
 
 //        GunZipper g = new GunZipper(new File(stateFileZip));
@@ -808,11 +810,17 @@ public class iMixTopicModelExample {
                         break;
                     case ACM:
                         if (ACMAuthorSimilarity) {
-                            sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId "
-                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
+                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc \n" +
+"Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId  \n" +
+"INNER JOIN (Select AuthorId FROM PubAuthor\n" +
+"GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
+                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    Category, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId"
-                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Category , TopicId order by  Category   , TopicId";
+                            sql = "select    PubCategory.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n" +
+"Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId  \n" +
+"INNER JOIN (Select Category FROM pubCategory\n" +
+"GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategory.category\n" +
+"where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.Category , TopicId order by  PubCategory.Category, Weight desc, TopicId";
                         }
 
                         break;
@@ -897,7 +905,7 @@ public class iMixTopicModelExample {
 
                 cnt = 0;
                 double similarity = 0;
-                double similarityThreshold = 0.1;
+                double similarityThreshold = 0.15;
                 NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
 
                 statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
@@ -911,7 +919,10 @@ public class iMixTopicModelExample {
 
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-                    int entityType = 1;
+                    int entityType = experimentType.ordinal();
+                    if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
+                        entityType = 100 + entityType;
+                    };
 
                     if (similarityType == SimilarityType.Jen_Sha_Div) {
                         for (String fromGrantId : similarityVectors.keySet()) {
@@ -924,10 +935,7 @@ public class iMixTopicModelExample {
                                     startCalc = true;
                                     similarity = Maths.jensenShannonDivergence(similarityVectors.get(fromGrantId), similarityVectors.get(toGrantId)); // the function returns distance not similarity
                                     if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                        entityType = experimentType.ordinal();
-                                        if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
-                                        };
-                                        entityType += 100;
+
                                         bulkInsert.setInt(1, entityType);
                                         bulkInsert.setString(2, fromGrantId);
                                         bulkInsert.setString(3, toGrantId);
@@ -949,7 +957,7 @@ public class iMixTopicModelExample {
                                     startCalc = true;
                                     similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
                                     if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                        bulkInsert.setInt(1, experimentType.ordinal());
+                                        bulkInsert.setInt(1, entityType);
                                         bulkInsert.setString(2, fromGrantId);
                                         bulkInsert.setString(3, toGrantId);
                                         bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
