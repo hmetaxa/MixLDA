@@ -51,13 +51,13 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 6;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 250;
@@ -66,9 +66,9 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.ACM;
+        ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneLblCnt = 2;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
@@ -181,26 +181,43 @@ public class iMixTopicModelExample {
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
                     experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
-                    sql = "Select pubs.originalid AS DocId,\n"
-                            + "GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n"
-                            + "GROUP_CONCAT(GrantId,'\t') as GrantIds,\n"
-                            + "GROUP_CONCAT(Category3,'\t') as Areas, \n"
-                            + "GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n"
-                            + "IFNULL(Journal, pubs.repository) as Venue\n"
-                            + "     from pubs \n"
-                            + "  inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
-                            + " inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
-                            + " LEFT OUTER  join pmcmetadata on pmcid=pubs.originalid \n"
-                            + "                                                         Group By pubs.originalid, repository, journal \n"
-                            + "                                                          UNION \n"
-                            + " select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, \n"
-                            + "projectView.GrantId AS GrantIds ,                                                        \n"
-                            + "projectView.Category3 AS Areas,\n"
-                            + "projectView.Category3Descr AS AreasDescr,\n"
-                            + " '' AS Venue\n"
-                            + "from projectView\n"
-                            + "where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
-                            + "and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))";
+                    sql = "Select pubs.originalid AS DocId,\n" +
+"                             GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
+"                             GROUP_CONCAT(Category3,'\t') as Areas, \n" +
+"                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
+"                             IFNULL(pmcmetadata.Journal, pubs.repository) as Venue,\n" +
+"                             GROUP_CONCAT(descriptor,'\t') as MESHdescriptors,\n" +
+"                             GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n" +
+"                             from pubs \n" +
+"                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
+"                              inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
+"                              LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n" +
+"                              LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n" +
+"                               Group By pubs.originalid, repository, journal                                                                                    \n" +
+" UNION \n" +
+"                              select 'FP7_'||projectView.GrantId AS DocId, \n" +
+"                              projectView.ABSTRACT AS TEXT, \n" +
+"                             projectView.GrantId AS GrantIds ,                                               \n" +
+"                             projectView.Category3 AS Areas,\n" +
+"                             projectView.Category3Descr AS AreasDescr,\n" +
+"                             '' AS Venue,\n" +
+"                             '' AS MESHdescriptors,\n" +
+"                             '' AS MESHqualifiers\n" +
+"                             from projectView\n" +
+"                             where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
+"                             --and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n" +
+" UNION \n" +
+"                              select 'FP7RPT_'||ProjectId AS DocId, \n" +
+"                             Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n" +
+"                             ProjectId AS GrantIds, \n" +
+"                             projectView.Category3 AS Areas,\n" +
+"                             projectView.Category3Descr AS AreasDescr,\n" +
+"                             '' AS Venue,\n" +
+"                             '' AS MESHdescriptors,\n" +
+"                             '' AS MESHqualifiers\n" +
+"                             from FP7FinalReports\n" +
+"                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH' ";
                 } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
@@ -301,13 +318,13 @@ public class iMixTopicModelExample {
                             break;
                         case HEALTHTender:
                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "Text"));
 
                             if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
+                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "Grant"));
                             }
                             if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
+                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "Area"));
                             }
                             ;
                             if (numModalities > 3) {
@@ -315,6 +332,17 @@ public class iMixTopicModelExample {
                                     instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
                                 }
                             }
+                            if (numModalities > 4) {
+                                if (!rs.getString("MESHdescriptors").equals("")) {
+                                    instanceBuffer.get(3).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
+                                }
+                            }
+                            if (numModalities > 5) {
+                                if (!rs.getString("MESHqualifiers").equals("")) {
+                                    instanceBuffer.get(3).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
+                                }
+                            }
+                            
                             ;
                             break;
                         case Authors:
@@ -908,8 +936,13 @@ public class iMixTopicModelExample {
                 double similarityThreshold = 0.15;
                 NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
 
+                int entityType = experimentType.ordinal();
+                    if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
+                        entityType = 100 + entityType;
+                    };
+                    
                 statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
-                String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s'", experimentId);
+                String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s' and entityType=%d", experimentId, entityType);
                 statement.executeUpdate(deleteSQL);
 
                 PreparedStatement bulkInsert = null;
@@ -919,10 +952,7 @@ public class iMixTopicModelExample {
 
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-                    int entityType = experimentType.ordinal();
-                    if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
-                        entityType = 100 + entityType;
-                    };
+                    
 
                     if (similarityType == SimilarityType.Jen_Sha_Div) {
                         for (String fromGrantId : similarityVectors.keySet()) {
