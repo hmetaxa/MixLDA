@@ -60,9 +60,9 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 250;
-        int maxNumTopics = 250;
-        int numIterations = 1000; //Max 2000
+        int numTopics = 50;
+        int maxNumTopics = 50;
+        int numIterations = 100; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -334,12 +334,12 @@ public class iMixTopicModelExample {
                             }
                             if (numModalities > 4) {
                                 if (!rs.getString("MESHdescriptors").equals("")) {
-                                    instanceBuffer.get(3).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
+                                    instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
                                 }
                             }
                             if (numModalities > 5) {
                                 if (!rs.getString("MESHqualifiers").equals("")) {
-                                    instanceBuffer.get(3).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
+                                    instanceBuffer.get(5).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
                                 }
                             }
                             

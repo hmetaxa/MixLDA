@@ -1943,13 +1943,57 @@ public class MixLDAParallelTopicModel implements Serializable {
                 connection = DriverManager.getConnection(SQLLiteDB);
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, ExperimentId nvarchar(50)) ");
+                String deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+                String topicDetailInsertsql = "insert into TopicDetails values(?,?,?,?,? );";
+                PreparedStatement bulkTopicDetailInsert = null;
+
+                try {
+                    connection.setAutoCommit(false);
+                    bulkTopicDetailInsert = connection.prepareStatement(topicDetailInsertsql);
+
+                    for (int topic = 0; topic < numTopics; topic++) {
+                        for (Byte m = 0; m < numModalities; m++) {
+
+                            bulkTopicDetailInsert.setInt(1, topic);
+                            bulkTopicDetailInsert.setInt(2, m);
+                            bulkTopicDetailInsert.setDouble(3, alpha[m][topic]);
+                            bulkTopicDetailInsert.setInt(4, tokensPerTopic[m][topic]);
+                            bulkTopicDetailInsert.setString(5, experimentId);
+
+                            bulkTopicDetailInsert.executeUpdate();
+                        }
+                    }
+
+                    connection.commit();
+
+                } catch (SQLException e) {
+
+                    if (connection != null) {
+                        try {
+                            System.err.print("Transaction is being rolled back");
+                            connection.rollback();
+                        } catch (SQLException excep) {
+                            System.err.print("Error in insert topic details");
+                        }
+                    }
+                } finally {
+
+                    if (bulkTopicDetailInsert != null) {
+                        bulkTopicDetailInsert.close();
+                    }
+                    connection.setAutoCommit(true);
+                }
+
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50), DiscrWeight) ");
-                String deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50)) ");
+                deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into TopicAnalysis values(?,?,?,?,?,? );";
+                String sql = "insert into TopicAnalysis values(?,?,?,?,?);";
 
                 try {
                     connection.setAutoCommit(false);
@@ -1963,6 +2007,7 @@ public class MixLDAParallelTopicModel implements Serializable {
 
                     for (int topic = 0; topic < numTopics; topic++) {
                         for (Byte m = 0; m < numModalities; m++) {
+
                             TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
 
                             int word = 1;
@@ -1975,7 +2020,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                                 bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
                                 bulkInsert.setDouble(4, info.getWeight());
                                 bulkInsert.setString(5, experimentId);
-                                bulkInsert.setDouble(6, 1);
+                                //bulkInsert.setDouble(6, 1);
                                 bulkInsert.executeUpdate();
 
                                 word++;
