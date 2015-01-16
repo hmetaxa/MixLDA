@@ -51,7 +51,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 6;
+        byte numModalities = 5;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -182,28 +182,29 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "Select pubs.originalid AS DocId,\n" +
-"                             GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"                             GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
 "                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
 "                             GROUP_CONCAT(Category3,'\t') as Areas, \n" +
 "                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
-"                             IFNULL(pmcmetadata.Journal, pubs.repository) as Venue,\n" +
-"                             GROUP_CONCAT(descriptor,'\t') as MESHdescriptors,\n" +
-"                             GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n" +
-"                             from pubs \n" +
+"                             IFNULL(Journal, pubs.repository) as Venue,\n" +
+"                             GROUP_CONCAT(descriptorText,'\t') as MESHdescriptors\n" +
+"                            -- GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n" +
+"                from pubs \n" +
 "                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
 "                              inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
-"                              LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n" +
+"                              --LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n" +
 "                              LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n" +
-"                               Group By pubs.originalid, repository, journal                                                                                    \n" +
-" UNION \n" +
+"                               Group By pubs.originalid, repository, journal \n" +
+"  UNION \n" +
 "                              select 'FP7_'||projectView.GrantId AS DocId, \n" +
 "                              projectView.ABSTRACT AS TEXT, \n" +
 "                             projectView.GrantId AS GrantIds ,                                               \n" +
 "                             projectView.Category3 AS Areas,\n" +
 "                             projectView.Category3Descr AS AreasDescr,\n" +
 "                             '' AS Venue,\n" +
-"                             '' AS MESHdescriptors,\n" +
-"                             '' AS MESHqualifiers\n" +
+"                             '' AS MESHdescriptors\n" +
+"                             --'' AS MESHqualifiers\n" +
 "                             from projectView\n" +
 "                             where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
 "                             --and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n" +
@@ -214,10 +215,10 @@ public class iMixTopicModelExample {
 "                             projectView.Category3 AS Areas,\n" +
 "                             projectView.Category3Descr AS AreasDescr,\n" +
 "                             '' AS Venue,\n" +
-"                             '' AS MESHdescriptors,\n" +
-"                             '' AS MESHqualifiers\n" +
+"                             '' AS MESHdescriptors\n" +
+"                            -- '' AS MESHqualifiers\n" +
 "                             from FP7FinalReports\n" +
-"                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH' ";
+"                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
                 } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
@@ -337,11 +338,11 @@ public class iMixTopicModelExample {
                                     instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
                                 }
                             }
-                            if (numModalities > 5) {
-                                if (!rs.getString("MESHqualifiers").equals("")) {
-                                    instanceBuffer.get(5).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
-                                }
-                            }
+//                            if (numModalities > 5) {
+//                                if (!rs.getString("MESHqualifiers").equals("")) {
+//                                    instanceBuffer.get(5).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
+//                                }
+                            //}
                             
                             ;
                             break;
