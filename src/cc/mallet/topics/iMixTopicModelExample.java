@@ -60,15 +60,15 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
-        int maxNumTopics = 50;
-        int numIterations = 100; //Max 2000
+        int numTopics = 250;
+        int maxNumTopics = 250;
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 2;
+        int pruneLblCnt = 4;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
@@ -182,13 +182,13 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "Select pubs.originalid AS DocId,\n" +
-"                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
-"                             GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
+"                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
+"                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
 "                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
 "                             GROUP_CONCAT(Category3,'\t') as Areas, \n" +
 "                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
 "                             IFNULL(Journal, pubs.repository) as Venue,\n" +
-"                             GROUP_CONCAT(descriptorText,'\t') as MESHdescriptors\n" +
+"                             IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n" +
 "                            -- GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n" +
 "                from pubs \n" +
 "                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
@@ -319,7 +319,7 @@ public class iMixTopicModelExample {
                             break;
                         case HEALTHTender:
                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "Text"));
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "Text"));
 
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "Grant"));
@@ -334,6 +334,7 @@ public class iMixTopicModelExample {
                                 }
                             }
                             if (numModalities > 4) {
+                                
                                 if (!rs.getString("MESHdescriptors").equals("")) {
                                     instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
                                 }
