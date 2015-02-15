@@ -51,7 +51,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 5;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -60,15 +60,15 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 250;
-        int maxNumTopics = 250;
+        int numTopics = 300;
+        int maxNumTopics = 300;
         int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.HEALTHTender;
-        int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 4;
+        ExperimentType experimentType = ExperimentType.Authors;
+        int pruneCnt = 30; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 10;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
@@ -152,17 +152,21 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
-                            + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
-                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,GROUP_CONCAT(Category2,'\t') as Areas, pubs.repository AS Venue\n"
+                            + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END,' ')  AS TEXT,\n"
+                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
+                            + (experimentType == ExperimentType.FullGrants ? "GROUP_CONCAT(Category2,'\t') as Areas, \n": "GROUP_CONCAT(Category3,'\t') as Areas, \n")
+                            + "                            IFNULL(Journal, pubs.repository) as Venue\n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
                             + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
                             + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n")
-                            + "                            Group By pubs.originalid\n"
+                            + "                            Group By pubs.originalid, repository, journal \n"
                             + "                            \n"
                             + "                            UNION \n"
                             + "                            \n"
-                            + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds , projectView.Category2 AS Areas, '' AS Venue\n"
+                            + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
+                            + (experimentType == ExperimentType.FullGrants ? " projectView.Category2 AS Areas, \n":" projectView.Category3 AS Areas, \n")
+                            + " '' AS Venue\n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
                             + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n");
@@ -302,7 +306,7 @@ public class iMixTopicModelExample {
                         case FullGrants:
                         case FETGrants:
                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("DocId"), "text"));
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
