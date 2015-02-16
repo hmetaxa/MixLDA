@@ -1971,7 +1971,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         }
                     }
 
-                    connection.commit();
+                     connection.commit();
 
                 } catch (SQLException e) {
 
@@ -2061,7 +2061,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                             bulkInsert.setString(3, phraseStr);
                             bulkInsert.setDouble(4, count);
                             bulkInsert.setString(5, experimentId);
-                            bulkInsert.setDouble(6, 1);
+                            //bulkInsert.setDouble(6, 1);
                             bulkInsert.executeUpdate();
                         }
 
