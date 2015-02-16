@@ -144,7 +144,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
     private int[] histogramSize;//= 0;
-    boolean checkConvergenceRate = false;
+    boolean checkConvergenceRate = true;
 
     //double lblSkewWeight = 1;
     public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -1205,53 +1205,57 @@ public class MixLDAParallelTopicModel implements Serializable {
     }
 
 //    //TODO save weights in DB (not needed any more as thay calculated on the fly)
-//   private void calcSkew() {
-//        // Calc Skew weight
-//        //skewOn == SkewType.LabelsOnly
-//        double skewSum = 0;
-//        int nonZeroSkewCnt = 1;
-//        byte initModality = 0;
-//        if (skewOn == SkewType.LabelsOnly) {
-//            initModality = 1;
-//        }
+    private void calcSkew() {
+        // Calc Skew weight
+        //skewOn == SkewType.LabelsOnly
+           // The skew index of eachType
+        double[][] typeSkewIndexes = new double [numModalities][]; //<modality, type>
+        double[] skewWeight = new double[numModalities];
+    // The skew index of each Lbl Type
+    //public double[] lblTypeSkewIndexes;
+        //double [][] typeSkewIndexes = new 
+        double skewSum = 0;
+        int nonZeroSkewCnt = 1;
+       
+
+        for (Byte i = 0; i < numModalities; i++) {
+            typeSkewIndexes[i] = new double[numTypes[i]];
+             
+            for (int type = 0; type < numTypes[i]; type++) {
+
+                int totalTypeCounts = 0;
+                typeSkewIndexes[i][type] = 0;
+
+                int[] targetCounts = typeTopicCounts[i][type];
+
+                int index = 0;
+                int count = 0;
+                while (index < targetCounts.length
+                        && targetCounts[index] > 0) {
+                    count = targetCounts[index] >> topicBits;
+                    typeSkewIndexes[i][type] += Math.pow((double) count, 2);
+                    totalTypeCounts += count;
+                    //currentTopic = currentTypeTopicCounts[index] & topicMask;
+                    index++;
+                }
+
+                if (totalTypeCounts > 0) {
+                    typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
+                }
+                if (typeSkewIndexes[i][type] > 0) {
+                    nonZeroSkewCnt++;
+                    skewSum += typeSkewIndexes[i][type];
+                }
+
+            }
+
+            skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
+
+        }
+
+    }
 //
-//        for (Byte i = 0; i < numModalities; i++) {
-//            if (skewOn != SkewType.None && i >= initModality) {
-//
-//                for (int type = 0; type < numTypes[i]; type++) {
-//
-//                    int totalTypeCounts = 0;
-//                    typeSkewIndexes[i][type] = 0;
-//
-//                    int[] targetCounts = typeTopicCounts[i][type].toArray();
-//
-//                    int index = 0;
-//                    int count = 0;
-//                    while (index < targetCounts.length
-//                            && targetCounts[index] > 0) {
-//                        count = targetCounts[index] >> topicBits;
-//                        typeSkewIndexes[i][type] += Math.pow((double) count, 2);
-//                        totalTypeCounts += count;
-//                        //currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                        index++;
-//                    }
-//
-//                    if (totalTypeCounts > 0) {
-//                        typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
-//                    }
-//                    if (typeSkewIndexes[i][type] > 0) {
-//                        nonZeroSkewCnt++;
-//                        skewSum += typeSkewIndexes[i][type];
-//                    }
-//
-//                }
-//
-//                skewWeight[i] = (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
-//
-//            }
-//        }
-//    }
-//
+
     /**
      * Gather statistics on the size of documents and create histograms for use
      * in Dirichlet hyperparameter optimization.
@@ -1633,7 +1637,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         offset, docsPerThread,
                         numModalities,
                         //typeSkewIndexes, skewOn, skewWeight,
-                        p_a, p_b);
+                        p_a, p_b, checkConvergenceRate);
 
                 runnables[thread].initializeAlphaStatistics(histogramSize);
 
@@ -1657,7 +1661,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread,
                     numModalities,
-                    p_a, p_b);
+                    p_a, p_b, checkConvergenceRate);
 
             runnables[0].initializeAlphaStatistics(histogramSize);
 
@@ -1746,7 +1750,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         && iteration % saveSampleInterval == 0) {
                     TByteArrayList modalities = new TByteArrayList();
                     modalities.add((byte) 0);
-                    //mergeSimilarTopics(30, modalities, 0.7);
+                    mergeSimilarTopics(30, modalities, 0.7);
                 }
 
                 //sumTypeTopicCounts(runnables, iteration > burninPeriod);
@@ -2615,7 +2619,9 @@ public class MixLDAParallelTopicModel implements Serializable {
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion += (double) topicCounts[m][topic] / docLen[m];//+(double) alpha[m][topic] / alphaSum[m]
+                            //Omiros: TODO: I should reweight each modality's contribution in the proportion of the document based on its discrimination power (skew index)
+                            topicProportion += ((double) topicCounts[m][topic] + (double) alpha[m][topic]) / (docLen[m] + alphaSum[m]);
+
                         }
                         sortedTopics[topic].set(topic, (topicProportion / cntEnd));
 

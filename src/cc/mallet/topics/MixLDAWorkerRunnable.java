@@ -91,8 +91,9 @@ public class MixLDAWorkerRunnable implements Runnable {
             int[][] tokensPerTopic,
             int startDoc, int numDocs, byte numModalities,
             //double[][] typeSkewIndexes, iMixParallelTopicModelFixTopics.SkewType skewOn, double[] skewWeight,
-            double[][] p_a, double[][] p_b) {
+            double[][] p_a, double[][] p_b, boolean checkConvergenceRate) {
 
+        this.checkConvergenceRate = checkConvergenceRate;
         this.data = data;
 
         this.numTopics = numTopics;
