@@ -139,6 +139,8 @@ public class MixLDAParallelTopicModel implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    double[][] pMean; // modalities correlation
+
     public double[][] convergenceRates;//= new TObjectIntHashMap<Double>(); 
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     //public int numIndependentTopics; //= 5;
@@ -234,7 +236,7 @@ public class MixLDAParallelTopicModel implements Serializable {
         appendMetadata("Initial NumTopics: " + numTopics + ", Modalities: " + this.numModalities + ", Iterations: " + this.numIterations);
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
-
+        pMean = new double[numModalities][numModalities];
     }
 
     public StringBuilder getExpMetadata() {
@@ -1205,22 +1207,21 @@ public class MixLDAParallelTopicModel implements Serializable {
     }
 
 //    //TODO save weights in DB (not needed any more as thay calculated on the fly)
-    private void calcSkew() {
+    private double[] calcSkew() {
         // Calc Skew weight
         //skewOn == SkewType.LabelsOnly
-           // The skew index of eachType
-        double[][] typeSkewIndexes = new double [numModalities][]; //<modality, type>
+        // The skew index of eachType
+        double[][] typeSkewIndexes = new double[numModalities][]; //<modality, type>
         double[] skewWeight = new double[numModalities];
-    // The skew index of each Lbl Type
-    //public double[] lblTypeSkewIndexes;
+        // The skew index of each Lbl Type
+        //public double[] lblTypeSkewIndexes;
         //double [][] typeSkewIndexes = new 
         double skewSum = 0;
         int nonZeroSkewCnt = 1;
-       
 
         for (Byte i = 0; i < numModalities; i++) {
             typeSkewIndexes[i] = new double[numTypes[i]];
-             
+
             for (int type = 0; type < numTypes[i]; type++) {
 
                 int totalTypeCounts = 0;
@@ -1252,6 +1253,8 @@ public class MixLDAParallelTopicModel implements Serializable {
             skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
 
         }
+
+        return skewWeight;
 
     }
 //
@@ -1506,13 +1509,15 @@ public class MixLDAParallelTopicModel implements Serializable {
                 for (int j = 0; j < pDistr_Mean[m][i].length; j++) {
                     sum += pDistr_Mean[m][i][j];
                 }
-                double mean = sum / totalDocsPerModality[m];
+
+                pMean[m][i] = sum / totalDocsPerModality[m];
+                pMean[i][m] = pMean[m][i];
 
                 //double var = 2 * (1 - mean);
-                double a = -1.0 / Math.log(mean);
+                double a = -1.0 / Math.log(pMean[m][i]);
                 double b = 1;
 
-                logger.info("[p:" + m + "_" + i + " mean:" + mean + " a:" + a + " b:" + b + "] ");
+                logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
                 p_a[m][i] = Math.min(a, 3);//a;
                 p_a[i][m] = Math.min(a, 3);;
                 p_b[m][i] = b;
@@ -1971,7 +1976,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         }
                     }
 
-                     connection.commit();
+                    connection.commit();
 
                 } catch (SQLException e) {
 
@@ -2567,6 +2572,8 @@ public class MixLDAParallelTopicModel implements Serializable {
             max = numTopics;
         }
 
+        double[] skewWeight = calcSkew();
+
         Connection connection = null;
         Statement statement = null;
         try {
@@ -2618,12 +2625,13 @@ public class MixLDAParallelTopicModel implements Serializable {
                     // And normalize
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
+                        double normalizeSum = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
                             //Omiros: TODO: I should reweight each modality's contribution in the proportion of the document based on its discrimination power (skew index)
-                            topicProportion += ((double) topicCounts[m][topic] + (double) alpha[m][topic]) / (docLen[m] + alphaSum[m]);
-
+                            topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) alpha[m][topic]) / (docLen[m] + alphaSum[m]);
+                            normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }
-                        sortedTopics[topic].set(topic, (topicProportion / cntEnd));
+                        sortedTopics[topic].set(topic, (topicProportion / normalizeSum));
 
                     }
 
