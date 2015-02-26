@@ -831,9 +831,21 @@ public class iMixTopicModelExample {
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
                         break;
                     case FullGrants:
-                    case FETGrants:
-                    case HEALTHTender:
                         sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                                + " where weight>0.02 AND ExperimentId='" + experimentId
+                                + "' group By project_code , TopicId order by  project_code, TopicId";
+
+                        break;
+                    case FETGrants:
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1='FET'\n" 
+                                + " where weight>0.02 AND ExperimentId='" + experimentId
+                                + "' group By project_code , TopicId order by  project_code, TopicId";
+
+                        break;
+                    case HEALTHTender:
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "+
+                              "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" 
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 

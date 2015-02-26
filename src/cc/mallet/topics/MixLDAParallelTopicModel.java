@@ -1888,12 +1888,30 @@ public class MixLDAParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500)) ");
+                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
                 String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
+                String boostSelect = String.format("select  \n" +
+" a.experimentid, PhraseCnts, textcnts, textcnts/phrasecnts as boost\n" +
+"from \n" +
+"(select experimentid, itemtype, avg(counts) as PhraseCnts from topicanalysis\n" +
+"where itemtype=-1\n" +
+"group by experimentid, itemtype) a inner join\n" +
+"(select experimentid, itemtype, avg(counts) as textcnts from topicanalysis\n" +
+"where itemtype=0  and ExperimentId = '%s' \n" +
+"group by experimentid, itemtype) b on a.experimentId=b.experimentId\n" +
+"order by a.experimentId;", experimentId);
+                
+                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n" +
+"from( \n" +
+"select experimentid, avg(similarity) as avgent, count(similarity) as counts\n" +
+"from entitysimilarity\n" +
+"where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n" +
+"group by experimentid", experimentId);
+                
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into Experiment values(?,?,? );";
+                String sql = "insert into Experiment values(?,?,?, ?, ? );";
 
                 try {
                     connection.setAutoCommit(false);
@@ -1902,7 +1920,8 @@ public class MixLDAParallelTopicModel implements Serializable {
                     bulkInsert.setString(1, experimentId);
                     bulkInsert.setString(2, experimentDescription);
                     bulkInsert.setString(3, expMetadata.toString());
-
+                    bulkInsert.setDouble(4, 0.6);
+                    bulkInsert.setInt(5, 100);
                     bulkInsert.executeUpdate();
 
                     connection.commit();
