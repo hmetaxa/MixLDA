@@ -152,10 +152,13 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
-                            + "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END,' ')  AS TEXT,\n"
+                            +(experimentType == ExperimentType.FullGrants ?  "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END,' ')  AS TEXT,\n"
+                            : "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" )
                             + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
                             + (experimentType == ExperimentType.FullGrants ? "GROUP_CONCAT(Category2,'\t') as Areas, \n": "GROUP_CONCAT(Category3,'\t') as Areas, \n")
-                            + "                            IFNULL(Journal, pubs.repository) as Venue\n"
+                            + "                            IFNULL(Journal, pubs.repository) as Venue, \n"
+                            +(experimentType == ExperimentType.FullGrants ?  "  'PubAbstract'   AS TEXTType,\n"
+                            : "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN 'PubAbstract' ELSE 'PubFullText' END,' ')  AS TEXTType,\n" )
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
                             + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
@@ -166,7 +169,8 @@ public class iMixTopicModelExample {
                             + "                            \n"
                             + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
                             + (experimentType == ExperimentType.FullGrants ? " projectView.Category2 AS Areas, \n":" projectView.Category3 AS Areas, \n")
-                            + " '' AS Venue\n"
+                            + " '' AS Venue, \n"
+                            + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
                             + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n");
