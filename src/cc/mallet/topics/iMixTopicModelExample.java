@@ -149,6 +149,21 @@ public class iMixTopicModelExample {
                     grantType = experimentType == ExperimentType.FullGrants ? "FP7" : "FP7 FET";
 
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
+                    
+                     sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
+                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
+
+  ResultSet rs = statement.executeQuery(sql);
+
+                HashMap<String, SparseVector> labelVectors = null;
+
+
+ while (rs.next()) {
+
+                   
+
+                            newLabelId = rs.getString("GrantId");
+}
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
@@ -308,9 +323,27 @@ public class iMixTopicModelExample {
                             ;
                             break;
                         case FullGrants:
+                            txt = rs.getString("text");
+                            
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
+                            if (numModalities > 1) {
+                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
+                            }
+                            if (numModalities > 2) {
+                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
+                            }
+                            ;
+                            if (numModalities > 3) {
+                                if (!rs.getString("Venue").equals("")) {
+                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
+                                }
+                            }
+                            ;
+                            break;
                         case FETGrants:
                             txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
+                            
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
