@@ -60,11 +60,11 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 150;
-        int maxNumTopics = 150;
-        int numIterations = 1500; //Max 2000
+        int numTopics = 50;
+        int maxNumTopics = 50;
+        int numIterations = 150; //Max 2000
         int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 5; //Reduce features to those that occur more than N times
@@ -144,51 +144,81 @@ public class iMixTopicModelExample {
 //                        //  + " Doc.source='" + docSource + "' and "
 //                        //  + " grantPerDoc.grantId like '" + grantType + "' "
 //                        + " Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.FullGrants || experimentType == ExperimentType.FETGrants) {
+                } else if (experimentType == ExperimentType.FullGrants) {
 
-                    grantType = experimentType == ExperimentType.FullGrants ? "FP7" : "FP7 FET";
-
-                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-                    
-                     sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
-
-  ResultSet rs = statement.executeQuery(sql);
-
-                HashMap<String, SparseVector> labelVectors = null;
+                    grantType = "FP7";
 
 
- while (rs.next()) {
-
-                   
-
-                            newLabelId = rs.getString("GrantId");
-}
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
-                            +(experimentType == ExperimentType.FullGrants ?  "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END,' ')  AS TEXT,\n"
-                            : "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" )
+                            + "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
-                            + (experimentType == ExperimentType.FullGrants ? "GROUP_CONCAT(Category2,'\t') as Areas, \n": "GROUP_CONCAT(Category3,'\t') as Areas, \n")
-                            + "                            IFNULL(Journal, pubs.repository) as Venue, \n"
-                            +(experimentType == ExperimentType.FullGrants ?  "  'PubAbstract'   AS TEXTType,\n"
-                            : "                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN 'PubAbstract' ELSE 'PubFullText' END,' ')  AS TEXTType,\n" )
+                            + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
+                            + "                    'PubAbstract'   AS TEXTType \n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
                             + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
-                            + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n")
-                            + "                            Group By pubs.originalid, repository, journal \n"
+                            + "                            Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
                             + "                            \n"
                             + "                            UNION \n"
                             + "                            \n"
                             + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
-                            + (experimentType == ExperimentType.FullGrants ? " projectView.Category2 AS Areas, \n":" projectView.Category3 AS Areas, \n")
+                            + " projectView.Category2 AS Areas, \n"
+                            + " '' AS Venue, \n"
+                            + " 'ProjectAbstract' AS TEXTType \n"
+                            + "                            from projectView\n"
+                            + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n";
+
+                    // + " LIMIT 10000";
+//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
+//                        + " from Doc inner join "
+//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
+//                        //  + " where  "
+//                        //  + " Doc.source='" + docSource + "' and "
+//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
+//                        + " Group By Doc.DocId, Doc.text";
+                } else if (experimentType == ExperimentType.FETGrants) {
+
+                    sql = "select pubs.originalid AS DocId, \n"
+                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
+                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
+                            + "                       GROUP_CONCAT(Category3,'\t') as Areas, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
+                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN 'PubAbstract' ELSE 'PubFullText' END AS TEXTType \n"
+                            + "                            from pubs \n"
+                            + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
+                            + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
+                            + "                   and projectView.Category1='FET'\n"
+                            + "                            Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
+                            + "                            \n"
+                            + "                            UNION \n"
+                            + "                            \n"
+                            + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
+                            + " projectView.Category3 AS Areas, \n"
                             + " '' AS Venue, \n"
                             + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
-                            + (experimentType == ExperimentType.FullGrants ? "" : " and projectView.Category1='FET'\n");
+                            + " and projectView.Category1='FET'\n";
+
+                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
+
+                    String sqlTextType = "select TEXTType, count(*) as Cnt from ( " + sql + " ) group by TEXTType";
+
+                    grantType = "FP7 FET";
+                    Statement statement = connection.createStatement();
+                    statement.setQueryTimeout(60);  // set timeout to 30 sec.
+
+                    experimentDescription += "Topic modeling analyzing:\n 1)";
+                    ResultSet rs = statement.executeQuery(sqlTextType);
+                    while (rs.next()) {
+                           experimentDescription +=  rs.getInt("Cnt")+" ";
+                           experimentDescription +=  rs.getString("TEXTType") +", " ;
+                           
+                    }
+                    experimentDescription += " related to " + grantType + "\n2)Related Research Areas\n3)Publication Venues (e.g., PubMed, Arxiv, ACM, Specific Journals)\n4)Grants per Publication \n SimilarityType:" + similarityType.toString();
 
                     // + " LIMIT 10000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
@@ -204,44 +234,44 @@ public class iMixTopicModelExample {
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
                     experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
-                    sql = "Select pubs.originalid AS DocId,\n" +
-"                            GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END,' ')  AS TEXT,\n" +
-"                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n" +
-"                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n" +
-"                             GROUP_CONCAT(Category3,'\t') as Areas, \n" +
-"                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n" +
-"                             IFNULL(Journal, pubs.repository) as Venue,\n" +
-"                             IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n" +
-"                            -- GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n" +
-"                from pubs \n" +
-"                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
-"                              inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
-"                              --LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n" +
-"                              LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n" +
-"                               Group By pubs.originalid, repository, journal \n" +
-"  UNION \n" +
-"                              select 'FP7_'||projectView.GrantId AS DocId, \n" +
-"                              projectView.ABSTRACT AS TEXT, \n" +
-"                             projectView.GrantId AS GrantIds ,                                               \n" +
-"                             projectView.Category3 AS Areas,\n" +
-"                             projectView.Category3Descr AS AreasDescr,\n" +
-"                             '' AS Venue,\n" +
-"                             '' AS MESHdescriptors\n" +
-"                             --'' AS MESHqualifiers\n" +
-"                             from projectView\n" +
-"                             where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
-"                             --and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n" +
-" UNION \n" +
-"                              select 'FP7RPT_'||ProjectId AS DocId, \n" +
-"                             Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n" +
-"                             ProjectId AS GrantIds, \n" +
-"                             projectView.Category3 AS Areas,\n" +
-"                             projectView.Category3Descr AS AreasDescr,\n" +
-"                             '' AS Venue,\n" +
-"                             '' AS MESHdescriptors\n" +
-"                            -- '' AS MESHqualifiers\n" +
-"                             from FP7FinalReports\n" +
-"                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
+                    sql = "Select pubs.originalid AS DocId,\n"
+                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
+                            + "                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
+                            + "                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n"
+                            + "                             GROUP_CONCAT(Category3,'\t') as Areas, \n"
+                            + "                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
+                            + "                             IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n"
+                            + "                            -- GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n"
+                            + "                from pubs \n"
+                            + "                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
+                            + "                              inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
+                            + "                              --LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n"
+                            + "                              LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n"
+                            + "                               Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
+                            + "  UNION \n"
+                            + "                              select 'FP7_'||projectView.GrantId AS DocId, \n"
+                            + "                              projectView.ABSTRACT AS TEXT, \n"
+                            + "                             projectView.GrantId AS GrantIds ,                                               \n"
+                            + "                             projectView.Category3 AS Areas,\n"
+                            + "                             projectView.Category3Descr AS AreasDescr,\n"
+                            + "                             '' AS Venue,\n"
+                            + "                             '' AS MESHdescriptors\n"
+                            + "                             --'' AS MESHqualifiers\n"
+                            + "                             from projectView\n"
+                            + "                             where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
+                            + "                             --and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
+                            + " UNION \n"
+                            + "                              select 'FP7RPT_'||ProjectId AS DocId, \n"
+                            + "                             Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
+                            + "                             ProjectId AS GrantIds, \n"
+                            + "                             projectView.Category3 AS Areas,\n"
+                            + "                             projectView.Category3Descr AS AreasDescr,\n"
+                            + "                             '' AS Venue,\n"
+                            + "                             '' AS MESHdescriptors\n"
+                            + "                            -- '' AS MESHqualifiers\n"
+                            + "                             from FP7FinalReports\n"
+                            + "                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
                 } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
@@ -286,12 +316,12 @@ public class iMixTopicModelExample {
                     experimentDescription = "Topic modeling based on:\n1)Abstracts from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
                             + similarityType.toString()
                             + "\n Similarity on Authors & Categories";
-                            //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
+                    //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
                             + "                          ref_objid as citations, primarycategory||'\t'||primarycategory||'\t'||othercategory AS categories \n"
                             + "                          from ACMData1 \n";
-                            //+ " LIMIT 10000";
+                    //+ " LIMIT 10000";
 
                 }
 
@@ -324,7 +354,7 @@ public class iMixTopicModelExample {
                             break;
                         case FullGrants:
                             txt = rs.getString("text");
-                            
+
                             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
@@ -342,7 +372,7 @@ public class iMixTopicModelExample {
                             break;
                         case FETGrants:
                             txt = rs.getString("text");
-                            
+
                             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
@@ -375,7 +405,7 @@ public class iMixTopicModelExample {
                                 }
                             }
                             if (numModalities > 4) {
-                                
+
                                 if (!rs.getString("MESHdescriptors").equals("")) {
                                     instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
                                 }
@@ -385,7 +415,7 @@ public class iMixTopicModelExample {
 //                                    instanceBuffer.get(5).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
 //                                }
                             //}
-                            
+
                             ;
                             break;
                         case Authors:
@@ -766,9 +796,7 @@ public class iMixTopicModelExample {
             //model.saveModelInterval=250;
             model.estimate();
 
-            logger.info("Model Metadata: \n" + model.getExpMetadata());
-
-            model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
+           
 
             logger.info("Model estimated");
             model.saveTopics(SQLLitedb, experimentId);
@@ -796,6 +824,10 @@ public class iMixTopicModelExample {
             }
 
             logger.info("printDocumentTopics finished");
+            
+            logger.info("Model Metadata: \n" + model.getExpMetadata());
+
+            model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
 
             PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
 
@@ -875,14 +907,14 @@ public class iMixTopicModelExample {
                         break;
                     case FETGrants:
                         sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
-                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1='FET'\n" 
+                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1='FET'\n"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
                         break;
                     case HEALTHTender:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "+
-                              "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" 
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
@@ -893,17 +925,17 @@ public class iMixTopicModelExample {
                         break;
                     case ACM:
                         if (ACMAuthorSimilarity) {
-                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc \n" +
-"Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId  \n" +
-"INNER JOIN (Select AuthorId FROM PubAuthor\n" +
-"GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
+                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
+                                    + "Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId  \n"
+                                    + "INNER JOIN (Select AuthorId FROM PubAuthor\n"
+                                    + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
                                     + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    PubCategory.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n" +
-"Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId  \n" +
-"INNER JOIN (Select Category FROM pubCategory\n" +
-"GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategory.category\n" +
-"where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.Category , TopicId order by  PubCategory.Category, Weight desc, TopicId";
+                            sql = "select    PubCategory.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
+                                    + "Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId  \n"
+                                    + "INNER JOIN (Select Category FROM pubCategory\n"
+                                    + "GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategory.category\n"
+                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.Category , TopicId order by  PubCategory.Category, Weight desc, TopicId";
                         }
 
                         break;
@@ -992,10 +1024,10 @@ public class iMixTopicModelExample {
                 NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
 
                 int entityType = experimentType.ordinal();
-                    if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
-                        entityType = 100 + entityType;
-                    };
-                    
+                if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
+                    entityType = 100 + entityType;
+                };
+
                 statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
                 String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s' and entityType=%d", experimentId, entityType);
                 statement.executeUpdate(deleteSQL);
@@ -1007,7 +1039,6 @@ public class iMixTopicModelExample {
 
                     connection.setAutoCommit(false);
                     bulkInsert = connection.prepareStatement(sql);
-                    
 
                     if (similarityType == SimilarityType.Jen_Sha_Div) {
                         for (String fromGrantId : similarityVectors.keySet()) {

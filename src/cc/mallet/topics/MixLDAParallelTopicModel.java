@@ -21,6 +21,7 @@ import java.io.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 //import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -1251,6 +1252,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             }
 
             skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
+            appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
 
         }
 
@@ -1503,6 +1505,8 @@ public class MixLDAParallelTopicModel implements Serializable {
 //we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
         // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
         for (Byte m = 0; m < numModalities; m++) {
+            pMean[m][m] = 1;
+
             for (Byte i = (byte) (m + 1); i < numModalities; i++) {
                 //optimize based on mean & variance
                 double sum = 0;
@@ -1891,25 +1895,30 @@ public class MixLDAParallelTopicModel implements Serializable {
                 statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
                 String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
+//TODO topic analysis don't exist here
+                String boostSelect = String.format("select  \n"
+                        + " a.experimentid, PhraseCnts, textcnts, textcnts/phrasecnts as boost\n"
+                        + "from \n"
+                        + "(select experimentid, itemtype, avg(counts) as PhraseCnts from topicanalysis\n"
+                        + "where itemtype=-1\n"
+                        + "group by experimentid, itemtype) a inner join\n"
+                        + "(select experimentid, itemtype, avg(counts) as textcnts from topicanalysis\n"
+                        + "where itemtype=0  and ExperimentId = '%s' \n"
+                        + "group by experimentid, itemtype) b on a.experimentId=b.experimentId\n"
+                        + "order by a.experimentId;", experimentId);
+                float boost = 70;
+                ResultSet rs = statement.executeQuery(boostSelect);
+                while (rs.next()) {
+                    boost = rs.getFloat("boost");
+                }
 
-                String boostSelect = String.format("select  \n" +
-" a.experimentid, PhraseCnts, textcnts, textcnts/phrasecnts as boost\n" +
-"from \n" +
-"(select experimentid, itemtype, avg(counts) as PhraseCnts from topicanalysis\n" +
-"where itemtype=-1\n" +
-"group by experimentid, itemtype) a inner join\n" +
-"(select experimentid, itemtype, avg(counts) as textcnts from topicanalysis\n" +
-"where itemtype=0  and ExperimentId = '%s' \n" +
-"group by experimentid, itemtype) b on a.experimentId=b.experimentId\n" +
-"order by a.experimentId;", experimentId);
-                
-                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n" +
-"from( \n" +
-"select experimentid, avg(similarity) as avgent, count(similarity) as counts\n" +
-"from entitysimilarity\n" +
-"where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n" +
-"group by experimentid", experimentId);
-                
+                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n"
+                        + "from( \n"
+                        + "select experimentid, avg(similarity) as avgent, count(similarity) as counts\n"
+                        + "from entitysimilarity\n"
+                        + "where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n"
+                        + "group by experimentid", experimentId);
+
                 PreparedStatement bulkInsert = null;
                 String sql = "insert into Experiment values(?,?,?, ?, ? );";
 
@@ -1921,7 +1930,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                     bulkInsert.setString(2, experimentDescription);
                     bulkInsert.setString(3, expMetadata.toString());
                     bulkInsert.setDouble(4, 0.6);
-                    bulkInsert.setInt(5, 100);
+                    bulkInsert.setInt(5, Math.round(boost));
                     bulkInsert.executeUpdate();
 
                     connection.commit();
