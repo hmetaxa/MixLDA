@@ -68,7 +68,7 @@ public class iMixTopicModelExample {
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 5; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 2;
+        int pruneLblCnt = 1;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
@@ -190,7 +190,7 @@ public class iMixTopicModelExample {
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
                             + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
-                            + "                   and projectView.Category1='FET'\n"
+                            + "                   and projectView.Category1<>'NONFET'\n"
                             + "                            Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
                             + "                            \n"
                             + "                            UNION \n"
@@ -201,7 +201,7 @@ public class iMixTopicModelExample {
                             + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
-                            + " and projectView.Category1='FET'\n";
+                            + " and projectView.Category1<>'NONFET'\n";
 
                     experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
 
