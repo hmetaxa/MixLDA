@@ -147,7 +147,7 @@ public class MixLDAParallelTopicModel implements Serializable {
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
     private int[] histogramSize;//= 0;
-    boolean checkConvergenceRate = true;
+    boolean checkConvergenceRate = false;
 
     //double lblSkewWeight = 1;
     public MixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {

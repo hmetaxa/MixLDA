@@ -60,11 +60,11 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 50;
-        int maxNumTopics = 50;
-        int numIterations = 150; //Max 2000
+        int numTopics = 300;
+        int maxNumTopics = 300;
+        int numIterations = 1200; //Max 2000
         int independentIterations = 0;
-        int burnIn = 50;
+        int burnIn = 150;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.FETGrants;
         int pruneCnt = 5; //Reduce features to those that occur more than N times
@@ -1238,7 +1238,7 @@ public class iMixTopicModelExample {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("cidcid") || word.contains("nullnull") || word.contains("usepackage")) {
+            if (word.contains("cidcid") || word.contains("nullnull") || word.contains("usepackage")|| word.contains("fig")) {
                 prunedTokenizer.stop(word);
             }
         }
