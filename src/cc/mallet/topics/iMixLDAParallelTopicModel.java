@@ -22,6 +22,7 @@ import static java.lang.Math.log;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 //import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -41,25 +42,27 @@ import java.util.logging.*;
 import java.util.zip.*;
 import org.knowceans.util.RandomSamplers;
 
-
 /**
  * Mix Parallel, non parametric, multi modal topic modal extending MALLET
- * Parallel topic model & HDP implementation as analyzed in G. Heinrich. "Infinite LDA" , 
- * 
- * We follow a simple parallel threaded implementation of
- * LDA, following Newman, Asuncion, Smyth and Welling, Distributed Algorithms
- * for Topic Models JMLR (2009), 
- * 
- * retaining SparseLDA sampling scheme and data
- * structure from Yao, Mimno and McCallum, Efficient Methods for Topic Model
- * Inference on Streaming Document Collections, KDD (2009).
- * 
- * Non parametric implementation is using Teh et al. (2006) approach for the direct assignment sampler, with
- * modular LDA parametric sampler first published by Griffiths (2002) and
- * explained in Heinrich (2005). For the original LDA paper, see Blei et al. (2002).
- * 
- * Statistical strength between different modalities is share based on an interacting polya urn model as described in ...
- * 
+ * Parallel topic model & HDP implementation as analyzed in G. Heinrich.
+ * "Infinite LDA" ,
+ *
+ * We follow a simple parallel threaded implementation of LDA, following Newman,
+ * Asuncion, Smyth and Welling, Distributed Algorithms for Topic Models JMLR
+ * (2009),
+ *
+ * retaining SparseLDA sampling scheme and data structure from Yao, Mimno and
+ * McCallum, Efficient Methods for Topic Model Inference on Streaming Document
+ * Collections, KDD (2009).
+ *
+ * Non parametric implementation is using Teh et al. (2006) approach for the
+ * direct assignment sampler, with modular LDA parametric sampler first
+ * published by Griffiths (2002) and explained in Heinrich (2005). For the
+ * original LDA paper, see Blei et al. (2002).
+ *
+ * Statistical strength between different modalities is share based on an
+ * interacting polya urn model as described in ...
+ *
  * Scaling, perfomance, simplicity and memory management are top criteria
  * <p>
  * T. Griffiths. Gibbs sampling in the generative model of Latent Dirichlet
@@ -72,8 +75,8 @@ import org.knowceans.util.RandomSamplers;
  * complexity. TN2011/1, www.arbylon.net/publications/ilda.pdf
  * <p>
  * Y.W. Teh, M.I. Jordan, M.J. Beal, D.M. Blei. Hierarchical Dirichlet
- * Processes. JASA, 101:1566-1581, 2006
- * D.M. Blei, A. Ng, M.I. Jordan. Latent Dirichlet Allocation. NIPS, 2002
+ * Processes. JASA, 101:1566-1581, 2006 D.M. Blei, A. Ng, M.I. Jordan. Latent
+ * Dirichlet Allocation. NIPS, 2002
  *
  * @author Omiros Metaxas
  */
@@ -172,16 +175,16 @@ public class iMixLDAParallelTopicModel implements Serializable {
     double[][] p_b; // b for beta prir for modalities correlation
     double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    double[][] pMean; // modalities correlation
     public double[][] convergenceRates;//= new TObjectIntHashMap<Double>(); 
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     //public int numIndependentTopics; //= 5;
     //private int numCommonTopics;
-    private int[] histogramSize ;//= 0;
+    private int[] histogramSize;//= 0;
     boolean checkConvergenceRate = false;
 
     // Optimize gamma hyper params
     RandomSamplers samp;
-
 
     //double lblSkewWeight = 1;
     public iMixLDAParallelTopicModel(int numberOfTopics, byte numModalities) {
@@ -281,6 +284,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
+        pMean = new double[numModalities][numModalities];
 
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
@@ -343,7 +347,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
                 typeTopicCounts[0], tokensPerTopic[0]);
     }
-    
+
     /**
      * Interval for optimizing Dirichlet hyperparameters
      */
@@ -515,14 +519,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
     }
 
     public void initializeAlphaStatistics(int[] size) {
-        
-         docLengthCounts = new int[numModalities][];
+
+        docLengthCounts = new int[numModalities][];
         topicDocCounts = new int[numModalities][][];
         for (Byte m = 0; m < numModalities; m++) {
             docLengthCounts[m] = new int[histogramSize[m] + 1];
             topicDocCounts[m] = new int[maxNumTopics][histogramSize[m] + 1];
         }
-        
+
 //        docLengthCounts = new int[numModalities][size];
 //        topicDocCounts = new int[numModalities][maxNumTopics][];
 //        for (byte i = 0; i < numModalities; i++) {
@@ -1235,7 +1239,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     alpha[i][topic] += sourceAlpha[i][topic] / (double) numThreads;
 
                     for (int l = 0; l < topicDocCounts[i][topic].length; l++) {
-                        
+
                         topicDocCounts[i][topic][l] += Math.ceil(sourceTopicDocCounts[i][topic][l] / (double) numThreads); //approximate counts
                     }
                 }
@@ -1351,6 +1355,59 @@ public class iMixLDAParallelTopicModel implements Serializable {
 //        }
 //    }
 //
+    private double[] calcSkew() {
+        // Calc Skew weight
+        //skewOn == SkewType.LabelsOnly
+        // The skew index of eachType
+        double[][] typeSkewIndexes = new double[numModalities][]; //<modality, type>
+        double[] skewWeight = new double[numModalities];
+        // The skew index of each Lbl Type
+        //public double[] lblTypeSkewIndexes;
+        //double [][] typeSkewIndexes = new 
+        double skewSum = 0;
+        int nonZeroSkewCnt = 1;
+
+        for (Byte i = 0; i < numModalities; i++) {
+            typeSkewIndexes[i] = new double[numTypes[i]];
+
+            for (int type = 0; type < numTypes[i]; type++) {
+
+                int totalTypeCounts = 0;
+                typeSkewIndexes[i][type] = 0;
+
+                int[] targetCounts = typeTopicCounts[i][type];
+
+                int index = 0;
+                int count = 0;
+                while (index < targetCounts.length
+                        && targetCounts[index] > 0) {
+                    count = targetCounts[index] >> topicBits;
+                    typeSkewIndexes[i][type] += Math.pow((double) count, 2);
+                    totalTypeCounts += count;
+                    //currentTopic = currentTypeTopicCounts[index] & topicMask;
+                    index++;
+                }
+
+                if (totalTypeCounts > 0) {
+                    typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
+                }
+                if (typeSkewIndexes[i][type] > 0) {
+                    nonZeroSkewCnt++;
+                    skewSum += typeSkewIndexes[i][type];
+                }
+
+            }
+
+            skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
+            appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
+
+        }
+
+        return skewWeight;
+
+    }
+//
+
     /**
      * Gather statistics on the size of documents and create histograms for use
      * in Dirichlet hyperparameter optimization.
@@ -1364,7 +1421,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
         //int[] maxTotal = new int[numModalities];
 
         Arrays.fill(totalTokens, 0);
-       // Arrays.fill(maxTokens, 0);
+        // Arrays.fill(maxTokens, 0);
         //Arrays.fill(maxTotal, 0);
 
         for (MixTopicModelTopicAssignment entity : data) {
@@ -1398,7 +1455,16 @@ public class iMixLDAParallelTopicModel implements Serializable {
             maxTotalAllModalities += histogramSize[i];
         }
         logger.info("max tokens all modalities: " + maxTotalAllModalities);
-       // histogramSize = maxTotalAllModalities + 1;
+
+        /*TODO: #NewAddition
+         docLengthCounts = new int[numModalities][];
+         topicDocCounts = new int[numModalities][][];
+         for (Byte m = 0; m < numModalities; m++) {
+         docLengthCounts[m] = new int[histogramSize[m] + 1];
+         topicDocCounts[m] = new int[numTopics][histogramSize[m] + 1];
+         }
+         */
+        // histogramSize = maxTotalAllModalities + 1;
         //not needed
 //        docLengthCounts = new int[maxTotalAllModalities + 1];
 //        topicDocCounts = new TIntObjectHashMap<int[]>(numTopics); //[maxTotalAllModalities + 1];
@@ -1587,19 +1653,23 @@ public class iMixLDAParallelTopicModel implements Serializable {
 //we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
         // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
         for (Byte m = 0; m < numModalities; m++) {
+            pMean[m][m] = 1;
             for (Byte i = (byte) (m + 1); i < numModalities; i++) {
                 //optimize based on mean & variance
                 double sum = 0;
                 for (int j = 0; j < pDistr_Mean[m][i].length; j++) {
                     sum += pDistr_Mean[m][i][j];
                 }
-                double mean = sum / totalDocsPerModality[m];
 
+                pMean[m][i] = sum / totalDocsPerModality[m];
+                pMean[i][m] = pMean[m][i];
+
+                //double mean = sum / totalDocsPerModality[m];
                 //double var = 2 * (1 - mean);
-                double a = -1.0 / Math.log(mean);
+                double a = -1.0 / Math.log(pMean[m][i]);
                 double b = 1;
 
-                logger.info("[p:" + m + "_" + i + " mean:" + mean + " a:" + a + " b:" + b + "] ");
+                logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
                 p_a[m][i] = Math.min(a, 3);//a;
                 p_a[i][m] = Math.min(a, 3);;
                 p_b[m][i] = b;
@@ -2045,6 +2115,29 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500)) ");
                 String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
+//TODO topic analysis don't exist here
+                String boostSelect = String.format("select  \n"
+                        + " a.experimentid, PhraseCnts, textcnts, textcnts/phrasecnts as boost\n"
+                        + "from \n"
+                        + "(select experimentid, itemtype, avg(counts) as PhraseCnts from topicanalysis\n"
+                        + "where itemtype=-1\n"
+                        + "group by experimentid, itemtype) a inner join\n"
+                        + "(select experimentid, itemtype, avg(counts) as textcnts from topicanalysis\n"
+                        + "where itemtype=0  and ExperimentId = '%s' \n"
+                        + "group by experimentid, itemtype) b on a.experimentId=b.experimentId\n"
+                        + "order by a.experimentId;", experimentId);
+                float boost = 70;
+                ResultSet rs = statement.executeQuery(boostSelect);
+                while (rs.next()) {
+                    boost = rs.getFloat("boost");
+                }
+
+                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n"
+                        + "from( \n"
+                        + "select experimentid, avg(similarity) as avgent, count(similarity) as counts\n"
+                        + "from entitysimilarity\n"
+                        + "where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n"
+                        + "group by experimentid", experimentId);
 
                 PreparedStatement bulkInsert = null;
                 String sql = "insert into Experiment values(?,?,? );";
@@ -2056,7 +2149,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     bulkInsert.setString(1, experimentId);
                     bulkInsert.setString(2, experimentDescription);
                     bulkInsert.setString(3, expMetadata.toString());
-
+                    bulkInsert.setDouble(4, 0.6);
+                    bulkInsert.setInt(5, Math.round(boost));
                     bulkInsert.executeUpdate();
 
                     connection.commit();
@@ -2107,12 +2201,56 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50), DiscrWeight) ");
-                String deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
+
+                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, ExperimentId nvarchar(50)) ");
+                String deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+                String topicDetailInsertsql = "insert into TopicDetails values(?,?,?,?,? );";
+                PreparedStatement bulkTopicDetailInsert = null;
+
+                try {
+                    connection.setAutoCommit(false);
+                    bulkTopicDetailInsert = connection.prepareStatement(topicDetailInsertsql);
+
+                    for (int topic = 0; topic < numTopics; topic++) {
+                        for (Byte m = 0; m < numModalities; m++) {
+
+                            bulkTopicDetailInsert.setInt(1, topic);
+                            bulkTopicDetailInsert.setInt(2, m);
+                            bulkTopicDetailInsert.setDouble(3, alpha[m][topic]);
+                            bulkTopicDetailInsert.setInt(4, tokensPerTopic[m][topic]);
+                            bulkTopicDetailInsert.setString(5, experimentId);
+
+                            bulkTopicDetailInsert.executeUpdate();
+                        }
+                    }
+
+                    connection.commit();
+
+                } catch (SQLException e) {
+
+                    if (connection != null) {
+                        try {
+                            System.err.print("Transaction is being rolled back");
+                            connection.rollback();
+                        } catch (SQLException excep) {
+                            System.err.print("Error in insert topic details");
+                        }
+                    }
+                } finally {
+
+                    if (bulkTopicDetailInsert != null) {
+                        bulkTopicDetailInsert.close();
+                    }
+                    connection.setAutoCommit(true);
+                }
+
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50)) ");
+                deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into TopicAnalysis values(?,?,?,?,?,? );";
+                String sql = "insert into TopicAnalysis values(?,?,?,?,? );";
 
                 try {
                     connection.setAutoCommit(false);
@@ -2138,7 +2276,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                                 bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
                                 bulkInsert.setDouble(4, info.getWeight());
                                 bulkInsert.setString(5, experimentId);
-                                bulkInsert.setDouble(6, 1);
+                                //bulkInsert.setDouble(6, 1);
                                 bulkInsert.executeUpdate();
 
                                 word++;
@@ -2175,7 +2313,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                             bulkInsert.setString(3, phraseStr);
                             bulkInsert.setDouble(4, count);
                             bulkInsert.setString(5, experimentId);
-                            bulkInsert.setDouble(6, 1);
+                            // bulkInsert.setDouble(6, 1);
                             bulkInsert.executeUpdate();
                         }
 
@@ -2664,7 +2802,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
      * @param max	Print no more than this many topics
      */
     public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, double lblWeight) {
-        out.print("#doc name topic proportion ...\n");
+        if (out != null) {
+            out.print("#doc name topic proportion ...\n");
+        }
         int[] docLen = new int[numModalities];
 
         int[][] topicCounts = new int[numModalities][numTopics];
@@ -2678,6 +2818,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
         if (max < 0 || max > numTopics) {
             max = numTopics;
         }
+
+        double[] skewWeight = calcSkew();
 
         Connection connection = null;
         Statement statement = null;
@@ -2716,6 +2858,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                             Arrays.fill(topicCounts[m], 0);
                             LabelSequence topicSequence = (LabelSequence) data.get(doc).Assignments[m].topicSequence;
                             int[] currentDocTopics = topicSequence.getFeatures();
+                            // docLen[m] = data.get(doc).Assignments[m].topicSequence.getLength();// currentDocTopics.length;
                             docLen[m] = data.get(doc).Assignments[m].topicSequence.getLength();// currentDocTopics.length;
 
                             // Count up the tokens
@@ -2728,11 +2871,14 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     // And normalize
                     for (int topic = 0; topic < numTopics; topic++) {
                         double topicProportion = 0;
+                        double normalizeSum = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
-                            topicProportion +=  (double) topicCounts[m][topic] / docLen[m];//+(double) gamma[m] * alpha[m][topic] / alphaSum[m] 
+                            // topicProportion += (double) topicCounts[m][topic] / docLen[m];//+(double) gamma[m] * alpha[m][topic] / alphaSum[m] 
+                            topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) alpha[m][topic]) / (docLen[m] + alphaSum[m]);
+                            normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }
-                        sortedTopics[topic].set(topic, (topicProportion / (cntEnd + 1)));
-
+                        // sortedTopics[topic].set(topic, (topicProportion / (cntEnd + 1)));
+                        sortedTopics[topic].set(topic, (topicProportion / normalizeSum));
                     }
 
                     Arrays.sort(sortedTopics);
@@ -2747,7 +2893,9 @@ public class iMixLDAParallelTopicModel implements Serializable {
 
                         builder.append(sortedTopics[i].getID() + "\t"
                                 + sortedTopics[i].getWeight() + "\t");
-                        out.println(builder);
+                        if (out != null) {
+                            out.println(builder);
+                        }
 
                         if (!SQLLiteDB.isEmpty()) {
                             //  sql += String.format(Locale.ENGLISH, "insert into TopicsPerDoc values('%s',%d,%.4f,'%s' );", docId, sortedTopics[i].getID(), sortedTopics[i].getWeight(), experimentId);

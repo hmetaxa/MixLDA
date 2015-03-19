@@ -57,21 +57,21 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
-        int maxNumTopics = 300;
-        int numIterations = 1200; //Max 2000
+        int numTopics = 100;
+        int maxNumTopics = 100;
+        int numIterations = 250; //Max 2000
         int independentIterations = 0;
         int burnIn = 150;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FETGrants;
-        int pruneCnt = 5; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 1;
+        ExperimentType experimentType = ExperimentType.ACM;
+        int pruneCnt = 10; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = true;
+        boolean ACMAuthorSimilarity = false;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
@@ -318,10 +318,13 @@ public class iMixTopicModelExample {
                             + "\n Similarity on Authors & Categories";
                     //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
-                            + "                          ref_objid as citations, primarycategory||'\t'||primarycategory||'\t'||othercategory AS categories \n"
-                            + "                          from ACMData1 \n";
-                    //+ " LIMIT 10000";
+                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n" +
+"                 ref_objid as citations                 \n" +
+"                 ,GROUP_CONCAT(Category,'\\t')  AS categories\n" +
+"                             from ACMData1 \n" +
+"                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n" +
+"                             Group by articleid \n"
+                    + " LIMIT 10000";
 
                 }
 
@@ -907,7 +910,7 @@ public class iMixTopicModelExample {
                         break;
                     case FETGrants:
                         sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
-                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1='FET'\n"
+                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1<>'NONFET'\n"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
@@ -931,11 +934,11 @@ public class iMixTopicModelExample {
                                     + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
                                     + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    PubCategory.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
-                                    + "Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId  \n"
-                                    + "INNER JOIN (Select Category FROM pubCategory\n"
-                                    + "GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategory.category\n"
-                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.Category , TopicId order by  PubCategory.Category, Weight desc, TopicId";
+                            sql = "select    PubCategoryView.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
+                                    + "Inner Join PubCategoryView on topicsPerDoc.DocId= PubCategoryView.PubId  \n"
+                                    + "INNER JOIN (Select Category FROM PubCategoryView\n"
+                                    + "GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategoryView.category\n"
+                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategoryView.Category , TopicId order by  PubCategoryView.Category, Weight desc, TopicId";
                         }
 
                         break;
