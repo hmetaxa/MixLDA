@@ -57,12 +57,12 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 100;
         int maxNumTopics = 100;
-        int numIterations = 250; //Max 2000
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 150;
         int optimizeInterval = 50;
@@ -320,11 +320,11 @@ public class iMixTopicModelExample {
 
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n" +
 "                 ref_objid as citations                 \n" +
-"                 ,GROUP_CONCAT(Category,'\\t')  AS categories\n" +
+"                 ,GROUP_CONCAT(Category,'\t')  AS categories\n" +
 "                             from ACMData1 \n" +
 "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n" +
 "                             Group by articleid \n"
-                    + " LIMIT 10000";
+                    + " LIMIT 50000";
 
                 }
 
@@ -934,7 +934,7 @@ public class iMixTopicModelExample {
                                     + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
                                     + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    PubCategoryView.Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
+                            sql = "select    PubCategoryView.Category as Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
                                     + "Inner Join PubCategoryView on topicsPerDoc.DocId= PubCategoryView.PubId  \n"
                                     + "INNER JOIN (Select Category FROM PubCategoryView\n"
                                     + "GROUP BY Category HAVING Count(*)>10) catCnts1 ON catCnts1.Category = PubCategoryView.category\n"
