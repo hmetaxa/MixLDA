@@ -1839,7 +1839,7 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     }
 
                     for (int hist = 0; hist < maxNumTopics; hist++) {
-                        int[] counts = new int[histogramSize[i]];
+                        int[] counts = new int[histogramSize[i]+1];
                         System.arraycopy(topicDocCounts[i][hist], 0, counts, 0, counts.length);
                         runnableTopicDocCounts[i][hist] = counts;
                     }

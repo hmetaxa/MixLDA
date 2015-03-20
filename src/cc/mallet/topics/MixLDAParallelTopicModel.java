@@ -1176,7 +1176,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                             targetIndex++;
 
                             if (targetIndex == targetCounts.length) {
-                                logger.info("overflow in merging on type " + type + " moodality: " + i + " thread: " + thread);
+                                logger.info("overflow in merging on type " + type + " modality: " + i + " thread: " + thread);
                             }
                             currentTopic = targetCounts[targetIndex] & topicMask;
 

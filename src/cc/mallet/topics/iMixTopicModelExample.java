@@ -60,15 +60,15 @@ public class iMixTopicModelExample {
         boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
-        int maxNumTopics = 100;
-        int numIterations = 1000; //Max 2000
+        int numTopics = 150;
+        int maxNumTopics = 250;
+        int numIterations = 500; //Max 2000
         int independentIterations = 0;
-        int burnIn = 150;
+        int burnIn = 100;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 10; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 7;
+        int pruneCnt = 20; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = false;
@@ -320,11 +320,11 @@ public class iMixTopicModelExample {
 
                     sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n" +
 "                 ref_objid as citations                 \n" +
-"                 ,GROUP_CONCAT(Category,'\t')  AS categories\n" +
+"                 ,GROUP_CONCAT(CatId,'\t')  AS categories\n" +
 "                             from ACMData1 \n" +
 "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n" +
-"                             Group by articleid \n"
-                    + " LIMIT 50000";
+"                             Group by articleid \n";
+                    //+ " LIMIT 100000";
 
                 }
 
@@ -774,9 +774,9 @@ public class iMixTopicModelExample {
             double gammaRoot = 4;
 
             //Non parametric model
-            //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
+            iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
             //parametric model
-            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
 
             // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
             //model.setNumIterations(numIterations);
@@ -869,8 +869,8 @@ public class iMixTopicModelExample {
                     }
                     //  System.out.println("perplexity for the test set=" + perplexity);
                     logger.info("perplexity calculation finished");
-                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                    MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                    iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
                     diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                     logger.info("full diagnostics calculation finished");
 
