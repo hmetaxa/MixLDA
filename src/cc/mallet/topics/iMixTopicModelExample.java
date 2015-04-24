@@ -148,7 +148,6 @@ public class iMixTopicModelExample {
 
                     grantType = "FP7";
 
-
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
@@ -214,9 +213,9 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n 1)";
                     ResultSet rs = statement.executeQuery(sqlTextType);
                     while (rs.next()) {
-                           experimentDescription +=  rs.getInt("Cnt")+" ";
-                           experimentDescription +=  rs.getString("TEXTType") +", " ;
-                           
+                        experimentDescription += rs.getInt("Cnt") + " ";
+                        experimentDescription += rs.getString("TEXTType") + ", ";
+
                     }
                     experimentDescription += " related to " + grantType + "\n2)Related Research Areas\n3)Publication Venues (e.g., PubMed, Arxiv, ACM, Specific Journals)\n4)Grants per Publication \n SimilarityType:" + similarityType.toString();
 
@@ -318,12 +317,12 @@ public class iMixTopicModelExample {
                             + "\n Similarity on Authors & Categories";
                     //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n" +
-"                 ref_objid as citations                 \n" +
-"                 ,GROUP_CONCAT(CatId,'\t')  AS categories\n" +
-"                             from ACMData1 \n" +
-"                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n" +
-"                             Group by articleid \n";
+                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
+                            + "                 ref_objid as citations                 \n"
+                            + "                 ,GROUP_CONCAT(CatId,'\t')  AS categories\n"
+                            + "                             from ACMData1 \n"
+                            + "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n"
+                            + "                             Group by articleid \n";
                     //+ " LIMIT 100000";
 
                 }
@@ -799,8 +798,6 @@ public class iMixTopicModelExample {
             //model.saveModelInterval=250;
             model.estimate();
 
-           
-
             logger.info("Model estimated");
             model.saveTopics(SQLLitedb, experimentId);
 
@@ -827,7 +824,7 @@ public class iMixTopicModelExample {
             }
 
             logger.info("printDocumentTopics finished");
-            
+
             logger.info("Model Metadata: \n" + model.getExpMetadata());
 
             model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
@@ -1192,6 +1189,67 @@ public class iMixTopicModelExample {
          */
     }
 
+    private void SaveTopKTokensPerEntity(int K, boolean TfIDFweighting, InstanceList instances)
+    {
+        
+
+    
+    }
+    
+    private void TfIdfWeighting(InstanceList instances) {
+        
+        
+        int N = instances.size();
+
+        Alphabet alphabet = instances.getDataAlphabet();
+        Object[] tokens = alphabet.toArray();
+        System.out.println("# Number of dimensions: " + tokens.length);
+        // determine document frequency for each term
+        int[] df = new int[tokens.length];
+        for (Instance instance : instances) {
+            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
+            int[] indices = fv.getIndices();
+            for (int index : indices) {
+                df[index]++;
+            }
+        }
+
+        // determine document length for each document
+        int[] lend = new int[N];
+        double lenavg = 0;
+        for (int i = 0; i < N; i++) {
+            Instance instance = instances.get(i);
+            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
+            int[] indices = fv.getIndices();
+            double length = 0.0;
+            for (int index : indices) {
+                length += fv.value(index);
+            }
+            lend[i] = (int) length;
+            lenavg += length;
+        }
+        if (N > 1) {
+            lenavg /= (double) N;
+        }
+
+        for (int i = 0; i < N; i++) {
+            Instance instance = instances.get(i);
+            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
+            int[] indices = fv.getIndices();
+            for (int index : indices) {
+                double tf = fv.value(index);
+                double tfcomp = tf / (tf + 0.5 + 1.5 * (double) lend[i] / lenavg);
+                double idfcomp = Math.log((double) N / (double) df[index]) / Math.log(N + 1);
+                fv.setValue(index, tfcomp * idfcomp);
+            }
+            
+            //TODO: Sort Feature Vector Values
+            // FeatureVector.toSimpFile
+        }
+        
+        
+    }
+
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionCutoff, boolean preserveCase)
             throws IOException {
 
@@ -1241,7 +1299,7 @@ public class iMixTopicModelExample {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("cidcid") || word.contains("nullnull") || word.contains("usepackage")|| word.contains("fig")) {
+            if (word.contains("cidcid") || word.contains("nullnull") || word.contains("usepackage") || word.contains("fig")) {
                 prunedTokenizer.stop(word);
             }
         }
