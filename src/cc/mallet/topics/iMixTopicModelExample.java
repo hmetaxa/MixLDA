@@ -1189,16 +1189,12 @@ public class iMixTopicModelExample {
          */
     }
 
-    private void SaveTopKTokensPerEntity(int K, boolean TfIDFweighting, InstanceList instances)
-    {
-        
+    private void SaveTopKTokensPerEntity(int K, boolean TfIDFweighting, InstanceList instances) {
 
-    
     }
-    
-    private void TfIdfWeighting(InstanceList instances) {
-        
-        
+
+    private void TfIdfWeighting(InstanceList instances, String SQLLiteDB, String experimentId) {
+
         int N = instances.size();
 
         Alphabet alphabet = instances.getDataAlphabet();
@@ -1207,7 +1203,7 @@ public class iMixTopicModelExample {
         // determine document frequency for each term
         int[] df = new int[tokens.length];
         for (Instance instance : instances) {
-            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
+            FeatureVector fv = new FeatureVector((FeatureSequence) instance.getData());
             int[] indices = fv.getIndices();
             for (int index : indices) {
                 df[index]++;
@@ -1219,7 +1215,7 @@ public class iMixTopicModelExample {
         double lenavg = 0;
         for (int i = 0; i < N; i++) {
             Instance instance = instances.get(i);
-            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
+            FeatureVector fv = new FeatureVector((FeatureSequence) instance.getData());
             int[] indices = fv.getIndices();
             double length = 0.0;
             for (int index : indices) {
@@ -1232,22 +1228,62 @@ public class iMixTopicModelExample {
             lenavg /= (double) N;
         }
 
-        for (int i = 0; i < N; i++) {
-            Instance instance = instances.get(i);
-            FeatureVector fv = new FeatureVector ((FeatureSequence) instance.getData());
-            int[] indices = fv.getIndices();
-            for (int index : indices) {
-                double tf = fv.value(index);
-                double tfcomp = tf / (tf + 0.5 + 1.5 * (double) lend[i] / lenavg);
-                double idfcomp = Math.log((double) N / (double) df[index]) / Math.log(N + 1);
-                fv.setValue(index, tfcomp * idfcomp);
+        Connection connection = null;
+        Statement statement = null;
+        PreparedStatement bulkInsert = null;
+
+        try {
+            // create a database connection
+            if (!SQLLiteDB.isEmpty()) {
+                connection = DriverManager.getConnection(SQLLiteDB);
+                statement = connection.createStatement();
+                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+                statement.executeUpdate("create table if not exists TokersPerEntity (EntityId nvarchar(100), Token nvarchar(100), Counts double, TfIDFCount double, ExperimentId nvarchar(50)) ");
+                String deleteSQL = String.format("Delete from TokersPerEntity where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                String sql = "insert into TopicAnalysis values(?,?,?,?,?);";
+
+                connection.setAutoCommit(false);
+                bulkInsert = connection.prepareStatement(sql);
+
+                for (int i = 0; i < N; i++) {
+                    Instance instance = instances.get(i);
+                    FeatureVector fv = new FeatureVector((FeatureSequence) instance.getData());
+                    int[] indices = fv.getIndices();
+                    for (int index : indices) {
+                        double tf = fv.value(index);
+                        double tfcomp = tf / (tf + 0.5 + 1.5 * (double) lend[i] / lenavg);
+                        double idfcomp = Math.log((double) N / (double) df[index]) / Math.log(N + 1);
+                        fv.setValue(index, tfcomp * idfcomp);
+                        String token = fv.getAlphabet().lookupObject(index).toString();
+
+                    }
+                }
             }
-            
-            //TODO: Sort Feature Vector Values
-            // FeatureVector.toSimpFilefff
+        } catch (SQLException e) {
+
+            if (connection != null) {
+                try {
+                    System.err.print("Transaction is being rolled back");
+                    connection.rollback();
+                } catch (SQLException excep) {
+                    System.err.print("Error in insert topicAnalysis");
+                }
+            }
+        } finally {
+            try {
+                if (bulkInsert != null) {
+                    bulkInsert.close();
+                }
+                connection.setAutoCommit(true);
+            } catch (SQLException excep) {
+                System.err.print("Error in insert topicAnalysis");
+            }
         }
-        
-        
+
+        //TODO: Sort Feature Vector Values
+        // FeatureVector.toSimpFilefff
     }
 
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionCutoff, boolean preserveCase)
