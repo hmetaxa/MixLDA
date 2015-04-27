@@ -56,8 +56,8 @@ public class iMixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
-        boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean calcSimilarities = false;
+        boolean runTopicModelling = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 250;
@@ -66,7 +66,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.ACM;
+        ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -577,6 +577,9 @@ public class iMixTopicModelExample {
             instances[0] = new InstanceList(new SerialPipes(pipeListText));
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
+            
+            TfIdfWeighting(instances[0],  SQLLitedb,  experimentId);
+            
             for (byte m = 1; m < numModalities; m++) {
                 logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
@@ -1238,28 +1241,40 @@ public class iMixTopicModelExample {
                 connection = DriverManager.getConnection(SQLLiteDB);
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
-                statement.executeUpdate("create table if not exists TokersPerEntity (EntityId nvarchar(100), Token nvarchar(100), Counts double, TfIDFCount double, ExperimentId nvarchar(50)) ");
-                String deleteSQL = String.format("Delete from TokersPerEntity where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate("create table if not exists TokensPerEntity (EntityId nvarchar(100), Token nvarchar(100), Counts double, TfIDFCount double, ExperimentId nvarchar(50)) ");
+                String deleteSQL = String.format("Delete from TokensPerEntity where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
-                String sql = "insert into TopicAnalysis values(?,?,?,?,?);";
+                String sql = "insert into TokensPerEntity values(?,?,?,?,?);";
 
                 connection.setAutoCommit(false);
                 bulkInsert = connection.prepareStatement(sql);
 
                 for (int i = 0; i < N; i++) {
                     Instance instance = instances.get(i);
+                    
                     FeatureVector fv = new FeatureVector((FeatureSequence) instance.getData());
                     int[] indices = fv.getIndices();
                     for (int index : indices) {
                         double tf = fv.value(index);
                         double tfcomp = tf / (tf + 0.5 + 1.5 * (double) lend[i] / lenavg);
                         double idfcomp = Math.log((double) N / (double) df[index]) / Math.log(N + 1);
-                        fv.setValue(index, tfcomp * idfcomp);
+                        double tfIdf =  tfcomp * idfcomp;
+                        fv.setValue(index, tfIdf);
                         String token = fv.getAlphabet().lookupObject(index).toString();
 
+                        
+                            bulkInsert.setString(1, instance.getName().toString());
+                            bulkInsert.setString(2, token);
+                            bulkInsert.setDouble(3, tf);
+                            bulkInsert.setDouble(4, tfIdf);
+                            bulkInsert.setString(5, experimentId);
+                            
+                            bulkInsert.executeUpdate();
                     }
                 }
+                
+                connection.commit();
             }
         } catch (SQLException e) {
 
