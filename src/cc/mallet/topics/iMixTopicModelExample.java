@@ -36,7 +36,8 @@ public class iMixTopicModelExample {
         ACM,
         FullGrants,
         FETGrants,
-        HEALTHTender
+        HEALTHTender,
+        HEALTHTenderGrantGroup
     }
 
     public enum SimilarityType {
@@ -97,6 +98,9 @@ public class iMixTopicModelExample {
         } else if (experimentType == ExperimentType.FETGrants) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         } else if (experimentType == ExperimentType.HEALTHTender) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
+        }
+         else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         }
         Connection connection = null;
@@ -271,7 +275,7 @@ public class iMixTopicModelExample {
                             + "                            -- '' AS MESHqualifiers\n"
                             + "                             from FP7FinalReports\n"
                             + "                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
-                } else if (experimentType == ExperimentType.Authors) {
+                }  else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
@@ -323,6 +327,38 @@ public class iMixTopicModelExample {
                             + "                             from ACMData1 \n"
                             + "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n"
                             + "                             Group by articleid \n";
+                    //+ " LIMIT 100000";
+
+                }
+                 else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
+                    experimentDescription = "Topic modeling based on:\n1)FP7 HEALTH related publications& project reports grouped by GrantId:"
+                            + similarityType.toString()
+                            + "\n Similarity";
+                    //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
+
+                    sql = "Select GrantId,\n" +
+"                                                       GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END, ' ') AS TEXT,\n" +
+"                                                        IFNULL(GROUP_CONCAT(descriptorText,'\\t'),'') as MESHdescriptors\n" +
+"                                                       \n" +
+"                                           from pubs \n" +
+"                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
+"                                                         inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
+"                                                         LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n" +
+"                                                          Group By GrantId\n" +
+"                                                          \n" +
+"                             UNION \n" +
+"                                                         select projectView.GrantId, \n" +
+"                                                         projectView.ABSTRACT AS TEXT, \n" +
+"                                                        '' AS MESHdescriptors\n" +
+"                                                        from projectView\n" +
+"                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
+"                                                        \n" +
+"                            UNION \n" +
+"                            Select ProjectId AS GrantId, \n" +
+"                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n" +
+"                                                           '' AS MESHdescriptors\n" +
+"                           from FP7FinalReports\n" +
+"                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
                     //+ " LIMIT 100000";
 
                 }
