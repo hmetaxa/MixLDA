@@ -52,22 +52,23 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = false;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
+        boolean calcTokensPerEntity = true;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 250;
         int maxNumTopics = 250;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 500; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.Authors;
+        ExperimentType experimentType = ExperimentType.HEALTHTenderGrantGroup;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -99,8 +100,7 @@ public class iMixTopicModelExample {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         } else if (experimentType == ExperimentType.HEALTHTender) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
-        }
-         else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
+        } else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/OpenAIRE/openairedb.db";
         }
         Connection connection = null;
@@ -112,7 +112,7 @@ public class iMixTopicModelExample {
         //3, 2, 1)); // data, label, name fields
         String inputDir = "C:\\UoA\\OpenAire\\Datasets\\NIPS\\AuthorsNIPS12raw";
         ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
-        if (runTopicModelling) {
+        if (runTopicModelling || calcTokensPerEntity) {
             //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
             for (byte m = 0; m < numModalities; m++) {
                 instanceBuffer.add(new ArrayList<Instance>());
@@ -275,7 +275,7 @@ public class iMixTopicModelExample {
                             + "                            -- '' AS MESHqualifiers\n"
                             + "                             from FP7FinalReports\n"
                             + "                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
-                }  else if (experimentType == ExperimentType.Authors) {
+                } else if (experimentType == ExperimentType.Authors) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
@@ -329,36 +329,35 @@ public class iMixTopicModelExample {
                             + "                             Group by articleid \n";
                     //+ " LIMIT 100000";
 
-                }
-                 else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
+                } else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
                     experimentDescription = "Topic modeling based on:\n1)FP7 HEALTH related publications& project reports grouped by GrantId:"
                             + similarityType.toString()
                             + "\n Similarity";
                     //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                    sql = "Select GrantId,\n" +
-"                                                       GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END, ' ') AS TEXT,\n" +
-"                                                        IFNULL(GROUP_CONCAT(descriptorText,'\\t'),'') as MESHdescriptors\n" +
-"                                                       \n" +
-"                                           from pubs \n" +
-"                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n" +
-"                                                         inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n" +
-"                                                         LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n" +
-"                                                          Group By GrantId\n" +
-"                                                          \n" +
-"                             UNION \n" +
-"                                                         select projectView.GrantId, \n" +
-"                                                         projectView.ABSTRACT AS TEXT, \n" +
-"                                                        '' AS MESHdescriptors\n" +
-"                                                        from projectView\n" +
-"                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n" +
-"                                                        \n" +
-"                            UNION \n" +
-"                            Select ProjectId AS GrantId, \n" +
-"                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n" +
-"                                                           '' AS MESHdescriptors\n" +
-"                           from FP7FinalReports\n" +
-"                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
+                    sql = "Select GrantId,\n"
+                            + "                                                       GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END, ' ') AS TEXT,\n"
+                            + "                                                        IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n"
+                            + "                                                       \n"
+                            + "                                           from pubs \n"
+                            + "                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
+                            + "                                                         inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
+                            + "                                                         LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n"
+                            + "                                                          Group By GrantId \n";
+//                            + "                                                          \n"
+//                            + "                             UNION \n"
+//                            + "                                                         select projectView.GrantId, \n"
+//                            + "                                                         projectView.ABSTRACT AS TEXT, \n"
+//                            + "                                                        '' AS MESHdescriptors\n"
+//                            + "                                                        from projectView\n"
+//                            + "                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
+//                            + "                                                        \n"
+//                            + "                            UNION \n"
+//                            + "                            Select ProjectId AS GrantId, \n"
+//                            + "                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
+//                            + "                                                           '' AS MESHdescriptors\n"
+//                            + "                           from FP7FinalReports\n"
+//                            + "                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
                     //+ " LIMIT 100000";
 
                 }
@@ -539,6 +538,18 @@ public class iMixTopicModelExample {
                             }
 
                             break;
+                        case HEALTHTenderGrantGroup:
+                            txt = rs.getString("text");
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("GrantId"), "Text"));
+
+                            if (numModalities > 1) {
+
+                                if (!rs.getString("MESHdescriptors").equals("")) {
+                                    instanceBuffer.get(1).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("GrantId"), "MESHdescriptor"));
+                                }
+                            }
+                            break;
+
                         default:
                     }
 
@@ -613,9 +624,6 @@ public class iMixTopicModelExample {
             instances[0] = new InstanceList(new SerialPipes(pipeListText));
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
-            
-            TfIdfWeighting(instances[0],  SQLLitedb,  experimentId);
-            
             for (byte m = 1; m < numModalities; m++) {
                 logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
@@ -623,257 +631,263 @@ public class iMixTopicModelExample {
             }
 
             logger.info(" instances added through pipe");
+
+            if (calcTokensPerEntity) {
+                TfIdfWeighting(instances[1], SQLLitedb, experimentId, 1);
+            }
+
+            if (runTopicModelling) {
 // pruning for all other modalities no text
-            for (byte m = 1; m < numModalities; m++) {
-                if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
+                for (byte m = 1; m < numModalities; m++) {
+                    if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
 
-                    // Check which type of data element the instances contain
-                    Instance firstInstance = instances[m].get(0);
-                    if (firstInstance.getData() instanceof FeatureSequence) {
-                        // Version for feature sequences
+                        // Check which type of data element the instances contain
+                        Instance firstInstance = instances[m].get(0);
+                        if (firstInstance.getData() instanceof FeatureSequence) {
+                            // Version for feature sequences
 
-                        Alphabet oldAlphabet = instances[m].getDataAlphabet();
-                        Alphabet newAlphabet = new Alphabet();
+                            Alphabet oldAlphabet = instances[m].getDataAlphabet();
+                            Alphabet newAlphabet = new Alphabet();
 
-                        // It's necessary to create a new instance list in
-                        //  order to make sure that the data alphabet is correct.
-                        Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
-                        InstanceList newInstanceList = new InstanceList(newPipe);
+                            // It's necessary to create a new instance list in
+                            //  order to make sure that the data alphabet is correct.
+                            Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
+                            InstanceList newInstanceList = new InstanceList(newPipe);
 
-                        // Iterate over the instances in the old list, adding
-                        //  up occurrences of features.
-                        int numFeatures = oldAlphabet.size();
-                        double[] counts = new double[numFeatures];
-                        for (int ii = 0; ii < instances[m].size(); ii++) {
-                            Instance instance = instances[m].get(ii);
-                            FeatureSequence fs = (FeatureSequence) instance.getData();
+                            // Iterate over the instances in the old list, adding
+                            //  up occurrences of features.
+                            int numFeatures = oldAlphabet.size();
+                            double[] counts = new double[numFeatures];
+                            for (int ii = 0; ii < instances[m].size(); ii++) {
+                                Instance instance = instances[m].get(ii);
+                                FeatureSequence fs = (FeatureSequence) instance.getData();
 
-                            fs.addFeatureWeightsTo(counts);
-                        }
+                                fs.addFeatureWeightsTo(counts);
+                            }
 
-                        Instance instance;
+                            Instance instance;
 
-                        // Next, iterate over the same list again, adding 
-                        //  each instance to the new list after pruning.
-                        while (instances[m].size() > 0) {
-                            instance = instances[m].get(0);
-                            FeatureSequence fs = (FeatureSequence) instance.getData();
+                            // Next, iterate over the same list again, adding 
+                            //  each instance to the new list after pruning.
+                            while (instances[m].size() > 0) {
+                                instance = instances[m].get(0);
+                                FeatureSequence fs = (FeatureSequence) instance.getData();
 
-                            fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
+                                fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
 
-                            newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
-                                    instance.getName(),
-                                    instance.getSource())));
-                            instances[m].remove(0);
-                        }
+                                newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
+                                        instance.getName(),
+                                        instance.getSource())));
+                                instances[m].remove(0);
+                            }
 
 //                logger.info("features: " + oldAlphabet.size()
-                        //                       + " -> " + newAlphabet.size());
-                        // Make the new list the official list.
-                        instances[m] = newInstanceList;
+                            //                       + " -> " + newAlphabet.size());
+                            // Make the new list the official list.
+                            instances[m] = newInstanceList;
 
-                    } else {
-                        throw new UnsupportedOperationException("Pruning features from "
-                                + firstInstance.getClass().getName()
-                                + " is not currently supported");
-                    }
-
-                }
-            }
-
-            logger.info(" instances pruned");
-            boolean splitCorpus = false;
-            InstanceList[] testInstances = null;
-            InstanceList[] trainingInstances = instances;
-            if (splitCorpus) {
-                //instances.addThruPipe(new FileIterator(inputDir));
-                //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
-                //
-                //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
-                // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
-                //  Note that the first parameter is passed as the sum over topics, while
-                //  the second is 
-                testInstances = new InstanceList[numModalities];
-
-                trainingInstances = new InstanceList[numModalities];
-
-                TObjectIntMap<String> entityPosition = new TObjectIntHashMap<String>();
-                int index = 0;
-                for (byte m = 0; m < numModalities; m++) {
-                    Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
-                    InstanceList newInstanceList = new InstanceList(newPipe);
-                    testInstances[m] = newInstanceList;
-                    InstanceList newInstanceList2 = new InstanceList(newPipe);
-                    trainingInstances[m] = newInstanceList2;
-                    for (int i = 0; i < instances[m].size(); i++) {
-                        Instance instance = instances[m].get(i);
-                        String entityId = (String) instance.getName();
-                        if (i < instances[m].size() * 0.8 && m == 0) {
-                            entityPosition.put(entityId, index);
-                            trainingInstances[m].add(instance);
-                            index++;
-                        } else if (m != 0 && entityPosition.containsKey(entityId)) {
-                            trainingInstances[m].add(instance);
                         } else {
-                            testInstances[m].add(instance);
+                            throw new UnsupportedOperationException("Pruning features from "
+                                    + firstInstance.getClass().getName()
+                                    + " is not currently supported");
+                        }
+
+                    }
+                }
+
+                logger.info(" instances pruned");
+                boolean splitCorpus = false;
+                InstanceList[] testInstances = null;
+                InstanceList[] trainingInstances = instances;
+                if (splitCorpus) {
+                    //instances.addThruPipe(new FileIterator(inputDir));
+                    //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
+                    //
+                    //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
+                    // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
+                    //  Note that the first parameter is passed as the sum over topics, while
+                    //  the second is 
+                    testInstances = new InstanceList[numModalities];
+
+                    trainingInstances = new InstanceList[numModalities];
+
+                    TObjectIntMap<String> entityPosition = new TObjectIntHashMap<String>();
+                    int index = 0;
+                    for (byte m = 0; m < numModalities; m++) {
+                        Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
+                        InstanceList newInstanceList = new InstanceList(newPipe);
+                        testInstances[m] = newInstanceList;
+                        InstanceList newInstanceList2 = new InstanceList(newPipe);
+                        trainingInstances[m] = newInstanceList2;
+                        for (int i = 0; i < instances[m].size(); i++) {
+                            Instance instance = instances[m].get(i);
+                            String entityId = (String) instance.getName();
+                            if (i < instances[m].size() * 0.8 && m == 0) {
+                                entityPosition.put(entityId, index);
+                                trainingInstances[m].add(instance);
+                                index++;
+                            } else if (m != 0 && entityPosition.containsKey(entityId)) {
+                                trainingInstances[m].add(instance);
+                            } else {
+                                testInstances[m].add(instance);
+                            }
                         }
                     }
                 }
-            }
 
-            String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
-            File outPath = new File(outputDir);
+                String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
+                File outPath = new File(outputDir);
 
-            outPath.mkdir();
-            String stateFile = outputDir + File.separator + "output_state";
-            String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
-            String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
-            String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
-            String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
-            String stateFileZip = outputDir + File.separator + "output_state.gz";
-            String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
-            String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
-            boolean runNPModel = false;
-            if (runNPModel) {
-                NPTopicModel npModel = new NPTopicModel(5.0, 10.0, 0.1);
-                npModel.addInstances(instances[0], 50);
-                npModel.setTopicDisplay(20, 10);
-                npModel.sample(100);
-                FileWriter fwrite = new FileWriter(outputDir + File.separator + "output_NP_topics.csv");
-                BufferedWriter NP_Topics_out = new BufferedWriter(fwrite);
-                NP_Topics_out.write(npModel.topWords(10) + "\n");
-                NP_Topics_out.flush();
-                npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
-            }
-            boolean runHDPModel = false;
-            if (runHDPModel) {
-                //setup HDP parameters(alpha, beta, gamma, initialTopics)
-                HDP hdp = new HDP(1.0, 0.1, 4.0, numTopics);
-                hdp.initialize(instances[0]);
+                outPath.mkdir();
+                String stateFile = outputDir + File.separator + "output_state";
+                String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
+                String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
+                String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
+                String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
+                String stateFileZip = outputDir + File.separator + "output_state.gz";
+                String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
+                String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
+                boolean runNPModel = false;
+                if (runNPModel) {
+                    NPTopicModel npModel = new NPTopicModel(5.0, 10.0, 0.1);
+                    npModel.addInstances(instances[0], 50);
+                    npModel.setTopicDisplay(20, 10);
+                    npModel.sample(100);
+                    FileWriter fwrite = new FileWriter(outputDir + File.separator + "output_NP_topics.csv");
+                    BufferedWriter NP_Topics_out = new BufferedWriter(fwrite);
+                    NP_Topics_out.write(npModel.topWords(10) + "\n");
+                    NP_Topics_out.flush();
+                    npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
+                }
+                boolean runHDPModel = false;
+                if (runHDPModel) {
+                    //setup HDP parameters(alpha, beta, gamma, initialTopics)
+                    HDP hdp = new HDP(1.0, 0.1, 4.0, numTopics);
+                    hdp.initialize(instances[0]);
 
-                //set number of iterations, and display result or not 
-                hdp.estimate(numIterations);
+                    //set number of iterations, and display result or not 
+                    hdp.estimate(numIterations);
 
-                //get topic distribution for first instance
-                double[] distr = hdp.topicDistribution(0);
-                //print out
-                for (int j = 0; j < distr.length; j++) {
-                    System.out.print(distr[j] + " ");
+                    //get topic distribution for first instance
+                    double[] distr = hdp.topicDistribution(0);
+                    //print out
+                    for (int j = 0; j < distr.length; j++) {
+                        System.out.print(distr[j] + " ");
+                    }
+
+                    //for inferencer
+                    HDPInferencer inferencer = hdp.getInferencer();
+                    inferencer.setInstance(testInstances[0]);
+                    inferencer.estimate(100);
+                    //get topic distribution for first test instance
+                    distr = inferencer.topicDistribution(0);
+                    //print out
+                    for (int j = 0; j < distr.length; j++) {
+                        System.out.print(distr[j] + " ");
+                    }
+                    //get preplexity
+                    double prep = inferencer.getPreplexity();
+                    System.out.println("preplexity for the test set=" + prep);
+
+                    //10-folds cross validation, with 1000 iteration for each test.
+                    hdp.runCrossValidation(10, 1000);
+
                 }
 
-                //for inferencer
-                HDPInferencer inferencer = hdp.getInferencer();
-                inferencer.setInstance(testInstances[0]);
-                inferencer.estimate(100);
-                //get topic distribution for first test instance
-                distr = inferencer.topicDistribution(0);
-                //print out
-                for (int j = 0; j < distr.length; j++) {
-                    System.out.print(distr[j] + " ");
+                boolean runOrigParallelModel = false;
+                if (runOrigParallelModel) {
+                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
+
+                    modelOrig.addInstances(instances[0]);
+
+                    // Use two parallel samplers, which each look at one half the corpus and combine
+                    //  statistics after every iteration.
+                    modelOrig.setNumThreads(4);
+                    // Run the model for 50 iterations and stop (this is for testing only, 
+                    //  for real applications, use 1000 to 2000 iterations)
+                    modelOrig.setNumIterations(numIterations);
+                    modelOrig.optimizeInterval = optimizeInterval;
+                    modelOrig.burninPeriod = burnIn;
+                    //model.optimizeInterval = 0;
+                    //model.burninPeriod = 0;
+                    //model.saveModelInterval=250;
+                    modelOrig.estimate();
                 }
-                //get preplexity
-                double prep = inferencer.getPreplexity();
-                System.out.println("preplexity for the test set=" + prep);
 
-                //10-folds cross validation, with 1000 iteration for each test.
-                hdp.runCrossValidation(10, 1000);
+                double[] beta = new double[numModalities];
+                Arrays.fill(beta, 0.01);
 
-            }
+                double[] alphaSum = new double[numModalities];
+                Arrays.fill(alphaSum, 1);
 
-            boolean runOrigParallelModel = false;
-            if (runOrigParallelModel) {
-                ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
+                double[] gamma = new double[numModalities];
+                Arrays.fill(gamma, 1);
 
-                modelOrig.addInstances(instances[0]);
+                double gammaRoot = 4;
+
+                //Non parametric model
+                //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
+                //parametric model
+                MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+
+                // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
+                //model.setNumIterations(numIterations);
+                model.setIndependentIterations(independentIterations);
+                model.optimizeInterval = optimizeInterval;
+                model.burninPeriod = burnIn;
+
+                model.addInstances(instances);//trainingInstances);//instances);
+
+                logger.info(" instances added");
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                modelOrig.setNumThreads(4);
-                // Run the model for 50 iterations and stop (this is for testing only, 
+                model.setNumThreads(4);
+            // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
-                modelOrig.setNumIterations(numIterations);
-                modelOrig.optimizeInterval = optimizeInterval;
-                modelOrig.burninPeriod = burnIn;
+
                 //model.optimizeInterval = 0;
                 //model.burninPeriod = 0;
                 //model.saveModelInterval=250;
-                modelOrig.estimate();
-            }
+                model.estimate();
 
-            double[] beta = new double[numModalities];
-            Arrays.fill(beta, 0.01);
+                logger.info("Model estimated");
+                model.saveTopics(SQLLitedb, experimentId);
 
-            double[] alphaSum = new double[numModalities];
-            Arrays.fill(alphaSum, 1);
+                logger.info("Topics Saved");
 
-            double[] gamma = new double[numModalities];
-            Arrays.fill(gamma, 1);
-
-            double gammaRoot = 4;
-
-            //Non parametric model
-            //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
-            //parametric model
-            MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
-
-            // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
-            //model.setNumIterations(numIterations);
-            model.setIndependentIterations(independentIterations);
-            model.optimizeInterval = optimizeInterval;
-            model.burninPeriod = burnIn;
-
-            model.addInstances(instances);//trainingInstances);//instances);
-
-            logger.info(" instances added");
-
-            // Use two parallel samplers, which each look at one half the corpus and combine
-            //  statistics after every iteration.
-            model.setNumThreads(4);
-            // Run the model for 50 iterations and stop (this is for testing only, 
-            //  for real applications, use 1000 to 2000 iterations)
-
-            //model.optimizeInterval = 0;
-            //model.burninPeriod = 0;
-            //model.saveModelInterval=250;
-            model.estimate();
-
-            logger.info("Model estimated");
-            model.saveTopics(SQLLitedb, experimentId);
-
-            logger.info("Topics Saved");
-
-            model.printTopWords(
-                    new File(topicKeysFile), topWords, topLabels, false);
-            logger.info("Top words printed");
+                model.printTopWords(
+                        new File(topicKeysFile), topWords, topLabels, false);
+                logger.info("Top words printed");
             //model.printTopWords(new File(topicKeysFile), topWords,  false);
-            //model.printTopicWordWeights(new File(topicWordWeightsFile));
-            //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
+                //model.printTopicWordWeights(new File(topicWordWeightsFile));
+                //model.printTopicLabelWeights(new File(topicLabelWeightsFile));
 
-            //No printing state 
-            //model.printState(
-            //        new File(stateFileZip));
-            // logger.info("printState finished");
-            PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
+                //No printing state 
+                //model.printState(
+                //        new File(stateFileZip));
+                // logger.info("printState finished");
+                PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
 
-            model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
-                    0.1);
+                model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
+                        0.1);
 
-            if (outState != null) {
-                outState.close();
-            }
+                if (outState != null) {
+                    outState.close();
+                }
 
-            logger.info("printDocumentTopics finished");
+                logger.info("printDocumentTopics finished");
 
-            logger.info("Model Metadata: \n" + model.getExpMetadata());
+                logger.info("Model Metadata: \n" + model.getExpMetadata());
 
-            model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
+                model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
 
-            PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
+                PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
 
-            model.topicPhraseXMLReport(outXMLPhrase, topWords);
+                model.topicPhraseXMLReport(outXMLPhrase, topWords);
 
-            //outState.close();
-            logger.info("topicPhraseXML report finished");
+                //outState.close();
+                logger.info("topicPhraseXML report finished");
 
 //        GunZipper g = new GunZipper(new File(stateFileZip));
 //
@@ -888,32 +902,33 @@ public class iMixTopicModelExample {
 //            // it probably means no database file is found
 //            System.err.println(e.getMessage());
 //        }
-            if (modelEvaluationFile != null) {
-                try {
+                if (modelEvaluationFile != null) {
+                    try {
 
 //                ObjectOutputStream oos =
 //                        new ObjectOutputStream(new FileOutputStream(modelEvaluationFile));
 //                oos.writeObject(model.getProbEstimator());
 //                oos.close();
 //                
-                    PrintStream docProbabilityStream = null;
-                    docProbabilityStream = new PrintStream(modelEvaluationFile);
+                        PrintStream docProbabilityStream = null;
+                        docProbabilityStream = new PrintStream(modelEvaluationFile);
 //TODO...
-                    double perplexity = 0;
-                    if (splitCorpus) {
-                        perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                        double perplexity = 0;
+                        if (splitCorpus) {
+                            perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+                        }
+                        //  System.out.println("perplexity for the test set=" + perplexity);
+                        logger.info("perplexity calculation finished");
+                        //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                        MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                        diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
+                        logger.info("full diagnostics calculation finished");
+
+                    } catch (Exception e) {
+                        System.err.println(e.getMessage());
                     }
-                    //  System.out.println("perplexity for the test set=" + perplexity);
-                    logger.info("perplexity calculation finished");
-                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                    MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
-                    diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
-                    logger.info("full diagnostics calculation finished");
 
-                } catch (Exception e) {
-                    System.err.println(e.getMessage());
                 }
-
             }
         }
         if (calcSimilarities) {
@@ -1232,7 +1247,7 @@ public class iMixTopicModelExample {
 
     }
 
-    private void TfIdfWeighting(InstanceList instances, String SQLLiteDB, String experimentId) {
+    private void TfIdfWeighting(InstanceList instances, String SQLLiteDB, String experimentId, int itemType) {
 
         int N = instances.size();
 
@@ -1277,39 +1292,55 @@ public class iMixTopicModelExample {
                 connection = DriverManager.getConnection(SQLLiteDB);
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
-                statement.executeUpdate("create table if not exists TokensPerEntity (EntityId nvarchar(100), Token nvarchar(100), Counts double, TfIDFCount double, ExperimentId nvarchar(50)) ");
-                String deleteSQL = String.format("Delete from TokensPerEntity where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate("create table if not exists TokensPerEntity (EntityId nvarchar(100), ItemType int, Token nvarchar(100), Counts double, TFIDFCounts double, ExperimentId nvarchar(50)) ");
+
+                statement.executeUpdate("create Index if not exists IX_TokensPerEntity_Entity_Counts ON TokensPerEntity ( EntityId, ExperimentId, ItemType, Counts DESC, TFIDFCounts DESC, Token)");
+                statement.executeUpdate("create Index if not exists IX_TokensPerEntity_Entity_TFIDFCounts ON TokensPerEntity ( EntityId, ExperimentId, ItemType,  TFIDFCounts DESC, Counts DESC, Token)");
+
+                statement.executeUpdate("create View if not exists TokensPerEntityView AS select rv1.EntityId, rv1.ItemType, rv1.Token, rv1.Counts, rv1.TFIDFCounts, rv1.ExperimentId \n"
+                        + "FROM TokensPerEntity rv1\n"
+                        + "WHERE Token in\n"
+                        + "(\n"
+                        + "SELECT Token\n"
+                        + "FROM TokensPerEntity rv2\n"
+                        + "WHERE EntityId = rv1.EntityId AND Counts>2 AND ItemType=rv1.ItemType AND ExperimentId=rv1.ExperimentId \n"
+                        + "ORDER BY\n"
+                        + "TFIDFCounts DESC\n"
+                        + "LIMIT 20\n"
+                        + ")");
+
+                String deleteSQL = String.format("Delete from TokensPerEntity where  ExperimentId = '%s' and itemtype= %d", experimentId, itemType);
                 statement.executeUpdate(deleteSQL);
 
-                String sql = "insert into TokensPerEntity values(?,?,?,?,?);";
+                String sql = "insert into TokensPerEntity values(?,?,?,?,?,?);";
 
                 connection.setAutoCommit(false);
                 bulkInsert = connection.prepareStatement(sql);
 
                 for (int i = 0; i < N; i++) {
                     Instance instance = instances.get(i);
-                    
+
                     FeatureVector fv = new FeatureVector((FeatureSequence) instance.getData());
                     int[] indices = fv.getIndices();
                     for (int index : indices) {
                         double tf = fv.value(index);
                         double tfcomp = tf / (tf + 0.5 + 1.5 * (double) lend[i] / lenavg);
                         double idfcomp = Math.log((double) N / (double) df[index]) / Math.log(N + 1);
-                        double tfIdf =  tfcomp * idfcomp;
+                        double tfIdf = tfcomp * idfcomp;
                         fv.setValue(index, tfIdf);
                         String token = fv.getAlphabet().lookupObject(index).toString();
 
-                        
-                            bulkInsert.setString(1, instance.getName().toString());
-                            bulkInsert.setString(2, token);
-                            bulkInsert.setDouble(3, tf);
-                            bulkInsert.setDouble(4, tfIdf);
-                            bulkInsert.setString(5, experimentId);
-                            
-                            bulkInsert.executeUpdate();
+                        bulkInsert.setString(1, instance.getName().toString());
+                        bulkInsert.setInt(2, itemType);
+                        bulkInsert.setString(3, token);
+                        bulkInsert.setDouble(4, tf);
+                        bulkInsert.setDouble(5, tfIdf);
+                        bulkInsert.setString(6, experimentId);
+
+                        bulkInsert.executeUpdate();
                     }
                 }
-                
+
                 connection.commit();
             }
         } catch (SQLException e) {
@@ -1319,7 +1350,7 @@ public class iMixTopicModelExample {
                     System.err.print("Transaction is being rolled back");
                     connection.rollback();
                 } catch (SQLException excep) {
-                    System.err.print("Error in insert topicAnalysis");
+                    System.err.print("Error in insert TokensPerEntity");
                 }
             }
         } finally {
@@ -1329,7 +1360,7 @@ public class iMixTopicModelExample {
                 }
                 connection.setAutoCommit(true);
             } catch (SQLException excep) {
-                System.err.print("Error in insert topicAnalysis");
+                System.err.print("Error in insert TokensPerEntity");
             }
         }
 
