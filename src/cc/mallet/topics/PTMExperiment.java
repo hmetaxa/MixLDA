@@ -24,7 +24,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.logging.Logger;
 
-public class iMixTopicModelExample {
+public class PTMExperiment {
 
     public enum ExperimentType {
 
@@ -47,9 +47,9 @@ public class iMixTopicModelExample {
         symKL
     }
 
-    public iMixTopicModelExample() throws IOException {
+    public PTMExperiment() throws IOException {
 
-        Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
+        Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 10;
         int topLabels = 10;
         byte numModalities = 2;
@@ -57,6 +57,7 @@ public class iMixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
+        boolean runOnLine = true;
         boolean calcSimilarities = false;
         boolean runTopicModelling = false;
         boolean calcTokensPerEntity = true;
@@ -118,6 +119,9 @@ public class iMixTopicModelExample {
                 instanceBuffer.add(new ArrayList<Instance>());
 
             }
+
+            // Select BatchIds
+            // Loop for every batch
             try {
 
                 connection = DriverManager.getConnection(SQLLitedb);
@@ -128,236 +132,27 @@ public class iMixTopicModelExample {
                 String grantType = "FP7";
 
                 String sql = "";
+                ArrayList<String> batchIds = null;
 
-                if (experimentType == ExperimentType.Grants) {
-                    experimentDescription = "Topic modeling based on:\n1)Full text publications related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
-
-                    sql = "select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds,GROUP_CONCAT(Grant.Category2,'\t') as Areas, Doc.Source  \n"
-                            + "                         from Doc inner join \n"
-                            + "                         GrantPerDoc on Doc.DocId=GrantPerDoc.DocId\n"
-                            + "			 INNER JOIN Grant on Grant.GrantId= GrantPerDoc.GrantId\n"
-                            + "                         where \n"
-                            + "                        Grant.Category0='" + grantType + "'\n"
-                            + "                         Group By Doc.DocId, Doc.text"
-                            + " LIMIT 10000";
-
-//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
-//                        + " from Doc inner join "
-//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-//                        //  + " where  "
-//                        //  + " Doc.source='" + docSource + "' and "
-//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
-//                        + " Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.FullGrants) {
-
-                    grantType = "FP7";
-
-                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
-
-                    sql = "select pubs.originalid AS DocId, \n"
-                            + "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubtitle||' '||pubs.fulltext ELSE pubtitle||' '||pubs.abstract END AS TEXT,\n"
-                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
-                            + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
-                            + "                    'PubAbstract'   AS TEXTType \n"
-                            + "                            from pubs \n"
-                            + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
-                            + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
-                            + "                            Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
-                            + "                            \n"
-                            + "                            UNION \n"
-                            + "                            \n"
-                            + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
-                            + " projectView.Category2 AS Areas, \n"
-                            + " '' AS Venue, \n"
-                            + " 'ProjectAbstract' AS TEXTType \n"
-                            + "                            from projectView\n"
-                            + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n";
-
-                    // + " LIMIT 10000";
-//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
-//                        + " from Doc inner join "
-//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-//                        //  + " where  "
-//                        //  + " Doc.source='" + docSource + "' and "
-//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
-//                        + " Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.FETGrants) {
-
-                    sql = "select pubs.originalid AS DocId, \n"
-                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
-                            + "                            GROUP_CONCAT(links.project_code,'\t') as GrantIds,"
-                            + "                       GROUP_CONCAT(Category3,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
-                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN 'PubAbstract' ELSE 'PubFullText' END AS TEXTType \n"
-                            + "                            from pubs \n"
-                            + "                            inner join links on links.OriginalId = pubs.originalid and links.funder='FP7'\n"
-                            + "			    inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7' \n"
-                            + "                   and projectView.Category1<>'NONFET'\n"
-                            + "                            Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
-                            + "                            \n"
-                            + "                            UNION \n"
-                            + "                            \n"
-                            + "                            select 'FP7_'||projectView.GrantId AS DocId, projectView.ABSTRACT AS TEXT, projectView.GrantId AS GrantIds ,"
-                            + " projectView.Category3 AS Areas, \n"
-                            + " '' AS Venue, \n"
-                            + " 'ProjectAbstract' AS TEXTType \n"
-                            + "                            from projectView\n"
-                            + "                            where IFNULL(abstract,'')<>''  and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
-                            + " and projectView.Category1<>'NONFET'\n";
-
-                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-
-                    String sqlTextType = "select TEXTType, count(*) as Cnt from ( " + sql + " ) group by TEXTType";
-
-                    grantType = "FP7 FET";
+                if (runOnLine) {
+                    batchIds = new ArrayList<String>();
+                    sql = "select distinct batchId from Publication";
                     Statement statement = connection.createStatement();
                     statement.setQueryTimeout(60);  // set timeout to 30 sec.
-
-                    experimentDescription += "Topic modeling analyzing:\n 1)";
-                    ResultSet rs = statement.executeQuery(sqlTextType);
+                    ResultSet rs = statement.executeQuery(sql);
                     while (rs.next()) {
-                        experimentDescription += rs.getInt("Cnt") + " ";
-                        experimentDescription += rs.getString("TEXTType") + ", ";
-
+                        batchIds.add(rs.getString("batchId"));
                     }
-                    experimentDescription += " related to " + grantType + "\n2)Related Research Areas\n3)Publication Venues (e.g., PubMed, Arxiv, ACM, Specific Journals)\n4)Grants per Publication \n SimilarityType:" + similarityType.toString();
-
-                    // + " LIMIT 10000";
-//                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
-//                        + " from Doc inner join "
-//                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
-//                        //  + " where  "
-//                        //  + " Doc.source='" + docSource + "' and "
-//                        //  + " grantPerDoc.grantId like '" + grantType + "' "
-//                        + " Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.HEALTHTender) {
-
-                    grantType = "FP7 HEALTH";
-                    experimentDescription = (maxNumTopics > numTopics + 1) ? "Non Parametric" : "";
-                    experimentDescription += "Topic modeling analyzing:\n1)Full Text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
-
-                    sql = "Select pubs.originalid AS DocId,\n"
-                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
-                            + "                             --GROUP_CONCAT(CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.fulltext ELSE pubs.abstract END,' ')  AS TEXT,\n"
-                            + "                             GROUP_CONCAT(GrantId,'\t') as GrantIds,\n"
-                            + "                             GROUP_CONCAT(Category3,'\t') as Areas, \n"
-                            + "                             GROUP_CONCAT(Category3Descr,'\t') as AreasDescr, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   pubs.repository  else Journal END as Venue, \n"
-                            + "                             IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n"
-                            + "                            -- GROUP_CONCAT(qualifier,'\t') as MESHqualifiers\n"
-                            + "                from pubs \n"
-                            + "                             inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
-                            + "                              inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
-                            + "                              --LEFT OUTER  join pmcmetadata on pmcmetadata.pmcid=pubs.originalid \n"
-                            + "                              LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n"
-                            + "                               Group By pubs.originalid, pubs.fulltext, pubs.abstract, repository, journal \n"
-                            + "  UNION \n"
-                            + "                              select 'FP7_'||projectView.GrantId AS DocId, \n"
-                            + "                              projectView.ABSTRACT AS TEXT, \n"
-                            + "                             projectView.GrantId AS GrantIds ,                                               \n"
-                            + "                             projectView.Category3 AS Areas,\n"
-                            + "                             projectView.Category3Descr AS AreasDescr,\n"
-                            + "                             '' AS Venue,\n"
-                            + "                             '' AS MESHdescriptors\n"
-                            + "                             --'' AS MESHqualifiers\n"
-                            + "                             from projectView\n"
-                            + "                             where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
-                            + "                             --and (projectView.GrantID in (SELECT links.project_code from Links where links.funder='FP7'))\n"
-                            + " UNION \n"
-                            + "                              select 'FP7RPT_'||ProjectId AS DocId, \n"
-                            + "                             Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
-                            + "                             ProjectId AS GrantIds, \n"
-                            + "                             projectView.Category3 AS Areas,\n"
-                            + "                             projectView.Category3Descr AS AreasDescr,\n"
-                            + "                             '' AS Venue,\n"
-                            + "                             '' AS MESHdescriptors\n"
-                            + "                            -- '' AS MESHqualifiers\n"
-                            + "                             from FP7FinalReports\n"
-                            + "                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
-                } else if (experimentType == ExperimentType.Authors) {
-                    experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
-
-                    sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
-                            + "from Doc \n"
-                            + "inner join AuthorPerDoc on Doc.DocId=AuthorPerDoc.DocId \n"
-                            + "Where \n"
-                            + "Doc.source='NIPS' \n"
-                            + "Group By Doc.DocId, Doc.text";
-                } else if (experimentType == ExperimentType.DBLP) {
-                    sql = "			\n"
-                            + " select id, title||' '||abstract AS text, Authors, \n"
-                            + "  GROUP_CONCAT(citation.Target,',') as citations\n"
-                            + " --GROUP_CONCAT(prLinks.Target,',') as citations,  GROUP_CONCAT(prLinks.Counts,',') as citationsCnt \n"
-                            + " from papers\n"
-                            + "--inner join  prLinks on prLinks.Source= papers.id   \n"
-                            + "--AND prLinks.Counts>50\n"
-                            + "left outer join citation on citation.Source= papers.id   \n"
-                            + " WHERE \n"
-                            + " (abstract IS NOT NULL) AND (abstract<>'') \n"
-                            + "   Group By papers.id, papers.title, papers.abstract, papers.Authors";
-
-//                        "   select id, title||' '||abstract AS text, Authors, GROUP_CONCAT(prLinks.Target,',') as citations,  GROUP_CONCAT(prLinks.Counts,',') as citationsCnt from papers\n"
-//                        + "inner join  prLinks on prLinks.Source= papers.id AND prLinks.Counts>50 \n"
-//                        + " WHERE (abstract IS NOT NULL) AND (abstract<>'')  \n"
-//                        + " Group By papers.id, papers.title, papers.abstract, papers.Authors\n" 
-                    // + " LIMIT 200000"
-                } else if (experimentType == ExperimentType.PM_pdb) {
-                    sql = " select   pubdoc.pmcId, pubdoc.abstract, pubdoc.body, GROUP_CONCAT(pdblink.pdbCode,'\t') as pbdCodes \n"
-                            + "                        from pubdoc  inner join \n"
-                            + "                        pdblink on pdblink.pmcId=pubdoc.pmcId \n"
-                            + "                    Group By pubdoc.pmcId, pubdoc.abstract, pubdoc.body";
-                } else if (experimentType == ExperimentType.DBLP_ACM) {
-                    sql = " select id, title||' '||abstract AS text, Authors, \n"
-                            + "  ref_id as citations\n"
-                            + "  from papers\n"
-                            + "  WHERE \n"
-                            + " (abstract IS NOT NULL) AND (abstract<>'') \n " //+" AND ref_Id IS NOT NULL AND ref_id<>''  \n" 
-                            // + " LIMIT 20000"
-                            ;
-                } else if (experimentType == ExperimentType.ACM) {
+                
+                }
+                
+                if (experimentType == ExperimentType.ACM) {
                     experimentDescription = "Topic modeling based on:\n1)Abstracts from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
                             + similarityType.toString()
                             + "\n Similarity on Authors & Categories";
                     //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
-                            + "                 ref_objid as citations                 \n"
-                            + "                 ,GROUP_CONCAT(CatId,'\t')  AS categories\n"
-                            + "                             from ACMData1 \n"
-                            + "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n"
-                            + "                             Group by articleid \n";
-                    //+ " LIMIT 100000";
-
-                } else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
-                    experimentDescription = "Topic modeling based on:\n1)FP7 HEALTH related publications& project reports grouped by GrantId:"
-                            + similarityType.toString()
-                            + "\n Similarity";
-                    //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
-
-                    sql = "Select GrantId,\n"
-                            + "                                                       GROUP_CONCAT(CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END, ' ') AS TEXT,\n"
-                            + "                                                        IFNULL(GROUP_CONCAT(descriptorText,'\t'),'') as MESHdescriptors\n"
-                            + "                                                       \n"
-                            + "                                           from pubs \n"
-                            + "                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
-                            + "                                                         inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
-                            + "                                                         LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n"
-                            + "                                                          Group By GrantId \n";
-//                            + "                                                          \n"
-//                            + "                             UNION \n"
-//                            + "                                                         select projectView.GrantId, \n"
-//                            + "                                                         projectView.ABSTRACT AS TEXT, \n"
-//                            + "                                                        '' AS MESHdescriptors\n"
-//                            + "                                                        from projectView\n"
-//                            + "                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
-//                            + "                                                        \n"
-//                            + "                            UNION \n"
-//                            + "                            Select ProjectId AS GrantId, \n"
-//                            + "                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
-//                            + "                                                           '' AS MESHdescriptors\n"
-//                            + "                           from FP7FinalReports\n"
-//                            + "                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
+                    sql = "  select  pubId, text, authors, citations, categories from ACMPubView where batchId = '"+batchId;
                     //+ " LIMIT 100000";
 
                 }
@@ -375,152 +170,7 @@ public class iMixTopicModelExample {
                     //System.out.println("name = " + rs.getString("fundings"));
                     //int cnt = rs.getInt("grantsCnt");
                     switch (experimentType) {
-                        case Grants:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
-                            }
-                            if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
-                            }
-                            ;
-                            if (numModalities > 3) {
-                                instanceBuffer.get(3).add(new Instance(rs.getString("Source"), null, rs.getString("DocId"), "source"));
-                            }
-                            ;
-                            break;
-                        case FullGrants:
-                            txt = rs.getString("text");
 
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
-                            }
-                            if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
-                            }
-                            ;
-                            if (numModalities > 3) {
-                                if (!rs.getString("Venue").equals("")) {
-                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
-                                }
-                            }
-                            ;
-                            break;
-                        case FETGrants:
-                            txt = rs.getString("text");
-
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "text"));
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
-                            }
-                            if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "area"));
-                            }
-                            ;
-                            if (numModalities > 3) {
-                                if (!rs.getString("Venue").equals("")) {
-                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
-                                }
-                            }
-                            ;
-                            break;
-                        case HEALTHTender:
-                            txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "Text"));
-
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "Grant"));
-                            }
-                            if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("DocId"), "Area"));
-                            }
-                            ;
-                            if (numModalities > 3) {
-                                if (!rs.getString("Venue").equals("")) {
-                                    instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("DocId"), "Venue"));
-                                }
-                            }
-                            if (numModalities > 4) {
-
-                                if (!rs.getString("MESHdescriptors").equals("")) {
-                                    instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("DocId"), "MESHdescriptor"));
-                                }
-                            }
-//                            if (numModalities > 5) {
-//                                if (!rs.getString("MESHqualifiers").equals("")) {
-//                                    instanceBuffer.get(5).add(new Instance(rs.getString("MESHqualifiers"), null, rs.getString("DocId"), "MESHqualifier"));
-//                                }
-                            //}
-
-                            ;
-                            break;
-                        case Authors:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("AuthorIds"), null, rs.getString("DocId"), "author"));
-                            }
-                            break;
-                        case DBLP:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
-
-                            if (numModalities > 1) {
-                                if (DBLP_PPR) {
-                                    String tmpStr = rs.getString("Citations");
-                                    String[] citationsCnt = null;
-                                    String[] citations = null;
-                                    if (tmpStr != null) {
-                                        citations = tmpStr.split(",");
-                                        citationsCnt = rs.getString("CitationsCnt").split(",");
-
-                                        String citationStr = "";
-                                        int index = 0;
-
-                                        while (index < citationsCnt.length) {
-                                            int cnt = Integer.parseInt(citationsCnt[index]);
-                                            for (int i = 1; i <= cnt / 50; i++) {
-                                                if (citationStr != "") {
-                                                    citationStr += ",";
-                                                }
-                                                citationStr += citations[index];
-                                            }
-                                            index++;
-
-                                        }
-
-                                        instanceBuffer.get(1).add(new Instance(citationStr, null, rs.getString("Id"), "citations"));
-                                    }
-                                } else {
-                                    String tmpStr = rs.getString("Citations");
-                                    if (tmpStr != null) {
-                                        instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
-                                    }
-                                }
-                            }
-                            if (numModalities > 2) {
-                                instanceBuffer.get(2).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "author"));
-                            }
-                            break;
-                        case PM_pdb:
-                            //instanceBuffer.get(0).add(new Instance(rs.getString("abstract") + " " + rs.getString("body"), null, rs.getString("pmcId"), "text"));
-                            instanceBuffer.get(0).add(new Instance(rs.getString("abstract"), null, rs.getString("pmcId"), "text"));
-
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("pbdCodes"), null, rs.getString("pmcId"), "pbdCode"));
-                            }
-                            break;
-                        case DBLP_ACM:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
-
-                            if (numModalities > 1) {
-                                instanceBuffer.get(1).add(new Instance(rs.getString("Authors"), null, rs.getString("Id"), "citation"));
-                            }
-
-                            if (numModalities > 2) {
-                                String tmpStr = rs.getString("Citations").replace("\t", ",");
-                                instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "author"));
-                            }
-                            break;
                         case ACM:
                             instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
@@ -537,17 +187,6 @@ public class iMixTopicModelExample {
                                 instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
                             }
 
-                            break;
-                        case HEALTHTenderGrantGroup:
-                            txt = rs.getString("text");
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("GrantId"), "Text"));
-
-                            if (numModalities > 1) {
-
-                                if (!rs.getString("MESHdescriptors").equals("")) {
-                                    instanceBuffer.get(1).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("GrantId"), "MESHdescriptor"));
-                                }
-                            }
                             break;
 
                         default:
@@ -747,72 +386,6 @@ public class iMixTopicModelExample {
                 String stateFileZip = outputDir + File.separator + "output_state.gz";
                 String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
                 String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
-                boolean runNPModel = false;
-                if (runNPModel) {
-                    NPTopicModel npModel = new NPTopicModel(5.0, 10.0, 0.1);
-                    npModel.addInstances(instances[0], 50);
-                    npModel.setTopicDisplay(20, 10);
-                    npModel.sample(100);
-                    FileWriter fwrite = new FileWriter(outputDir + File.separator + "output_NP_topics.csv");
-                    BufferedWriter NP_Topics_out = new BufferedWriter(fwrite);
-                    NP_Topics_out.write(npModel.topWords(10) + "\n");
-                    NP_Topics_out.flush();
-                    npModel.printState(new File(outputDir + File.separator + "NP_output_state.gz"));
-                }
-                boolean runHDPModel = false;
-                if (runHDPModel) {
-                    //setup HDP parameters(alpha, beta, gamma, initialTopics)
-                    HDP hdp = new HDP(1.0, 0.1, 4.0, numTopics);
-                    hdp.initialize(instances[0]);
-
-                    //set number of iterations, and display result or not 
-                    hdp.estimate(numIterations);
-
-                    //get topic distribution for first instance
-                    double[] distr = hdp.topicDistribution(0);
-                    //print out
-                    for (int j = 0; j < distr.length; j++) {
-                        System.out.print(distr[j] + " ");
-                    }
-
-                    //for inferencer
-                    HDPInferencer inferencer = hdp.getInferencer();
-                    inferencer.setInstance(testInstances[0]);
-                    inferencer.estimate(100);
-                    //get topic distribution for first test instance
-                    distr = inferencer.topicDistribution(0);
-                    //print out
-                    for (int j = 0; j < distr.length; j++) {
-                        System.out.print(distr[j] + " ");
-                    }
-                    //get preplexity
-                    double prep = inferencer.getPreplexity();
-                    System.out.println("preplexity for the test set=" + prep);
-
-                    //10-folds cross validation, with 1000 iteration for each test.
-                    hdp.runCrossValidation(10, 1000);
-
-                }
-
-                boolean runOrigParallelModel = false;
-                if (runOrigParallelModel) {
-                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
-
-                    modelOrig.addInstances(instances[0]);
-
-                    // Use two parallel samplers, which each look at one half the corpus and combine
-                    //  statistics after every iteration.
-                    modelOrig.setNumThreads(4);
-                    // Run the model for 50 iterations and stop (this is for testing only, 
-                    //  for real applications, use 1000 to 2000 iterations)
-                    modelOrig.setNumIterations(numIterations);
-                    modelOrig.optimizeInterval = optimizeInterval;
-                    modelOrig.burninPeriod = burnIn;
-                    //model.optimizeInterval = 0;
-                    //model.burninPeriod = 0;
-                    //model.saveModelInterval=250;
-                    modelOrig.estimate();
-                }
 
                 double[] beta = new double[numModalities];
                 Arrays.fill(beta, 0.01);
@@ -931,6 +504,7 @@ public class iMixTopicModelExample {
                 }
             }
         }
+
         if (calcSimilarities) {
 
             //calc similarities
@@ -1723,7 +1297,7 @@ public class iMixTopicModelExample {
 
     public static void main(String[] args) throws Exception {
         Class.forName("org.sqlite.JDBC");
-        iMixTopicModelExample trainer = new iMixTopicModelExample();
+        PTMExperiment trainer = new PTMExperiment();
 
     }
 }
