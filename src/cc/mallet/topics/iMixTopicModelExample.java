@@ -343,21 +343,21 @@ public class iMixTopicModelExample {
                             + "                                                        inner join links on links.OriginalId = pubs.originalid and links.funder='FP7' \n"
                             + "                                                         inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
                             + "                                                         LEFT OUTER  join MeshTermsPerDoc on MeshTermsPerDoc.pmcid=pubs.originalid \n"
-                            + "                                                          Group By GrantId \n";
-//                            + "                                                          \n"
-//                            + "                             UNION \n"
-//                            + "                                                         select projectView.GrantId, \n"
-//                            + "                                                         projectView.ABSTRACT AS TEXT, \n"
-//                            + "                                                        '' AS MESHdescriptors\n"
-//                            + "                                                        from projectView\n"
-//                            + "                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
-//                            + "                                                        \n"
-//                            + "                            UNION \n"
-//                            + "                            Select ProjectId AS GrantId, \n"
-//                            + "                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
-//                            + "                                                           '' AS MESHdescriptors\n"
-//                            + "                           from FP7FinalReports\n"
-//                            + "                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
+                            + "                                                          Group By GrantId \n"
+                            + "                                                          \n"
+                            + "                             UNION \n"
+                            + "                                                         select projectView.GrantId, \n"
+                            + "                                                         projectView.ABSTRACT AS TEXT, \n"
+                            + "                                                        '' AS MESHdescriptors\n"
+                            + "                                                        from projectView\n"
+                            + "                                                        where IFNULL(abstract,'')<>'' and  Category2='HEALTH'  \n"
+                            + "                                                        \n"
+                            + "                            UNION \n"
+                            + "                            Select ProjectId AS GrantId, \n"
+                            + "                                                                 Results||' '||ContextObjectives||' '||PotentialImpact AS TEXT, \n"
+                            + "                                                           '' AS MESHdescriptors\n"
+                            + "                           from FP7FinalReports\n"
+                            + "                           inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
                     //+ " LIMIT 100000";
 
                 }
@@ -633,7 +633,8 @@ public class iMixTopicModelExample {
             logger.info(" instances added through pipe");
 
             if (calcTokensPerEntity) {
-                TfIdfWeighting(instances[1], SQLLitedb, experimentId, 1);
+                //TfIdfWeighting(instances[1], SQLLitedb, experimentId, 1);
+                TfIdfWeighting(instances[0], SQLLitedb, experimentId, 0);
             }
 
             if (runTopicModelling) {
