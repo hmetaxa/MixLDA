@@ -68,7 +68,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.HEALTHTenderGrantGroup;
+        ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.

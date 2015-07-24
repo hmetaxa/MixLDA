@@ -19,18 +19,23 @@ public class CSV2FeatureSequence extends Pipe {
     String delimeter = "\\t";
 
     public CSV2FeatureSequence(Alphabet dataDict) {
-        super(dataDict,null);
+        super(dataDict, null);
+    }
+
+    public CSV2FeatureSequence(Alphabet dataDict, String delimeter) {
+        super(dataDict, null);
+        this.delimeter = delimeter;
     }
 
     public CSV2FeatureSequence() {
-        super( new Alphabet(),null);
+        super(new Alphabet(), null);
     }
 
-     public CSV2FeatureSequence(String delimeter) {
+    public CSV2FeatureSequence(String delimeter) {
         super(new Alphabet(), null);
         this.delimeter = delimeter;
     }
-     
+
     public Instance pipe(Instance carrier) {
         // if (!((String) carrier.getTarget()).isEmpty()) {
         long start = System.nanoTime();
@@ -41,18 +46,16 @@ public class CSV2FeatureSequence extends Pipe {
                 ArrayList<String> tokens = new ArrayList<String>(Arrays.asList(((String) carrier.getData()).split(delimeter)));
 
                 //String[] tokens = ((String)carrier.getTarget()).split("[ \\t]");
-
-
-                FeatureSequence featureSequence =
-                        new FeatureSequence((Alphabet) getAlphabet(), tokens.size());
+                FeatureSequence featureSequence
+                        = new FeatureSequence((Alphabet) getAlphabet(), tokens.size());
                 for (int i = 0; i < tokens.size(); i++) {
                     featureSequence.add(tokens.get(i));
                 }
 
                 carrier.setData(featureSequence);
             } else {
-                FeatureSequence featureSequence =
-                        new FeatureSequence((Alphabet) getAlphabet(), 0);
+                FeatureSequence featureSequence
+                        = new FeatureSequence((Alphabet) getAlphabet(), 0);
                 carrier.setData(featureSequence);
             }
 
