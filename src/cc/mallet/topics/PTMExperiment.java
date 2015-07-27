@@ -501,43 +501,43 @@ public class PTMExperiment {
                 String sql = "";
                 switch (experimentType) {
                     case Grants:
-                        sql = "select    GrantId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join GrantPerDoc on topicsPerDoc.DocId= GrantPerDoc.DocId"
+                        sql = "select    GrantId, TopicId, AVG(weight) as Weight from PubTopic Inner Join GrantPerDoc on PubTopic.PubId= GrantPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
                         break;
                     case FullGrants:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
                         break;
                     case FETGrants:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
                                 + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1<>'NONFET'\n"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
                         break;
                     case HEALTHTender:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join links  on topicsPerDoc.DocId= links.OriginalId "
+                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
                                 + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId
                                 + "' group By project_code , TopicId order by  project_code, TopicId";
 
                         break;
                     case Authors:
-                        sql = "select    AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join AuthorPerDoc on topicsPerDoc.DocId= AuthorPerDoc.DocId"
+                        sql = "select    AuthorId, TopicId, AVG(weight) as Weight from PubTopic Inner Join AuthorPerDoc on PubTopic.PubId= AuthorPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
                         break;
                     case ACM:
                         if (ACMAuthorSimilarity) {
-                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
-                                    + "Inner Join PubAuthor on topicsPerDoc.DocId= PubAuthor.PubId  \n"
+                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from PubTopic \n"
+                                    + "Inner Join PubAuthor on PubTopic.PubId= PubAuthor.PubId  \n"
                                     + "INNER JOIN (Select AuthorId FROM PubAuthor\n"
                                     + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
                                     + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    PubCategory.CatId as Category, TopicId, AVG(weight) as Weight from topicsPerDoc \n"
-                                    + "Inner Join PubCategory on topicsPerDoc.DocId= PubCategory.PubId  \n"
+                            sql = "select    PubCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
+                                    + "Inner Join PubCategory on PubTopic.PubId= PubCategory.PubId  \n"
                                     + "INNER JOIN (Select CatId FROM PubCategory \n"
                                     + "GROUP BY CatId HAVING Count(*)>10) catCnts1 ON catCnts1.CatId = PubCategory.catId\n"
                                     + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.CatId , TopicId order by  PubCategory.CatId, Weight desc, TopicId";
@@ -550,7 +550,7 @@ public class PTMExperiment {
 
                         break;
                     case DBLP:
-                        sql = "select  Source, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join prlinks on topicsPerDoc.DocId= prlinks.source"
+                        sql = "select  Source, TopicId, AVG(weight) as Weight from PubTopic Inner Join prlinks on PubTopic.PubId= prlinks.source"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
 
                         break;

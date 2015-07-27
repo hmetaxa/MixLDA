@@ -2245,12 +2245,12 @@ public class iMixLDAParallelTopicModel implements Serializable {
                     connection.setAutoCommit(true);
                 }
 
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double, BatchId Text, ExperimentId nvarchar(50)) ");
                 deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into TopicAnalysis values(?,?,?,?,? );";
+                String sql = "insert into TopicAnalysis values(?,?,?,?,?,? );";
 
                 try {
                     connection.setAutoCommit(false);
@@ -2275,7 +2275,8 @@ public class iMixLDAParallelTopicModel implements Serializable {
                                 bulkInsert.setInt(2, m);
                                 bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
                                 bulkInsert.setDouble(4, info.getWeight());
-                                bulkInsert.setString(5, experimentId);
+                                bulkInsert.setString(5, "-1");
+                                bulkInsert.setString(6, experimentId);
                                 //bulkInsert.setDouble(6, 1);
                                 bulkInsert.executeUpdate();
 
@@ -2830,11 +2831,11 @@ public class iMixLDAParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 // statement.executeUpdate("drop table if exists TopicsPerDoc");
-                statement.executeUpdate("create table if not exists TopicsPerDoc (DocId nvarchar(50), TopicId Integer, Weight Double , ExperimentId nvarchar(50)) ");
-                statement.executeUpdate(String.format("Delete from TopicsPerDoc where  ExperimentId = '%s'", experimentId));
+                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , ExperimentId nvarchar(50)) ");
+                statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
             }
             PreparedStatement bulkInsert = null;
-            String sql = "insert into TopicsPerDoc values(?,?,?,? );";
+            String sql = "insert into PubTopic values(?,?,?,? );";
 
             try {
                 connection.setAutoCommit(false);
