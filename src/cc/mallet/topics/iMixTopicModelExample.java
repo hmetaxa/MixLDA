@@ -62,9 +62,9 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 250;
-        int maxNumTopics = 250;
-        int numIterations = 150; //Max 2000
+        int numTopics = 300;
+        int maxNumTopics = 300;
+        int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -158,7 +158,7 @@ public class iMixTopicModelExample {
                             + "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.title||' '||pubs.fulltext ELSE pubs.title||' '||pubs.abstract END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.projectId,'\t') as GrantIds,"
                             + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   ''  else Journal END as Venue, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
                             + "                    'PubAbstract'   AS TEXTType \n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid \n"
@@ -172,9 +172,9 @@ public class iMixTopicModelExample {
                             + " '' AS Venue, \n"
                             + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
-                            + "                            where IFNULL(abstract,'')<>''  and (projectView.projectId in (SELECT links.projectId from Links ))\n"
+                            + "                            where IFNULL(abstract,'')<>''  and (projectView.projectId in (SELECT links.projectId from Links ))\n";
 
-                     + " LIMIT 10000";
+                    // + " LIMIT 10000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
 //                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
@@ -188,7 +188,7 @@ public class iMixTopicModelExample {
                             + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.projectId,'\t') as GrantIds,"
                             + "                       GROUP_CONCAT(Category3,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   '' else Journal END as Venue, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN   Repository else Journal END as Venue, \n"
                             + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN 'PubAbstract' ELSE 'PubFullText' END AS TEXTType \n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid \n"
