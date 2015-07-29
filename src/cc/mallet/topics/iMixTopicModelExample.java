@@ -58,12 +58,12 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
-        int maxNumTopics = 300;
+        int numTopics = 320;
+        int maxNumTopics = 320;
         int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
@@ -155,7 +155,8 @@ public class iMixTopicModelExample {
                     experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
-                            + "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.title||' '||pubs.fulltext ELSE pubs.title||' '||pubs.abstract END AS TEXT,\n"
+                            + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
+                            //+ "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.title||' '||pubs.fulltext ELSE pubs.title||' '||pubs.abstract END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.projectId,'\t') as GrantIds,"
                             + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
                             + "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
@@ -392,7 +393,7 @@ public class iMixTopicModelExample {
                         case FullGrants:
                             txt = rs.getString("text");
 
-                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 15000)), null, rs.getString("DocId"), "text"));
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 150000)), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("DocId"), "grant"));
                             }
@@ -883,26 +884,6 @@ public class iMixTopicModelExample {
 
                 model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
 
-                PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
-
-                model.topicPhraseXMLReport(outXMLPhrase, topWords);
-
-                //outState.close();
-                logger.info("topicPhraseXML report finished");
-
-//        GunZipper g = new GunZipper(new File(stateFileZip));
-//
-//        g.unzip(
-//                new File(stateFile));
-//
-//        try {
-//            // outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
-//            logger.info("outputCsvFiles finished");
-//        } catch (Exception e) {
-//            // if the error message is "out of memory", 
-//            // it probably means no database file is found
-//            System.err.println(e.getMessage());
-//        }
                 if (modelEvaluationFile != null) {
                     try {
 
@@ -930,6 +911,27 @@ public class iMixTopicModelExample {
                     }
 
                 }
+
+                //PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
+
+                //model.topicPhraseXMLReport(outXMLPhrase, topWords);
+
+                //outState.close();
+                //logger.info("topicPhraseXML report finished");
+
+//        GunZipper g = new GunZipper(new File(stateFileZip));
+//
+//        g.unzip(
+//                new File(stateFile));
+//
+//        try {
+//            // outputCsvFiles(outputDir, true, inputDir, numTopics, stateFile, outputDocTopicsFile, topicKeysFile);
+//            logger.info("outputCsvFiles finished");
+//        } catch (Exception e) {
+//            // if the error message is "out of memory", 
+//            // it probably means no database file is found
+//            System.err.println(e.getMessage());
+//        }
             }
         }
         if (calcSimilarities) {
