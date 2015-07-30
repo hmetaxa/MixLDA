@@ -22,6 +22,121 @@ import cc.mallet.util.Randoms;
  *
  * @author David Mimno, Andrew McCallum
  */
+
+/*
+
+int FTreeLDA::sampling(int i)
+{
+	std::mt19937 urng(i);
+	std::uniform_real_distribution<double> d_unif01(0.0, 1.0);
+
+	double * p = new double[K]; // temp variable for sampling
+	int *nd_m = new int[K]; //DocTopic counts: number of words per topics in document 
+	int *rev_mapper = new int[K]; // Reverse Map of nonzerotopic 
+	for (int k = 0; k < K; ++k)
+	{
+		nd_m[k] = 0;
+		rev_mapper[k] = -1;
+	}
+	std::chrono::high_resolution_clock::time_point ts, tn;
+	
+	for (int iter = 1; iter <= n_iters; ++iter)
+	{
+		ts = std::chrono::high_resolution_clock::now();
+		// for each document of worker i
+		for (int m = i; m < M; m+=nst)
+		{
+			int kc = 0;
+			for (const auto& k : n_mks[m])
+			{
+				nd_m[k.first] = k.second; //number of words (K.second) to topic K (K.first)
+				rev_mapper[k.first] = kc++; //Reverse Map of topic to active topic
+			}
+			for (int n = 0; n < trngdata->docs[m]->length; ++n)
+			{
+				int w = trngdata->docs[m]->words[n];
+				
+				// remove z_ij from the count variables
+				int topic = z[m][n]; int old_topic = topic;
+				nd_m[topic] -= 1;
+				n_mks[m][rev_mapper[topic]].second -= 1;
+
+				// Multi core approximation: do not update fTree[w] apriori
+				// trees[w].update(topic, (nw[w][topic] + beta) / (nwsum[topic] + Vbeta));
+
+				//Compute pdw
+				double psum = 0;
+				int ii = 0;
+				/* Travese all non-zero document-topic distribution */
+/*				for (const auto& k : n_mks[m])
+				{
+					psum += k.second * trees[w].getComponent(k.first);
+					p[ii++] = psum;
+				}
+
+				double u = d_unif01(urng) * (psum + alpha*trees[w].w[1]);
+
+				if (u < psum)
+				{
+					int temp = std::lower_bound(p,p+ii,u) - p;
+					topic = n_mks[m][temp].first;
+				}
+				else
+				{
+					topic = trees[w].sample(d_unif01(urng));
+				}
+
+				// add newly estimated z_i to count variables
+				if (topic!=old_topic)
+				{
+					if(nd_m[topic] == 0)
+					{
+						rev_mapper[topic] = n_mks[m].size();
+						n_mks[m].push_back(std::pair<int, int>(topic, 1));
+					}
+					else
+					{
+						n_mks[m][rev_mapper[topic]].second += 1;
+					}
+					nd_m[topic] += 1;
+					if (nd_m[old_topic] == 0)
+					{
+						n_mks[m][rev_mapper[old_topic]].first = n_mks[m].back().first;
+						n_mks[m][rev_mapper[old_topic]].second = n_mks[m].back().second;
+						rev_mapper[n_mks[m].back().first] = rev_mapper[old_topic];
+						n_mks[m].pop_back();
+						rev_mapper[old_topic] = -1;
+					}
+				
+					cbuff[nst*(w%ntt)+i].push(delta(w,old_topic,topic));
+				}
+				else
+				{
+					n_mks[m][rev_mapper[topic]].second += 1;
+					nd_m[topic] += 1;
+				}
+				z[m][n] = topic;
+			}
+			for (const auto& k : n_mks[m])
+			{
+				nd_m[k.first] = 0;
+				rev_mapper[k.first] = -1;
+			}
+		}
+		tn = std::chrono::high_resolution_clock::now();
+		std::cout << "In thread " << i << " at iteration " << iter << " ..." 
+				  << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tn - ts).count() << std::endl;
+	}
+	std::cout<<"Returning from "<<i<<std::endl;
+	
+	delete[] p;
+	delete[] nd_m;
+	delete[] rev_mapper;
+	
+	return 0;	
+}
+*/
+
 public class FastWorkerRunnable implements Runnable {
 
     boolean isFinished = true;
