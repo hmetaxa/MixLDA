@@ -47,6 +47,7 @@ public class FastWorkerRunnable implements Runnable {
     protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
+    protected FTree[] trees; //store 
     protected Randoms random;
 
     public FastWorkerRunnable(int numTopics,
@@ -61,6 +62,7 @@ public class FastWorkerRunnable implements Runnable {
 
         this.numTopics = numTopics;
         this.numTypes = typeTopicCounts.length;
+        trees = new FTree[this.numTypes];
 
         if (Integer.bitCount(numTopics) == 1) {
             // exact power of 2

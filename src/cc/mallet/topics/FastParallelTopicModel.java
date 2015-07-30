@@ -413,7 +413,7 @@ public class FastParallelTopicModel implements Serializable {
 	}
 	
 
-	public void sumTypeTopicCounts (WorkerRunnable[] runnables) {
+	public void sumTypeTopicCounts (FastWorkerRunnable[] runnables) {
 
 		// Clear the topic totals
 		Arrays.fill(tokensPerTopic, 0);
@@ -546,7 +546,7 @@ public class FastParallelTopicModel implements Serializable {
 		topicDocCounts = new int[numTopics][maxTokens + 1];
 	}
 	
-	public void optimizeAlpha(WorkerRunnable[] runnables) {
+	public void optimizeAlpha(FastWorkerRunnable[] runnables) {
 
 		// First clear the sufficient statistic histograms
 
@@ -610,7 +610,7 @@ public class FastParallelTopicModel implements Serializable {
 		}
 	}
 
-	public void temperAlpha(WorkerRunnable[] runnables) {
+	public void temperAlpha(FastWorkerRunnable[] runnables) {
 		
 		// First clear the sufficient statistic histograms
 
@@ -645,7 +645,7 @@ public class FastParallelTopicModel implements Serializable {
 		alphaSum = numTopics;
 	}
 
-	public void optimizeBeta(WorkerRunnable[] runnables) {
+	public void optimizeBeta(FastWorkerRunnable[] runnables) {
 		// The histogram starts at count 0, so if all of the
 		//  tokens of the most frequent type were assigned to one topic,
 		//  we would need to store a maxTypeCount + 1 count.
@@ -700,7 +700,7 @@ public class FastParallelTopicModel implements Serializable {
 
 		long startTime = System.currentTimeMillis();
 
-		WorkerRunnable[] runnables = new WorkerRunnable[numThreads];
+		FastWorkerRunnable[] runnables = new FastWorkerRunnable[numThreads];
 
 		int docsPerThread = data.size() / numThreads;
 		int offset = 0;
@@ -731,7 +731,7 @@ public class FastParallelTopicModel implements Serializable {
 					random = new Randoms(randomSeed);
 				}
 
-				runnables[thread] = new WorkerRunnable(numTopics,
+				runnables[thread] = new FastWorkerRunnable(numTopics,
 													   alpha, alphaSum, beta,
 													   random, data,
 													   runnableCounts, runnableTotals,
@@ -756,7 +756,7 @@ public class FastParallelTopicModel implements Serializable {
 				random = new Randoms(randomSeed);
 			}
 
-			runnables[0] = new WorkerRunnable(numTopics,
+			runnables[0] = new FastWorkerRunnable(numTopics,
 											  alpha, alphaSum, beta,
 											  random, data,
 											  typeTopicCounts, tokensPerTopic,
