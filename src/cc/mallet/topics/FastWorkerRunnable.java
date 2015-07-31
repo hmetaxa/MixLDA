@@ -22,6 +22,120 @@ import cc.mallet.util.Randoms;
  *
  * @author David Mimno, Andrew McCallum
  */
+
+/*
+
+ int FTreeLDA::sampling(int i)
+{
+	std::mt19937 urng(i);
+	std::uniform_real_distribution<double> d_unif01(0.0, 1.0);
+
+	double * p = new double[K]; // temp variable for sampling
+	int *nd_m = new int[K]; //DocTopic counts: number of words per topics in document 
+	int *rev_mapper = new int[K]; // Reverse Map of nonzerotopic 
+	for (int k = 0; k < K; ++k)
+	{
+		nd_m[k] = 0;
+		rev_mapper[k] = -1;
+	}
+	std::chrono::high_resolution_clock::time_point ts, tn;
+	
+	for (int iter = 1; iter <= n_iters; ++iter)
+	{
+		ts = std::chrono::high_resolution_clock::now();
+		// for each document of worker i
+		for (int m = i; m < M; m+=nst)
+		{
+			int kc = 0;
+			for (const auto& k : n_mks[m])
+			{
+				nd_m[k.first] = k.second; //number of words (K.second) to topic K (K.first)
+				rev_mapper[k.first] = kc++; //Reverse Map of topic to active topic
+			}
+			for (int n = 0; n < trngdata->docs[m]->length; ++n)
+			{
+				int w = trngdata->docs[m]->words[n];
+				
+				// remove z_ij from the count variables
+				int topic = z[m][n]; int old_topic = topic;
+				nd_m[topic] -= 1;
+				n_mks[m][rev_mapper[topic]].second -= 1;
+
+				// Multi core approximation: do not update fTree[w] apriori
+				// trees[w].update(topic, (nw[w][topic] + beta) / (nwsum[topic] + Vbeta));
+
+				//Compute pdw
+				double psum = 0;
+				int ii = 0;
+				/* Travese all non-zero document-topic distribution */
+			/*	for (const auto& k : n_mks[m])
+				{
+					psum += k.second * trees[w].getComponent(k.first);
+					p[ii++] = psum; //cumulative array for binary search
+				}
+
+				double u = d_unif01(urng) * (psum + alpha*trees[w].w[1]);
+
+				if (u < psum) //binary search in non zero topics
+				{
+					int temp = std::lower_bound(p,p+ii,u) - p;  // position of related non zero topic
+					topic = n_mks[m][temp].first; //actual topic
+				}
+				else //sample in F tree
+				{
+					topic = trees[w].sample(d_unif01(urng));
+				}
+
+				// add newly estimated z_i to count variables
+				if (topic!=old_topic)
+				{
+					if(nd_m[topic] == 0)
+					{
+						rev_mapper[topic] = n_mks[m].size();
+						n_mks[m].push_back(std::pair<int, int>(topic, 1));
+					}
+					else
+					{
+						n_mks[m][rev_mapper[topic]].second += 1;
+					}
+					nd_m[topic] += 1;
+					if (nd_m[old_topic] == 0)
+					{
+						n_mks[m][rev_mapper[old_topic]].first = n_mks[m].back().first;
+						n_mks[m][rev_mapper[old_topic]].second = n_mks[m].back().second;
+						rev_mapper[n_mks[m].back().first] = rev_mapper[old_topic];
+						n_mks[m].pop_back();
+						rev_mapper[old_topic] = -1;
+					}
+				
+					cbuff[nst*(w%ntt)+i].push(delta(w,old_topic,topic));
+				}
+				else
+				{
+					n_mks[m][rev_mapper[topic]].second += 1;
+					nd_m[topic] += 1;
+				}
+				z[m][n] = topic;
+			}
+			for (const auto& k : n_mks[m])
+			{
+				nd_m[k.first] = 0;
+				rev_mapper[k.first] = -1;
+			}
+		}
+		tn = std::chrono::high_resolution_clock::now();
+		std::cout << "In thread " << i << " at iteration " << iter << " ..." 
+				  << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(tn - ts).count() << std::endl;
+	}
+	std::cout<<"Returning from "<<i<<std::endl;
+	
+	delete[] p;
+	delete[] nd_m;
+	delete[] rev_mapper;
+	
+	return 0;	
+}
+ */
 public class FastWorkerRunnable implements Runnable {
 
     boolean isFinished = true;
@@ -47,6 +161,7 @@ public class FastWorkerRunnable implements Runnable {
     protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
     boolean shouldBuildLocalCounts = true;
+    protected FTree[] trees; //store 
     protected Randoms random;
 
     public FastWorkerRunnable(int numTopics,
@@ -61,6 +176,7 @@ public class FastWorkerRunnable implements Runnable {
 
         this.numTopics = numTopics;
         this.numTypes = typeTopicCounts.length;
+        trees = new FTree[this.numTypes];
 
         if (Integer.bitCount(numTopics) == 1) {
             // exact power of 2
@@ -88,7 +204,6 @@ public class FastWorkerRunnable implements Runnable {
 
         //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
-
     }
 
     /**
@@ -143,7 +258,6 @@ public class FastWorkerRunnable implements Runnable {
 
         // Clear the type/topic counts, only 
         //  looking at the entries before the first 0 entry.
-
         for (int type = 0; type < typeTopicCounts.length; type++) {
 
             int[] topicCounts = typeTopicCounts[type];
@@ -182,18 +296,15 @@ public class FastWorkerRunnable implements Runnable {
                 // Since the count is in the high bits, sorting (desc)
                 //  by the numeric value of the int guarantees that
                 //  higher counts will be before the lower counts.
-
                 int type = tokens.getIndexAtPosition(position);
 
-                int[] currentTypeTopicCounts = typeTopicCounts[ type];
+                int[] currentTypeTopicCounts = typeTopicCounts[type];
 
                 // Start by assuming that the array is either empty
                 //  or is in sorted (descending) order.
-
                 // Here we are only adding counts, so if we find 
                 //  an existing location with the topic, we only need
                 //  to ensure that it is not larger than its left neighbor.
-
                 int index = 0;
                 int currentTopic = currentTypeTopicCounts[index] & topicMask;
                 int currentValue;
@@ -211,11 +322,11 @@ public class FastWorkerRunnable implements Runnable {
                     // new value is 1, so we don't have to worry about sorting
                     //  (except by topic suffix, which doesn't matter)
 
-                    currentTypeTopicCounts[index] =
-                            (1 << topicBits) + topic;
+                    currentTypeTopicCounts[index]
+                            = (1 << topicBits) + topic;
                 } else {
-                    currentTypeTopicCounts[index] =
-                            ((currentValue + 1) << topicBits) + topic;
+                    currentTypeTopicCounts[index]
+                            = ((currentValue + 1) << topicBits) + topic;
 
                     // Now ensure that the array is still sorted by 
                     //  bubbling this value up.
@@ -250,32 +361,57 @@ public class FastWorkerRunnable implements Runnable {
             // Initialize the cached coefficients, using only smoothing.
             //  These values will be selectively replaced in documents with
             //  non-zero counts in particular topics.
-
             for (int topic = 0; topic < numTopics; topic++) {
                 smoothingOnlyMass += alpha[topic] * beta / (tokensPerTopic[topic] + betaSum);
                 cachedCoefficients[topic] = alpha[topic] / (tokensPerTopic[topic] + betaSum);
+            }
+
+            double[] temp = new double[numTopics];
+            //smooth for all topics
+            for (int topic = 0; topic < numTopics; topic++) {
+                temp[topic] = beta / (tokensPerTopic[topic] + betaSum);
+            }
+
+            for (int w = 0; w < numTypes - 1; ++w) {
+
+                int index = 0;
+                int[] currentTypeTopicCounts = typeTopicCounts[w];
+
+                //non zero topics per word
+                while (index < currentTypeTopicCounts.length) {
+                    int currentTopic = currentTypeTopicCounts[index] & topicMask;
+                    int currentValue = currentTypeTopicCounts[index] >> topicBits;
+                    temp[currentTopic] = (currentValue + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                    index++;
+                }
+
+                trees[w].init(numTopics);
+                trees[w].constructTree(temp);
+
+                //reset temp
+                while (index < currentTypeTopicCounts.length) {
+                    int currentTopic = currentTypeTopicCounts[index] & topicMask;
+                    temp[currentTopic] = beta / (tokensPerTopic[currentTopic] + betaSum);
+                    index++;
+                }
+
             }
 
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
                     doc++) {
 
-
 //				  if (doc % 10 == 0) {
 //				  System.out.println("processing doc " + doc);
 //				  }
 //				
-
-
-
-                FeatureSequence tokenSequence =
-                        (FeatureSequence) data.get(doc).instance.getData();
-                LabelSequence topicSequence =
-                        (LabelSequence) data.get(doc).topicSequence;
+                FeatureSequence tokenSequence
+                        = (FeatureSequence) data.get(doc).instance.getData();
+                LabelSequence topicSequence
+                        = (LabelSequence) data.get(doc).topicSequence;
 
                 sampleTopicsForOneDoc(tokenSequence, topicSequence,
                         true);
-
 
             }
 
@@ -291,6 +427,28 @@ public class FastWorkerRunnable implements Runnable {
         }
     }
 
+    public static int lower_bound(Comparable[] arr, Comparable key) {
+        int len = arr.length;
+        int lo = 0;
+        int hi = len - 1;
+        int mid = (lo + hi) / 2;
+        while (true) {
+            int cmp = arr[mid].compareTo(key);
+            if (cmp == 0 || cmp > 0) {
+                hi = mid - 1;
+                if (hi < lo) {
+                    return mid;
+                }
+            } else {
+                lo = mid + 1;
+                if (hi < lo) {
+                    return mid < len - 1 ? mid + 1 : -1;
+                }
+            }
+            mid = (lo + hi) / 2; //(hi-lo)/2+lo in order not to overflow?  or  (lo + hi) >>> 1
+        }
+    }
+
     protected void sampleTopicsForOneDoc(FeatureSequence tokenSequence,
             FeatureSequence topicSequence,
             boolean readjustTopicsAndStats /* currently ignored */) {
@@ -299,7 +457,7 @@ public class FastWorkerRunnable implements Runnable {
 
         int[] currentTypeTopicCounts;
         int type, oldTopic, newTopic;
-        double topicWeightsSum;
+        
         int docLength = tokenSequence.getLength();
 
         int[] localTopicCounts = new int[numTopics];
@@ -331,7 +489,6 @@ public class FastWorkerRunnable implements Runnable {
 
         // Initialize cached coefficients and the topic/beta 
         //  normalizing constant.
-
         for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
             int topic = localTopicIndex[denseIndex];
             int n = localTopicCounts[topic];
@@ -369,7 +526,6 @@ public class FastWorkerRunnable implements Runnable {
                         / (tokensPerTopic[oldTopic] + betaSum);
 
                 // Decrement the local doc/topic counts
-
                 localTopicCounts[oldTopic]--;
 
                 // Maintain the dense index, if we are deleting
@@ -378,7 +534,6 @@ public class FastWorkerRunnable implements Runnable {
 
                     // First get to the dense location associated with
                     //  the old topic.
-
                     denseIndex = 0;
 
                     // We know it's in there somewhere, so we don't 
@@ -390,8 +545,8 @@ public class FastWorkerRunnable implements Runnable {
                     // shift all remaining dense indices to the left.
                     while (denseIndex < nonZeroTopics) {
                         if (denseIndex < localTopicIndex.length - 1) {
-                            localTopicIndex[denseIndex] =
-                                    localTopicIndex[denseIndex + 1];
+                            localTopicIndex[denseIndex]
+                                    = localTopicIndex[denseIndex + 1];
                         }
                         denseIndex++;
                     }
@@ -403,7 +558,6 @@ public class FastWorkerRunnable implements Runnable {
                 tokensPerTopic[oldTopic]--;
                 assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
 
-
                 // Add the old topic's contribution back into the
                 //  normalizing constants.
                 smoothingOnlyMass += alpha[oldTopic] * beta
@@ -412,16 +566,14 @@ public class FastWorkerRunnable implements Runnable {
                         / (tokensPerTopic[oldTopic] + betaSum);
 
                 // Reset the cached coefficient for this topic
-                cachedCoefficients[oldTopic] =
-                        (alpha[oldTopic] + localTopicCounts[oldTopic])
+                cachedCoefficients[oldTopic]
+                        = (alpha[oldTopic] + localTopicCounts[oldTopic])
                         / (tokensPerTopic[oldTopic] + betaSum);
             }
-
 
             // Now go over the type/topic counts, decrementing
             //  where appropriate, and calculating the score
             //  for each topic at the same time.
-
             int index = 0;
             int currentTopic, currentValue;
 
@@ -442,17 +594,15 @@ public class FastWorkerRunnable implements Runnable {
                     //  decrementing may require us to reorder
                     //  the topics, so after we're done here,
                     //  look at this cell in the array again.
-
                     currentValue--;
                     if (currentValue == 0) {
                         currentTypeTopicCounts[index] = 0;
                     } else {
-                        currentTypeTopicCounts[index] =
-                                (currentValue << topicBits) + oldTopic;
+                        currentTypeTopicCounts[index]
+                                = (currentValue << topicBits) + oldTopic;
                     }
 
                     // Shift the reduced value to the right, if necessary.
-
                     int subIndex = index;
                     while (subIndex < currentTypeTopicCounts.length - 1
                             && currentTypeTopicCounts[subIndex] < currentTypeTopicCounts[subIndex + 1]) {
@@ -465,8 +615,8 @@ public class FastWorkerRunnable implements Runnable {
 
                     alreadyDecremented = true;
                 } else {
-                    score =
-                            cachedCoefficients[currentTopic] * currentValue;
+                    score
+                            = cachedCoefficients[currentTopic] * currentValue;
                     topicTermMass += score;
                     topicTermScores[index] = score;
 
@@ -495,7 +645,6 @@ public class FastWorkerRunnable implements Runnable {
                 currentTypeTopicCounts[i] = ((currentValue + 1) << topicBits) + newTopic;
 
                 // Bubble the new value up, if necessary
-
                 while (i > 0
                         && currentTypeTopicCounts[i] > currentTypeTopicCounts[i - 1]) {
                     int temp = currentTypeTopicCounts[i];
@@ -547,7 +696,6 @@ public class FastWorkerRunnable implements Runnable {
                 // Move to the position for the new topic,
                 //  which may be the first empty position if this
                 //  is a new topic for this word.
-
                 index = 0;
                 while (currentTypeTopicCounts[index] > 0
                         && (currentTypeTopicCounts[index] & topicMask) != newTopic) {
@@ -563,10 +711,8 @@ public class FastWorkerRunnable implements Runnable {
                     }
                 }
 
-
                 // index should now be set to the position of the new topic,
                 //  which may be an empty cell at the end of the list.
-
                 if (currentTypeTopicCounts[index] == 0) {
                     // inserting a new topic, guaranteed to be in
                     //  order w.r.t. count, if not topic.
@@ -615,14 +761,13 @@ public class FastWorkerRunnable implements Runnable {
                 //  the end (which is the only reason we're keeping
                 //  track of the number of non-zero
                 //  topics) and working backwards
-
                 denseIndex = nonZeroTopics;
 
                 while (denseIndex > 0
                         && localTopicIndex[denseIndex - 1] > newTopic) {
 
-                    localTopicIndex[denseIndex] =
-                            localTopicIndex[denseIndex - 1];
+                    localTopicIndex[denseIndex]
+                            = localTopicIndex[denseIndex - 1];
                     denseIndex--;
                 }
 
@@ -633,8 +778,8 @@ public class FastWorkerRunnable implements Runnable {
             tokensPerTopic[newTopic]++;
 
             //	update the coefficients for the non-zero topics
-            cachedCoefficients[newTopic] =
-                    (alpha[newTopic] + localTopicCounts[newTopic])
+            cachedCoefficients[newTopic]
+                    = (alpha[newTopic] + localTopicCounts[newTopic])
                     / (tokensPerTopic[newTopic] + betaSum);
 
             smoothingOnlyMass += alpha[newTopic] * beta
@@ -647,24 +792,25 @@ public class FastWorkerRunnable implements Runnable {
         if (shouldSaveState) {
             // Update the document-topic count histogram,
             //  for dirichlet estimation
-            docLengthCounts[ docLength]++;
+            docLengthCounts[docLength]++;
 
             for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                 int topic = localTopicIndex[denseIndex];
 
-                topicDocCounts[topic][ localTopicCounts[topic]]++;
+                topicDocCounts[topic][localTopicCounts[topic]]++;
             }
         }
 
         //	Clean up our mess: reset the coefficients to values with only
         //	smoothing. The next doc will update its own non-zero topics...
-
         for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
             int topic = localTopicIndex[denseIndex];
 
-            cachedCoefficients[topic] =
-                    alpha[topic] / (tokensPerTopic[topic] + betaSum);
+            cachedCoefficients[topic]
+                    = alpha[topic] / (tokensPerTopic[topic] + betaSum);
         }
 
     }
+
+
 }
