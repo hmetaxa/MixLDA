@@ -52,12 +52,12 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 1;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
-        boolean calcSimilarities = true;
+        boolean calcSimilarities = false;
         boolean runTopicModelling = true;
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
@@ -68,7 +68,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.FullGrants;
+        ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -795,7 +795,27 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runOrigParallelModel = false;
+                 boolean runFastParallelModel = false;
+                if (runFastParallelModel) {
+                    FastParallelTopicModel modelOrig = new FastParallelTopicModel(numTopics, 1.0, 0.01);
+
+                    modelOrig.addInstances(instances[0]);
+
+                    // Use two parallel samplers, which each look at one half the corpus and combine
+                    //  statistics after every iteration.
+                    modelOrig.setNumThreads(4);
+                    // Run the model for 50 iterations and stop (this is for testing only, 
+                    //  for real applications, use 1000 to 2000 iterations)
+                    modelOrig.setNumIterations(numIterations);
+                    modelOrig.optimizeInterval = optimizeInterval;
+                    modelOrig.burninPeriod = burnIn;
+                    //model.optimizeInterval = 0;
+                    //model.burninPeriod = 0;
+                    //model.saveModelInterval=250;
+                    modelOrig.estimate();
+                }
+                
+                boolean runOrigParallelModel = true;
                 if (runOrigParallelModel) {
                     ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
 
