@@ -5,6 +5,8 @@
  */
 package cc.mallet.topics;
 
+import java.util.Arrays;
+
 /**
  *
  * @author hmetaxa
@@ -38,6 +40,14 @@ public class FTree {
 //        constructTree(weights);
 //    }
 
+    public FTree clone()
+    {
+        FTree ret = new FTree(T);
+        System.arraycopy(w, 0, ret.w, 0, T);
+        return ret;
+    }
+            
+            
     public  void constructTree(double[] weights) {
         // Reversely initialize elements
         for (int i = 2 * T - 1; i > 0; --i) {

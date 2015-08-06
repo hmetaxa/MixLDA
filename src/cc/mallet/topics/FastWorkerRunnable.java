@@ -171,13 +171,14 @@ public class FastWorkerRunnable implements Runnable {
             ArrayList<TopicAssignment> data,
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
-            int startDoc, int numDocs) {
+            int startDoc, int numDocs, FTree[] trees) {
 
         this.data = data;
 
         this.numTopics = numTopics;
         this.numTypes = typeTopicCounts.length;
-        trees = new FTree[this.numTypes];
+        
+        //trees = new FTree[this.numTypes];
 
         if (Integer.bitCount(numTopics) == 1) {
             // exact power of 2
@@ -191,6 +192,7 @@ public class FastWorkerRunnable implements Runnable {
 
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
+        this.trees = trees;
 
         this.alphaSum = alphaSum;
         this.alpha = alpha;
@@ -311,32 +313,24 @@ public class FastWorkerRunnable implements Runnable {
                 smoothingOnlyCumValues[topic] = smoothingOnlyMass;
             }
 
-            double[] temp = new double[numTopics];
-//            //smooth for all topics
-//            for (int topic = 0; topic < numTopics; topic++) {
-//                temp[topic] = beta / (tokensPerTopic[topic] + betaSum);
-//            }
-
-            for (int w = 0; w < numTypes; ++w) {
-
-                int[] currentTypeTopicCounts = typeTopicCounts[w];
-                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
-                }
-
-                //trees[w].init(numTopics);
-                trees[w] = new FTree(temp);
-
-                //reset temp
-                Arrays.fill(temp, 0);
-//                while (index < currentTypeTopicCounts.length) {
-//                    int currentTopic = currentTypeTopicCounts[index] & topicMask;
-//                    temp[currentTopic] = beta / (tokensPerTopic[currentTopic] + betaSum);
-//                    index++;
+            //init trees
+            
+            
+//            double[] temp = new double[numTopics];
+//            for (int w = 0; w < numTypes; ++w) {
+//
+//                int[] currentTypeTopicCounts = typeTopicCounts[w];
+//                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+//
+//                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
 //                }
-
-            }
+//               
+//                //trees[w].init(numTopics);
+//                trees[w] = new FTree(temp);
+//                //reset temp
+//                Arrays.fill(temp, 0);
+//
+//            }
 
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;

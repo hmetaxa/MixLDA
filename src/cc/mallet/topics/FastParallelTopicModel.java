@@ -67,6 +67,8 @@ public class FastParallelTopicModel implements Serializable {
     public int[][] typeTopicCounts; // indexed by <feature index, topic index>
     public int[] tokensPerTopic; // indexed by <topic index>
 
+    public FTree[] trees; //store 
+    
     // for dirichlet estimation
     public int[] docLengthCounts; // histogram of document sizes
     public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -135,6 +137,8 @@ public class FastParallelTopicModel implements Serializable {
 
         tokensPerTopic = new int[numTopics];
 
+        
+        
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
 
@@ -238,6 +242,8 @@ public class FastParallelTopicModel implements Serializable {
         // Get the total number of occurrences of each word type
         //int[] typeTotals = new int[numTypes];
         typeTotals = new int[numTypes];
+        
+        trees = new FTree[numTypes];
 
         int doc = 0;
         for (Instance instance : training) {
@@ -365,6 +371,25 @@ public class FastParallelTopicModel implements Serializable {
 
             }
         }
+        
+          //init trees
+            
+            
+            double[] temp = new double[numTopics];
+            for (int w = 0; w < numTypes; ++w) {
+
+                int[] currentTypeTopicCounts = typeTopicCounts[w];
+                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                }
+               
+                //trees[w].init(numTopics);
+                trees[w] = new FTree(temp);
+                //reset temp
+                Arrays.fill(temp, 0);
+
+            }
     }
 
     public void sumTypeTopicCounts(FastWorkerRunnable[] runnables) {
@@ -400,7 +425,27 @@ public class FastParallelTopicModel implements Serializable {
             }
 
         }
+        
+        //recalc trees
+         double[] temp = new double[numTopics];
+            for (int w = 0; w < numTypes; ++w) {
 
+                int[] currentTypeTopicCounts = typeTopicCounts[w];
+                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                }
+               
+                
+                //trees[w] = new FTree(temp);
+                trees[w].constructTree(temp);
+                
+                //reset temp
+                Arrays.fill(temp, 0);
+
+            }
+
+        
         /* // Debuggging code to ensure counts are being 
          // reconstructed correctly.
 
@@ -584,6 +629,25 @@ public class FastParallelTopicModel implements Serializable {
                 betaSum);
         beta = betaSum / numTypes;
 
+         //recalc trees for multi threade recal every time .. for single threaded only when beta is changing
+         double[] temp = new double[numTopics];
+            for (int w = 0; w < numTypes; ++w) {
+
+                int[] currentTypeTopicCounts = typeTopicCounts[w];
+                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                }
+               
+                
+                //trees[w] = new FTree(temp);
+                trees[w].constructTree(temp);
+                
+                //reset temp
+                Arrays.fill(temp, 0);
+
+            }
+            
         logger.info("[beta: " + formatter.format(beta) + "] ");
         // Now publish the new value
         for (int thread = 0; thread < numThreads; thread++) {
@@ -606,12 +670,15 @@ public class FastParallelTopicModel implements Serializable {
             for (int thread = 0; thread < numThreads; thread++) {
                 int[] runnableTotals = new int[numTopics];
                 System.arraycopy(tokensPerTopic, 0, runnableTotals, 0, numTopics);
+                
+                FTree[] runnableTrees = new FTree[numTypes];
 
                 int[][] runnableCounts = new int[numTypes][];
                 for (int type = 0; type < numTypes; type++) {
                     int[] counts = new int[typeTopicCounts[type].length];
                     System.arraycopy(typeTopicCounts[type], 0, counts, 0, counts.length);
                     runnableCounts[type] = counts;
+                    runnableTrees[type] = trees[type].clone();
                 }
 
                 // some docs may be missing at the end due to integer division
@@ -630,7 +697,7 @@ public class FastParallelTopicModel implements Serializable {
                         alpha, alphaSum, beta,
                         random, data,
                         runnableCounts, runnableTotals,
-                        offset, docsPerThread);
+                        offset, docsPerThread, runnableTrees);
 
                 runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -652,7 +719,7 @@ public class FastParallelTopicModel implements Serializable {
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
-                    offset, docsPerThread);
+                    offset, docsPerThread, trees);
 
             runnables[0].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -767,6 +834,7 @@ public class FastParallelTopicModel implements Serializable {
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
 
+               
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 

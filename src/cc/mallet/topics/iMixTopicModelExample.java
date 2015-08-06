@@ -62,8 +62,8 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 320;
-        int maxNumTopics = 320;
+        int numTopics = 1000;
+        int maxNumTopics = 1000;
         int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
@@ -796,7 +796,7 @@ public class iMixTopicModelExample {
 
                 }
 
-                 boolean runFastParallelModel = false;
+                boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
                     FastParallelTopicModel modelOrig = new FastParallelTopicModel(numTopics, 1.0, 0.01);
 
@@ -804,7 +804,7 @@ public class iMixTopicModelExample {
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(4);
+                    modelOrig.setNumThreads(1);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);
@@ -815,7 +815,7 @@ public class iMixTopicModelExample {
                     //model.saveModelInterval=250;
                     modelOrig.estimate();
                 }
-                
+
                 boolean runOrigParallelModel = true;
                 if (runOrigParallelModel) {
                     ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
@@ -824,7 +824,7 @@ public class iMixTopicModelExample {
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(4);
+                    modelOrig.setNumThreads(1);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);
@@ -933,12 +933,9 @@ public class iMixTopicModelExample {
                 }
 
                 //PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
-
                 //model.topicPhraseXMLReport(outXMLPhrase, topWords);
-
                 //outState.close();
                 //logger.info("topicPhraseXML report finished");
-
 //        GunZipper g = new GunZipper(new File(stateFileZip));
 //
 //        g.unzip(
