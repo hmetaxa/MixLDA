@@ -22,7 +22,9 @@ import cc.mallet.util.Randoms;
  *
  * @author David Mimno, Andrew McCallum
  */
-public class FastWorkerRunnable implements Runnable {
+
+
+public class FastQWorkerRunnable implements Runnable {
 
     boolean isFinished = true;
     ArrayList<TopicAssignment> data;
@@ -51,7 +53,7 @@ public class FastWorkerRunnable implements Runnable {
     protected Randoms random;
     int MHsteps = 1;
 
-    public FastWorkerRunnable(int numTopics,
+    public FastQWorkerRunnable(int numTopics,
             double[] alpha, double alphaSum,
             double beta, Randoms random,
             ArrayList<TopicAssignment> data,
@@ -273,7 +275,6 @@ public class FastWorkerRunnable implements Runnable {
         int[] oneDocTopics = topicSequence.getFeatures();
 
         int[] currentTypeTopicCounts;
-        int[] localTopicIndex = new int[numTopics];
         int type, oldTopic, newTopic, currentTopic;
 
         int docLength = tokenSequence.getLength();
@@ -288,19 +289,6 @@ public class FastWorkerRunnable implements Runnable {
             }
             localTopicCounts[oneDocTopics[position]]++;
         }
-
-        // Build an array that densely lists the topics that
-        //  have non-zero counts.
-        int denseIndex = 0;
-        for (int topic = 0; topic < numTopics; topic++) {
-            if (localTopicCounts[topic] != 0) {
-                localTopicIndex[denseIndex] = topic;
-                denseIndex++;
-            }
-        }
-
-        // Record the total number of non-zero topics
-        int nonZeroTopics = denseIndex;
 
         //	Iterate over the positions (words) in the document 
         for (int position = 0; position < docLength; position++) {
@@ -320,55 +308,89 @@ public class FastWorkerRunnable implements Runnable {
                 tokensPerTopic[oldTopic]--;
                 assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
                 // Multi core approximation: do not update fTree[w] apriori
-                trees[type].update(oldTopic, ((currentTypeTopicCounts[oldTopic] + beta)  * alpha[oldTopic] / (tokensPerTopic[oldTopic] + betaSum)));
-
-            }
-
-            //		compute word / doc mass for binary search
-            double topicDocWordMass = 0.0;
-            Double topicDocWordMasses[] = new Double[nonZeroTopics];
-
-            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                int topic = localTopicIndex[denseIndex];
-                int n = localTopicCounts[topic];
-
-                //	initialize the normalization constant for the (B * n_{t|d}) term
-                topicDocWordMass += (currentTypeTopicCounts[topic] + beta) * n / (tokensPerTopic[topic] + betaSum);
-                topicDocWordMasses[denseIndex] = topicDocWordMass;
+                trees[type].update(oldTopic, ((currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
 
             }
 
             currentTopic = oldTopic;
+            for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
 
-            double sample = random.nextUniform() * (topicDocWordMass + docLength);
-            if (sample < topicDocWordMass) {
+                //Sample Doc topic mass
+                double sample = random.nextUniform() * (smoothingOnlyMass + docLength);
+                double origSample = sample;
 
-                newTopic = lower_bound(topicDocWordMasses, sample);
+                //	Make sure it actually gets set
+                newTopic = -1;
 
-            } else {
-                sample -= topicDocWordMass;
+                if (sample < smoothingOnlyMass) {
+
+                    newTopic = lower_bound(smoothingOnlyCumValues, sample);
+
+                } else {
+                    sample -= smoothingOnlyMass;
+                    newTopic = oneDocTopics[(int) sample];
+
+                }
+
+                if (newTopic == -1) {
+                    System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + smoothingOnlyMass);
+                    newTopic = numTopics - 1; // TODO is this appropriate
+                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                }
+
+                if (oldTopic != newTopic) {
+                    //2. Find acceptance probability
+                    double temp_old = (localTopicCounts[oldTopic] + alpha[oldTopic]) * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum);
+                    double temp_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
+                    double prop_old = (oldTopic == currentTopic) ? (localTopicCounts[oldTopic] + 1 + alpha[oldTopic]) : (localTopicCounts[oldTopic] + alpha[oldTopic]);
+                    double prop_new = (newTopic == currentTopic) ? (localTopicCounts[newTopic] + 1 + alpha[newTopic]) : (localTopicCounts[newTopic] + alpha[newTopic]);
+                    double acceptance = (temp_new * prop_old) / (temp_old * prop_new);
+
+                    //3. Compare against uniform[0,1]
+                    if (random.nextUniform() < acceptance) {
+                        currentTopic = newTopic;
+                    }
+                }
+                //cycling proposals
+
+                //Sample Word topic mass
+                sample = random.nextUniform() * (trees[type].w[1]);
+
+                //	Make sure it actually gets set
+                newTopic = -1;
+
                 newTopic = trees[type].sample(sample);
-            }
 
-             if (newTopic == -1) {
+                if (newTopic == -1) {
                     System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].w[1]);
                     newTopic = numTopics - 1; // TODO is this appropriate
                     //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
                 }
-             
-            
+
+                if (oldTopic != newTopic) {
+                    //2. Find acceptance probability
+                    double temp_old = (localTopicCounts[oldTopic] + alpha[oldTopic]) * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum);
+                    double temp_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
+                    double acceptance = (temp_new * trees[type].getComponent(oldTopic)) / (temp_old * trees[type].getComponent(newTopic));
+
+                    //3. Compare against uniform[0,1]
+                    if (random.nextUniform() < acceptance) {
+                        currentTopic = newTopic;
+                    }
+                }
+
+            }
             //assert(newTopic != -1);
 
             //			Put that new topic into the counts
-            oneDocTopics[position] = newTopic;
+            oneDocTopics[position] = currentTopic;
 
-            localTopicCounts[newTopic]++;
+            localTopicCounts[currentTopic]++;
 
-            currentTypeTopicCounts[newTopic]++;
+            currentTypeTopicCounts[currentTopic]++;
 
-            tokensPerTopic[newTopic]++;
-
-            trees[type].update(newTopic, ((currentTypeTopicCounts[newTopic] + beta) * alpha[newTopic] / (tokensPerTopic[newTopic] + betaSum)));
+            tokensPerTopic[currentTopic]++;
+            trees[type].update(currentTopic, ((currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum)));
 
         }
 
@@ -384,145 +406,4 @@ public class FastWorkerRunnable implements Runnable {
 
     }
 
-//    protected void sampleTopicsForOneDoc(FeatureSequence tokenSequence,
-//            FeatureSequence topicSequence,
-//            boolean readjustTopicsAndStats /* currently ignored */) {
-//
-//        int[] oneDocTopics = topicSequence.getFeatures();
-//
-//        int[] currentTypeTopicCounts;
-//        int type, oldTopic, newTopic, currentTopic;
-//
-//        int docLength = tokenSequence.getLength();
-//        int i;
-//
-//        int[] localTopicCounts = new int[numTopics];
-//
-//        //		populate topic counts
-//        for (int position = 0; position < docLength; position++) {
-//            if (oneDocTopics[position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-//                continue;
-//            }
-//            localTopicCounts[oneDocTopics[position]]++;
-//        }
-//
-//        //	Iterate over the positions (words) in the document 
-//        for (int position = 0; position < docLength; position++) {
-//            type = tokenSequence.getIndexAtPosition(position);
-//            oldTopic = oneDocTopics[position];
-//
-//            currentTypeTopicCounts = typeTopicCounts[type];
-//
-//            if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-//
-//                // Decrement the local doc/topic counts
-//                localTopicCounts[oldTopic]--;
-//
-//                // Decrement the global type topic count totals
-//                currentTypeTopicCounts[oldTopic]--;
-//                // Decrement the global topic count totals
-//                tokensPerTopic[oldTopic]--;
-//                assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-//                // Multi core approximation: do not update fTree[w] apriori
-//                trees[type].update(oldTopic, ((currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
-//
-//            }
-//
-//            currentTopic = oldTopic;
-//            for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
-//
-//                                //Sample Doc topic mass
-//                double sample = random.nextUniform() * (smoothingOnlyMass + docLength);
-//                double origSample = sample;
-//
-//                //	Make sure it actually gets set
-//                newTopic = -1;
-//
-//                if (sample < smoothingOnlyMass) {
-//
-//                    newTopic = lower_bound(smoothingOnlyCumValues, sample);
-//
-//                } else {
-//                    sample -= smoothingOnlyMass;
-//                    newTopic = oneDocTopics[(int) sample];
-//
-//                }
-//
-//                if (newTopic == -1) {
-//                    System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + smoothingOnlyMass);
-//                    newTopic = numTopics - 1; // TODO is this appropriate
-//                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//                }
-//
-//                if (oldTopic != newTopic) {
-//                    //2. Find acceptance probability
-//                    double temp_old = (localTopicCounts[oldTopic] + alpha[oldTopic]) * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum);
-//                    double temp_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
-//                    double prop_old = (oldTopic == currentTopic) ? (localTopicCounts[oldTopic] + 1 + alpha[oldTopic]) : (localTopicCounts[oldTopic] + alpha[oldTopic]);
-//                    double prop_new = (newTopic == currentTopic) ? (localTopicCounts[newTopic] + 1 + alpha[newTopic]) : (localTopicCounts[newTopic] + alpha[newTopic]);
-//                    double acceptance = (temp_new * prop_old) / (temp_old * prop_new);
-//
-//                    //3. Compare against uniform[0,1]
-//                    if (random.nextUniform() < acceptance) {
-//                        currentTopic = newTopic;
-//                    }
-//
-//                }
-//                //cycling proposals
-//
-//                //Sample Word topic mass
-//                sample = random.nextUniform() * (trees[type].w[1]);
-//
-//                //	Make sure it actually gets set
-//                newTopic = -1;
-//
-//                newTopic = trees[type].sample(sample);
-//
-//                if (newTopic == -1) {
-//                    System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].w[1]);
-//                    newTopic = numTopics - 1; // TODO is this appropriate
-//                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-//                }
-//
-//                if (oldTopic != newTopic) {
-//                    //2. Find acceptance probability
-//                    double temp_old = (localTopicCounts[oldTopic] + alpha[oldTopic]) * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum);
-//                    double temp_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
-//                    double acceptance = (temp_new * trees[type].getComponent(oldTopic)) / (temp_old * trees[type].getComponent(newTopic));
-//
-//                    //3. Compare against uniform[0,1]
-//                    if (random.nextUniform() < acceptance) {
-//                        currentTopic = newTopic;
-//                    }
-//                }
-//
-//                
-//
-//            }
-//            //assert(newTopic != -1);
-//
-//            //			Put that new topic into the counts
-//            oneDocTopics[position] = currentTopic;
-//
-//            localTopicCounts[currentTopic]++;
-//
-//            currentTypeTopicCounts[currentTopic]++;
-//
-//            tokensPerTopic[currentTopic]++;
-//
-//            trees[type].update(currentTopic, ((currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum)));
-//
-//        }
-//
-//        if (shouldSaveState) {
-//            // Update the document-topic count histogram,
-//            //  for dirichlet estimation
-//            docLengthCounts[docLength]++;
-//
-//            for (int topic = 0; topic < numTopics; topic++) {
-//                topicDocCounts[topic][localTopicCounts[topic]]++;
-//            }
-//        }
-//
-//    }
 }

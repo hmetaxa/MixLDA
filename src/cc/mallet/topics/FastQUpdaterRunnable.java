@@ -12,9 +12,9 @@ import java.util.ArrayList;
  *
  * @author Omiros
  */
-public class FastUpdaterRunnable implements Runnable {
+public class FastQUpdaterRunnable implements Runnable {
 
-     public FastUpdaterRunnable(int numTopics,
+     public FastQUpdaterRunnable(int numTopics,
             double[] alpha, double alphaSum,
             double beta, Randoms random,
             ArrayList<TopicAssignment> data,

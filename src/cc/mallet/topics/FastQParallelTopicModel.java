@@ -35,11 +35,11 @@ import cc.mallet.util.MalletLogger;
  *
  * @author David Mimno, Andrew McCallum Omiros test mercucial
  */
-public class FastParallelTopicModel implements Serializable {
+public class FastQParallelTopicModel implements Serializable {
 
     public static final int UNASSIGNED_TOPIC = -1;
 
-    public static Logger logger = MalletLogger.getLogger(FastParallelTopicModel.class.getName());
+    public static Logger logger = MalletLogger.getLogger(FastQParallelTopicModel.class.getName());
 
     public ArrayList<TopicAssignment> data;  // the training instances and their topic assignments
     public Alphabet alphabet; // the alphabet for the input data
@@ -99,11 +99,11 @@ public class FastParallelTopicModel implements Serializable {
 
     int numThreads = 1;
 
-    public FastParallelTopicModel(int numberOfTopics) {
+    public FastQParallelTopicModel(int numberOfTopics) {
         this(numberOfTopics, numberOfTopics, DEFAULT_BETA);
     }
 
-    public FastParallelTopicModel(int numberOfTopics, double alphaSum, double beta) {
+    public FastQParallelTopicModel(int numberOfTopics, double alphaSum, double beta) {
         this(newLabelAlphabet(numberOfTopics), alphaSum, beta);
     }
 
@@ -115,7 +115,7 @@ public class FastParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta) {
+    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta) {
         this.data = new ArrayList<TopicAssignment>();
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -370,7 +370,7 @@ public class FastParallelTopicModel implements Serializable {
             }
         }
 
-        //init trees
+          //init trees
         double[] temp = new double[numTopics];
         for (int w = 0; w < numTypes; ++w) {
 
@@ -422,7 +422,23 @@ public class FastParallelTopicModel implements Serializable {
 
         }
 
-        recalcTrees();
+        //recalc trees
+        double[] temp = new double[numTopics];
+        for (int w = 0; w < numTypes; ++w) {
+
+            int[] currentTypeTopicCounts = typeTopicCounts[w];
+            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+            }
+
+            //trees[w] = new FTree(temp);
+            trees[w].constructTree(temp);
+
+            //reset temp
+            Arrays.fill(temp, 0);
+
+        }
 
         /* // Debuggging code to ensure counts are being 
          // reconstructed correctly.
@@ -445,27 +461,6 @@ public class FastParallelTopicModel implements Serializable {
 			
          }
          */
-    }
-
-    private void recalcTrees() {
-        //recalc trees
-        double[] temp = new double[numTopics];
-        for (int w = 0; w < numTypes; ++w) {
-
-            int[] currentTypeTopicCounts = typeTopicCounts[w];
-            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
-                //temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta)  / (tokensPerTopic[currentTopic] + betaSum); with cycle proposal
-            }
-
-            //trees[w] = new FTree(temp);
-            trees[w].constructTree(temp);
-
-            //reset temp
-            Arrays.fill(temp, 0);
-
-        }
     }
 
     /**
@@ -601,11 +596,9 @@ public class FastParallelTopicModel implements Serializable {
 
             int[] counts = typeTopicCounts[type];
 
-            for (int topic = 0; topic < numTopics; topic++) {
+            for (int topic = 0; type < numTopics; type++) {
                 int count = counts[topic];
-                if (count > 0) {
-                    countHistogram[count]++;
-                }
+                countHistogram[count]++;
             }
         }
 
@@ -631,8 +624,22 @@ public class FastParallelTopicModel implements Serializable {
         beta = betaSum / numTypes;
 
         //recalc trees for multi threade recal every time .. for single threaded only when beta is changing
-        recalcTrees();
-        //TODO: copy/update trees in threads
+        double[] temp = new double[numTopics];
+        for (int w = 0; w < numTypes; ++w) {
+
+            int[] currentTypeTopicCounts = typeTopicCounts[w];
+            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+            }
+
+            //trees[w] = new FTree(temp);
+            trees[w].constructTree(temp);
+
+            //reset temp
+            Arrays.fill(temp, 0);
+
+        }
 
         logger.info("[beta: " + formatter.format(beta) + "] ");
         // Now publish the new value
@@ -819,7 +826,6 @@ public class FastParallelTopicModel implements Serializable {
 
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
-                
 
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
@@ -1575,12 +1581,12 @@ public class FastParallelTopicModel implements Serializable {
         }
     }
 
-    public static FastParallelTopicModel read(File f) throws Exception {
+    public static FastQParallelTopicModel read(File f) throws Exception {
 
-        FastParallelTopicModel topicModel = null;
+        FastQParallelTopicModel topicModel = null;
 
         ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-        topicModel = (FastParallelTopicModel) ois.readObject();
+        topicModel = (FastQParallelTopicModel) ois.readObject();
         ois.close();
 
         topicModel.initializeHistograms();
@@ -1596,7 +1602,7 @@ public class FastParallelTopicModel implements Serializable {
 
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
-            FastParallelTopicModel lda = new FastParallelTopicModel(numTopics, 50.0, 0.01);
+            FastQParallelTopicModel lda = new FastQParallelTopicModel(numTopics, 50.0, 0.01);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training);
