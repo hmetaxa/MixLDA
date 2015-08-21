@@ -62,9 +62,9 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 1000;
-        int maxNumTopics = 1000;
-        int numIterations = 1200; //Max 2000
+        int numTopics = 200;
+        int maxNumTopics = 200;
+        int numIterations = 500; //Max 2000
         int independentIterations = 0;
         int burnIn = 50;
         int optimizeInterval = 20;
@@ -796,7 +796,7 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runFastParallelModel = true;
+                boolean runFastParallelModel = false;
                 if (runFastParallelModel) {
                     FastParallelTopicModel modelOrig = new FastParallelTopicModel(numTopics, 1.0, 0.01);
 

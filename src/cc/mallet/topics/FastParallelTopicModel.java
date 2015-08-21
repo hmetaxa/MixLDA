@@ -92,6 +92,8 @@ public class FastParallelTopicModel implements Serializable {
     public NumberFormat formatter;
     public boolean printLogLikelihood = true;
 
+    boolean useCycleProposals = false;
+
     // The number of times each type appears in the corpus
     int[] typeTotals;
     // The max over typeTotals, used for beta optimization
@@ -377,7 +379,13 @@ public class FastParallelTopicModel implements Serializable {
             int[] currentTypeTopicCounts = typeTopicCounts[w];
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+//                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
+                if (useCycleProposals) {
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                } else {
+                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                }
+
             }
 
             //trees[w].init(numTopics);
@@ -413,10 +421,9 @@ public class FastParallelTopicModel implements Serializable {
 
             for (int topic = 0; topic < numTopics; topic++) {
                 tokensPerTopic[topic] += sourceTotals[topic];
+
                 for (int type = 0; type < numTypes; type++) {
-                    int[] sourceCounts = sourceTypeTopicCounts[type];
-                    int[] targetCounts = typeTopicCounts[type];
-                    targetCounts[topic] += sourceCounts[topic];
+                    typeTopicCounts[type][topic] += sourceTypeTopicCounts[type][topic];
                 }
             }
 
@@ -455,8 +462,13 @@ public class FastParallelTopicModel implements Serializable {
             int[] currentTypeTopicCounts = typeTopicCounts[w];
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
-                //temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta)  / (tokensPerTopic[currentTopic] + betaSum); with cycle proposal
+                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta)  / (tokensPerTopic[currentTopic] + betaSum);
+                if (useCycleProposals) {
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                } else {
+                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                }
+
             }
 
             //trees[w] = new FTree(temp);
@@ -553,6 +565,13 @@ public class FastParallelTopicModel implements Serializable {
         } else {
             alphaSum = Dirichlet.learnParameters(alpha, topicDocCounts, docLengthCounts, 1.001, 1.0, 1);
         }
+
+        String alphaStr = "";
+        for (int topic = 0; topic < numTopics; topic++) {
+            alphaStr += formatter.format(alpha[topic]) + " ";
+        }
+
+        logger.info("[Alpha: [" + alphaStr + "] ");
     }
 
     public void temperAlpha(FastWorkerRunnable[] runnables) {
@@ -630,10 +649,7 @@ public class FastParallelTopicModel implements Serializable {
                 betaSum);
         beta = betaSum / numTypes;
 
-        //recalc trees for multi threade recal every time .. for single threaded only when beta is changing
-        recalcTrees();
         //TODO: copy/update trees in threads
-
         logger.info("[beta: " + formatter.format(beta) + "] ");
         // Now publish the new value
         for (int thread = 0; thread < numThreads; thread++) {
@@ -683,7 +699,7 @@ public class FastParallelTopicModel implements Serializable {
                         alpha, alphaSum, beta,
                         random, data,
                         runnableCounts, runnableTotals,
-                        offset, docsPerThread, runnableTrees);
+                        offset, docsPerThread, runnableTrees, useCycleProposals);
 
                 runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -705,7 +721,7 @@ public class FastParallelTopicModel implements Serializable {
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
-                    offset, docsPerThread, trees);
+                    offset, docsPerThread, trees, useCycleProposals);
 
             runnables[0].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -819,14 +835,17 @@ public class FastParallelTopicModel implements Serializable {
 
                 optimizeAlpha(runnables);
                 optimizeBeta(runnables);
-                
 
+                //recalc trees for multi threaded recalc every time .. for single threaded only when beta (or alpha in not cyvling proposal) is changing
+                recalcTrees();
+                
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
-                    logger.info("<" + iteration + "> LL/token: " + formatter.format(modelLogLikelihood() / totalTokens));
+                    double LL = modelLogLikelihood();
+                    logger.info("<" + iteration + ">  LL: " + formatter.format(LL) + " LL/token: " + formatter.format(LL / totalTokens));
                 } else {
                     logger.info("<" + iteration + ">");
                 }
@@ -880,11 +899,14 @@ public class FastParallelTopicModel implements Serializable {
 
         // Initialize the tree sets
         for (int topic = 0; topic < numTopics; topic++) {
-            topicSortedWords.add(new TreeSet<IDSorter>());
+            TreeSet<IDSorter> topicTreeSet = new TreeSet<IDSorter>();
+            topicSortedWords.add(topicTreeSet);
             // Collect counts
             for (int type = 0; type < numTypes; type++) {
-
-                topicSortedWords.get(topic).add(new IDSorter(type, typeTopicCounts[type][topic]));
+                int cnt = typeTopicCounts[type][topic];
+                if (cnt > 0) {
+                    topicTreeSet.add(new IDSorter(type, cnt));
+                }
             }
         }
 
@@ -1168,8 +1190,7 @@ public class FastParallelTopicModel implements Serializable {
         for (int topic = 0; topic < numTopics; topic++) {
             for (int type = 0; type < numTypes; type++) {
 
-                int[] topicCounts = typeTopicCounts[type];
-
+                //int[] topicCounts = typeTopicCounts[type];
                 double weight = beta;
                 weight += typeTopicCounts[type][topic];
 
@@ -1342,7 +1363,7 @@ public class FastParallelTopicModel implements Serializable {
 
     public double modelLogLikelihood() {
         double logLikelihood = 0.0;
-        int nonZeroTopics;
+        //int nonZeroTopics;
 
         // The likelihood of the model is a combination of a 
         // Dirichlet-multinomial for the words in each topic
@@ -1401,16 +1422,17 @@ public class FastParallelTopicModel implements Serializable {
             while (index < topicCounts.length) {
 
                 int count = topicCounts[index];
+                if (count > 0) {
+                    nonZeroTypeTopics++;
+                    logLikelihood += Dirichlet.logGammaStirling(beta + count);
 
-                nonZeroTypeTopics++;
-                logLikelihood += Dirichlet.logGammaStirling(beta + count);
-
-                if (Double.isNaN(logLikelihood)) {
-                    logger.warning("NaN in log likelihood calculation");
-                    return 0;
-                } else if (Double.isInfinite(logLikelihood)) {
-                    logger.warning("infinite log likelihood");
-                    return 0;
+                    if (Double.isNaN(logLikelihood)) {
+                        logger.warning("NaN in log likelihood calculation");
+                        return 0;
+                    } else if (Double.isInfinite(logLikelihood)) {
+                        logger.warning("infinite log likelihood");
+                        return 0;
+                    }
                 }
 
                 index++;
