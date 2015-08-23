@@ -49,7 +49,7 @@ public class FastWorkerRunnable implements Runnable {
     boolean shouldBuildLocalCounts = true;
     protected FTree[] trees; //store 
     protected Randoms random;
-    int MHsteps = 1;
+    int MHsteps = 2;
     boolean useCycleProposals = false;
 
     public FastWorkerRunnable(int numTopics,
@@ -514,9 +514,10 @@ public class FastWorkerRunnable implements Runnable {
                     double prop_old = (oldTopic == currentTopic) ? (localTopicCounts[oldTopic] + 1 + alpha[oldTopic]) : (localTopicCounts[oldTopic] + alpha[oldTopic]);
                     double prop_new = (newTopic == currentTopic) ? (localTopicCounts[newTopic] + 1 + alpha[newTopic]) : (localTopicCounts[newTopic] + alpha[newTopic]);
                     double acceptance = (temp_new * prop_old) / (temp_old * prop_new);
-
+                    acceptance = (temp_new * prop_old * trees[type].getComponent(newTopic)) / (temp_old * prop_new * trees[type].getComponent(oldTopic));
+                    //acceptance = temp_new / temp_old;
                     //3. Compare against uniform[0,1]
-                    if (random.nextUniform() < acceptance) {
+                    if (acceptance >= 1 || random.nextUniform() < acceptance) {
                         currentTopic = newTopic;
                     }
 
@@ -541,10 +542,15 @@ public class FastWorkerRunnable implements Runnable {
                     //2. Find acceptance probability
                     double temp_old = (localTopicCounts[oldTopic] + alpha[oldTopic]) * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum);
                     double temp_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
-                    double acceptance = (temp_new * trees[type].getComponent(oldTopic)) / (temp_old * trees[type].getComponent(newTopic));
+                    double prop_old = (oldTopic == currentTopic) ? (localTopicCounts[oldTopic] + 1 + alpha[oldTopic]) : (localTopicCounts[oldTopic] + alpha[oldTopic]);
+                    double prop_new = (newTopic == currentTopic) ? (localTopicCounts[newTopic] + 1 + alpha[newTopic]) : (localTopicCounts[newTopic] + alpha[newTopic]);
 
+                    double acceptance = (temp_new * trees[type].getComponent(oldTopic)) / (temp_old * trees[type].getComponent(newTopic));
+                    acceptance = (temp_new * prop_new * trees[type].getComponent(oldTopic)) / (temp_old * prop_old * trees[type].getComponent(newTopic));
+
+                   // acceptance = temp_new / temp_old;
                     //3. Compare against uniform[0,1]
-                    if (random.nextUniform() < acceptance) {
+                    if (acceptance >= 1 || random.nextUniform() < acceptance) {
                         currentTopic = newTopic;
                     }
                 }

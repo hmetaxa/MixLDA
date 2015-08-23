@@ -77,6 +77,28 @@ public class iMixTopicModelExample {
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
+        
+        try {
+
+            double[] temp = {4, 2, 1, 3};
+            FTree tree = new FTree(temp);
+
+            int tmp = tree.sample(3);
+            logger.info("FTree sample 3 (1):"+tmp);
+            
+            tmp = tree.sample(7);
+            logger.info("FTree sample 7 (3):"+tmp);
+            
+            tree.update(2, 4);
+            
+            tmp = tree.sample(7);
+            logger.info("FTree sample 7 (2):"+tmp);
+            
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
                 + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
@@ -796,7 +818,7 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runFastParallelModel = false;
+                boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
                     FastParallelTopicModel modelOrig = new FastParallelTopicModel(numTopics, 1.0, 0.01);
 

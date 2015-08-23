@@ -92,7 +92,7 @@ public class FastParallelTopicModel implements Serializable {
     public NumberFormat formatter;
     public boolean printLogLikelihood = true;
 
-    boolean useCycleProposals = false;
+    boolean useCycleProposals = true;
 
     // The number of times each type appears in the corpus
     int[] typeTotals;

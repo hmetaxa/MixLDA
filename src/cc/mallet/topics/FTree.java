@@ -39,16 +39,13 @@ public class FTree {
 //    public void recompute(double[] weights) {
 //        constructTree(weights);
 //    }
-
-    public FTree clone()
-    {
+    public FTree clone() {
         FTree ret = new FTree(T);
         System.arraycopy(w, 0, ret.w, 0, T);
         return ret;
     }
-            
-            
-    public  void constructTree(double[] weights) {
+
+    public void constructTree(double[] weights) {
         // Reversely initialize elements
         for (int i = 2 * T - 1; i > 0; --i) {
             if (i >= T) {
@@ -61,7 +58,7 @@ public class FTree {
 
     public int sample(double u) {
         int i = 1;
-        u = u * w[i];
+       // u = u * w[i];
         while (i < T) {
             if (u < w[2 * i]) {
                 i = 2 * i;
@@ -87,6 +84,21 @@ public class FTree {
     public double getComponent(int t) {
         // t = 0..T-1
         return w[t + T];
+    }
+
+    public static void main(String[] args) {
+
+        try {
+
+            double[] temp = {1, 2, 3, 4};
+            FTree tree = new FTree(temp);
+
+            int tmp = tree.sample(3);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
 }
