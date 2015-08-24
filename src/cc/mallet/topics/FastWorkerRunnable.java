@@ -459,6 +459,7 @@ public class FastWorkerRunnable implements Runnable {
             localTopicCounts[oneDocTopics[position]]++;
         }
 
+        boolean useDocProposal = true;
         //	Iterate over the positions (words) in the document 
         for (int position = 0; position < docLength; position++) {
             type = tokenSequence.getIndexAtPosition(position);
@@ -482,8 +483,10 @@ public class FastWorkerRunnable implements Runnable {
             }
 
             currentTopic = oldTopic;
+
             for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
 
+              //  if (useDocProposal) {
                 //Sample Doc topic mass
                 double sample = random.nextUniform() * (smoothingOnlyMass + docLength);
                 double origSample = sample;
@@ -522,8 +525,9 @@ public class FastWorkerRunnable implements Runnable {
                     }
 
                 }
-                //cycling proposals
 
+               // } else {
+                //cycling proposals
                 //Sample Word topic mass
                 sample = random.nextUniform() * (trees[type].w[1]);
 
@@ -555,7 +559,10 @@ public class FastWorkerRunnable implements Runnable {
                     }
                 }
 
+              //  }
             }
+
+            useDocProposal = !useDocProposal;
             //assert(newTopic != -1);
 
             //			Put that new topic into the counts

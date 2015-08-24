@@ -78,7 +78,7 @@ public class ParallelTopicModel implements Serializable {
     public int temperingInterval = 0;
 
     public int showTopicsInterval = 50;
-    public int wordsPerTopic = 7;
+    public int wordsPerTopic = 20;
 
     public int saveStateInterval = 0;
     public String stateFilename = null;
