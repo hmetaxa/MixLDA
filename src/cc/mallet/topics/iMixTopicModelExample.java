@@ -822,7 +822,7 @@ public class iMixTopicModelExample {
 
                 boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
-                    FastParallelTopicModel modelOrig = new FastParallelTopicModel(numTopics, 1.0, 0.01);
+                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 1.0, 0.01);
 
                     modelOrig.addInstances(instances[0]);
 

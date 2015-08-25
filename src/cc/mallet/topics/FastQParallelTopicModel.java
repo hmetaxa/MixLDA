@@ -66,13 +66,12 @@ public class FastQParallelTopicModel implements Serializable {
 
     //we should only have one updating thread that updates global counts, 
     // otherwise use AtomicIntegerArray for tokensPerTopic and split typeTopicCounts in such a way that only one thread updates topicCounts for a specific type
-    
     public int[][] typeTopicCounts; //
     public int[] tokensPerTopic; // indexed by <topic index> 
     public FTree[] trees; //store 
 
-    public List<ConcurrentLinkedQueue<FastQDelta>> queues; 
-    
+    public List<ConcurrentLinkedQueue<FastQDelta>> queues;
+
     // for dirichlet estimation
     public int[] docLengthCounts; // histogram of document sizes
     public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -510,7 +509,7 @@ public class FastQParallelTopicModel implements Serializable {
         topicDocCounts = new int[numTopics][maxTokens + 1];
     }
 
-    public void optimizeAlpha(FastWorkerRunnable[] runnables) {
+    public void optimizeAlpha(FastQWorkerRunnable[] runnables) {
 
         // First clear the sufficient statistic histograms
         Arrays.fill(docLengthCounts, 0);
@@ -612,7 +611,7 @@ public class FastQParallelTopicModel implements Serializable {
         alphaSum = numTopics;
     }
 
-    public void optimizeBeta(FastWorkerRunnable[] runnables) {
+    public void optimizeBeta(FastQWorkerRunnable[] runnables) {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
         //  we would need to store a maxTypeCount + 1 count.
@@ -666,57 +665,67 @@ public class FastQParallelTopicModel implements Serializable {
 
         long startTime = System.currentTimeMillis();
 
-        FastWorkerRunnable[] runnables = new FastWorkerRunnable[numThreads];
-        queues = new  ArrayList<ConcurrentLinkedQueue<FastQDelta>> (numThreads); 
-        
-        
+        FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
+                tokensPerTopic,
+                trees,
+                queues,
+                alpha, alphaSum,
+                beta, useCycleProposals);
+
+        FastQWorkerRunnable[] runnables = new FastQWorkerRunnable[numThreads];
+        queues = new ArrayList<ConcurrentLinkedQueue<FastQDelta>>(numThreads);
 
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
 
-        if (numThreads > 1) {                     
+//        if (numThreads > 1) {                     
+//
+//            for (int thread = 0; thread < numThreads; thread++) {
+//                int[] runnableTotals = new int[numTopics];
+//                System.arraycopy(tokensPerTopic, 0, runnableTotals, 0, numTopics);
+//
+//                FTree[] runnableTrees = new FTree[numTypes];
+//
+//                int[][] runnableCounts = new int[numTypes][];
+//                for (int type = 0; type < numTypes; type++) {
+//                    int[] counts = new int[typeTopicCounts[type].length];
+//                    System.arraycopy(typeTopicCounts[type], 0, counts, 0, counts.length);
+//                    runnableCounts[type] = counts;
+//                    runnableTrees[type] = trees[type].clone();
+//                }
+//
+//                // some docs may be missing at the end due to integer division
+//                if (thread == numThreads - 1) {
+//                    docsPerThread = data.size() - offset;
+//                }
+//
+//                Randoms random = null;
+//                if (randomSeed == -1) {
+//                    random = new Randoms();
+//                } else {
+//                    random = new Randoms(randomSeed);
+//                }
+//
+//                runnables[thread] = new FastWorkerRunnable(numTopics,
+//                        alpha, alphaSum, beta,
+//                        random, data,
+//                        runnableCounts, runnableTotals,
+//                        offset, docsPerThread, runnableTrees, useCycleProposals);
+//
+//                runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
+//
+//                offset += docsPerThread;
+//            }//
+//        } else {
+        // If there is only one thread, copy the typeTopicCounts
+        //  arrays directly, rather than allocating new memory.
+        for (int thread = 0; thread < numThreads; thread++) {
 
-            for (int thread = 0; thread < numThreads; thread++) {
-                int[] runnableTotals = new int[numTopics];
-                System.arraycopy(tokensPerTopic, 0, runnableTotals, 0, numTopics);
-
-                FTree[] runnableTrees = new FTree[numTypes];
-
-                int[][] runnableCounts = new int[numTypes][];
-                for (int type = 0; type < numTypes; type++) {
-                    int[] counts = new int[typeTopicCounts[type].length];
-                    System.arraycopy(typeTopicCounts[type], 0, counts, 0, counts.length);
-                    runnableCounts[type] = counts;
-                    runnableTrees[type] = trees[type].clone();
-                }
-
-                // some docs may be missing at the end due to integer division
-                if (thread == numThreads - 1) {
-                    docsPerThread = data.size() - offset;
-                }
-
-                Randoms random = null;
-                if (randomSeed == -1) {
-                    random = new Randoms();
-                } else {
-                    random = new Randoms(randomSeed);
-                }
-
-                runnables[thread] = new FastWorkerRunnable(numTopics,
-                        alpha, alphaSum, beta,
-                        random, data,
-                        runnableCounts, runnableTotals,
-                        offset, docsPerThread, runnableTrees, useCycleProposals);
-
-                runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
-
-                offset += docsPerThread;
-
+            // some docs may be missing at the end due to integer division
+            if (thread == numThreads - 1) {
+                docsPerThread = data.size() - offset;
             }
-        } else {
 
-            // If there is only one thread, copy the typeTopicCounts
-            //  arrays directly, rather than allocating new memory.
             Randoms random = null;
             if (randomSeed == -1) {
                 random = new Randoms();
@@ -724,22 +733,27 @@ public class FastQParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[0] = new FastWorkerRunnable(numTopics,
+            queues.add(new ConcurrentLinkedQueue<FastQDelta>());
+
+            runnables[thread] = new FastQWorkerRunnable(numTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
-                    offset, docsPerThread, trees, useCycleProposals);
+                    offset, docsPerThread, trees, useCycleProposals,
+                    thread, queues.get(thread));
 
-            runnables[0].initializeAlphaStatistics(docLengthCounts.length);
+            runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
+            offset += docsPerThread;
             // If there is only one thread, we 
             //  can avoid communications overhead.
             // This switch informs the thread not to 
             //  gather statistics for its portion of the data.
-            runnables[0].makeOnlyThread();
+            runnables[thread].makeOnlyThread();
         }
 
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+        executor.submit(updater);
 
         for (int iteration = 1; iteration <= numIterations; iteration++) {
 
@@ -757,77 +771,47 @@ public class FastQParallelTopicModel implements Serializable {
                 this.write(new File(modelFilename + '.' + iteration));
             }
 
-            if (numThreads > 1) {
-
-                // Submit runnables to thread pool
-                for (int thread = 0; thread < numThreads; thread++) {
-                    if (iteration > burninPeriod && optimizeInterval != 0
-                            && iteration % saveSampleInterval == 0) {
-                        runnables[thread].collectAlphaStatistics();
-                    }
-
-                    logger.fine("submitting thread " + thread);
-                    executor.submit(runnables[thread]);
-                    //runnables[thread].run();
+            // if (numThreads > 1) {
+            // Submit runnables to thread pool
+            for (int thread = 0; thread < numThreads; thread++) {
+                if (iteration > burninPeriod && optimizeInterval != 0
+                        && iteration % saveSampleInterval == 0) {
+                    runnables[thread].collectAlphaStatistics();
                 }
 
-                // I'm getting some problems that look like 
-                //  a thread hasn't started yet when it is first
-                //  polled, so it appears to be finished. 
-                // This only occurs in very short corpora.
+                logger.fine("submitting thread " + thread);
+                executor.submit(runnables[thread]);
+                //runnables[thread].run();
+            }
+
+            // I'm getting some problems that look like 
+            //  a thread hasn't started yet when it is first
+            //  polled, so it appears to be finished. 
+            // This only occurs in very short corpora.
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+
+            }
+
+            //TODO: use Barrier here 
+            boolean finished = false;
+            while (!finished) {
+
                 try {
-                    Thread.sleep(20);
+                    Thread.sleep(10);
                 } catch (InterruptedException e) {
 
                 }
 
-                boolean finished = false;
-                while (!finished) {
+                finished = true;
 
-                    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-
-                    }
-
-                    finished = true;
-
-                    // Are all the threads done?
-                    for (int thread = 0; thread < numThreads; thread++) {
-                        //logger.info("thread " + thread + " done? " + runnables[thread].isFinished);
-                        finished = finished && runnables[thread].isFinished;
-                    }
-
-                }
-
-                //System.out.print("[" + (System.currentTimeMillis() - iterationStart) + "] ");
-                sumTypeTopicCounts(runnables);
-
-                //System.out.print("[" + (System.currentTimeMillis() - iterationStart) + "] ");
+                // Are all the threads done?
                 for (int thread = 0; thread < numThreads; thread++) {
-                    int[] runnableTotals = runnables[thread].getTokensPerTopic();
-                    System.arraycopy(tokensPerTopic, 0, runnableTotals, 0, numTopics);
-
-                    int[][] runnableCounts = runnables[thread].getTypeTopicCounts();
-                    for (int type = 0; type < numTypes; type++) {
-
-                        int[] targetCounts = runnableCounts[type];
-                        System.arraycopy(typeTopicCounts[type], 0, targetCounts, 0, targetCounts.length);
-//                        int[] sourceCounts = typeTopicCounts[type];
-//
-//                        for (int topic = 0; topic < numTopics; topic++) {
-//                            targetCounts[topic] = sourceCounts[topic];
-//                        }
-
-                        //System.arraycopy(typeTopicCounts[type], 0, counts, 0, counts.length);
-                    }
+                    //logger.info("thread " + thread + " done? " + runnables[thread].isFinished);
+                    finished = finished && runnables[thread].isFinished;
                 }
-            } else {
-                if (iteration > burninPeriod && optimizeInterval != 0
-                        && iteration % saveSampleInterval == 0) {
-                    runnables[0].collectAlphaStatistics();
-                }
-                runnables[0].run();
+
             }
 
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
@@ -845,7 +829,7 @@ public class FastQParallelTopicModel implements Serializable {
 
                 //recalc trees for multi threaded recalc every time .. for single threaded only when beta (or alpha in not cyvling proposal) is changing
                 recalcTrees();
-                
+
                 logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
             }
 

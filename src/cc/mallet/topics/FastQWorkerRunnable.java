@@ -16,6 +16,7 @@ import java.text.NumberFormat;
 
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -50,6 +51,8 @@ public class FastQWorkerRunnable implements Runnable {
     boolean shouldBuildLocalCounts = true;
     protected FTree[] trees; //store 
     protected Randoms random;
+    protected int threadId = -1;
+    protected ConcurrentLinkedQueue<FastQDelta> queue;
     int MHsteps = 2;
     boolean useCycleProposals = false;
 
@@ -59,9 +62,13 @@ public class FastQWorkerRunnable implements Runnable {
             ArrayList<TopicAssignment> data,
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
-            int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals) {
+            int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
+                int threadId,ConcurrentLinkedQueue<FastQDelta> queue
+                ) {
 
         this.data = data;
+        this.threadId = threadId;
+        this.queue = queue;
 
         this.numTopics = numTopics;
         this.numTypes = typeTopicCounts.length;
@@ -585,18 +592,19 @@ public class FastQWorkerRunnable implements Runnable {
 
             if (currentTopic != oldTopic) {
 
+                queue.add(new FastQDelta( currentTopic, oldTopic, type, 0));
                 // Decrement the global type topic count totals
-                currentTypeTopicCounts[oldTopic]--;
-                // Decrement the global topic count totals
-                tokensPerTopic[oldTopic]--;
-                assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-                //Update tree
-                trees[type].update(oldTopic, ((currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
-
-                //add new count
-                currentTypeTopicCounts[currentTopic]++;
-                tokensPerTopic[currentTopic]++;
-                trees[type].update(currentTopic, ((currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum)));
+//                currentTypeTopicCounts[oldTopic]--;
+//                // Decrement the global topic count totals
+//                tokensPerTopic[oldTopic]--;
+//                assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
+//                //Update tree
+//                trees[type].update(oldTopic, ((currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
+//
+//                //add new count
+//                currentTypeTopicCounts[currentTopic]++;
+//                tokensPerTopic[currentTopic]++;
+//                trees[type].update(currentTopic, ((currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum)));
             }
 
         }
