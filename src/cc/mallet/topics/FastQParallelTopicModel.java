@@ -665,13 +665,7 @@ public class FastQParallelTopicModel implements Serializable {
 
         long startTime = System.currentTimeMillis();
 
-        FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
-                tokensPerTopic,
-                trees,
-                queues,
-                alpha, alphaSum,
-                beta, useCycleProposals);
-
+      
         FastQWorkerRunnable[] runnables = new FastQWorkerRunnable[numThreads];
         queues = new ArrayList<ConcurrentLinkedQueue<FastQDelta>>(numThreads);
 
@@ -752,8 +746,15 @@ public class FastQParallelTopicModel implements Serializable {
             runnables[thread].makeOnlyThread();
         }
 
+          FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
+                tokensPerTopic,
+                trees,
+                queues,
+                alpha, alphaSum,
+                beta, useCycleProposals);
+
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-        executor.submit(updater);
+        
 
         for (int iteration = 1; iteration <= numIterations; iteration++) {
 
@@ -771,6 +772,7 @@ public class FastQParallelTopicModel implements Serializable {
                 this.write(new File(modelFilename + '.' + iteration));
             }
 
+            executor.submit(updater);
             // if (numThreads > 1) {
             // Submit runnables to thread pool
             for (int thread = 0; thread < numThreads; thread++) {
@@ -811,6 +813,8 @@ public class FastQParallelTopicModel implements Serializable {
                     //logger.info("thread " + thread + " done? " + runnables[thread].isFinished);
                     finished = finished && runnables[thread].isFinished;
                 }
+                
+                finished = finished && updater.isFinished;
 
             }
 

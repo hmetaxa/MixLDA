@@ -50,7 +50,7 @@ public class FastQUpdaterRunnable implements Runnable {
 
     }
 
-    public boolean isFinished = false;
+    public boolean isFinished = true;
 
     public void run() {
 
@@ -60,7 +60,7 @@ public class FastQUpdaterRunnable implements Runnable {
             System.out.println("already running!");
             return;
         }
-
+        isFinished = false;
         try {
             while (!isFinished) {
 

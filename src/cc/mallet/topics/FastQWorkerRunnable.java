@@ -63,8 +63,8 @@ public class FastQWorkerRunnable implements Runnable {
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
             int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
-                int threadId,ConcurrentLinkedQueue<FastQDelta> queue
-                ) {
+            int threadId, ConcurrentLinkedQueue<FastQDelta> queue
+    ) {
 
         this.data = data;
         this.threadId = threadId;
@@ -193,7 +193,6 @@ public class FastQWorkerRunnable implements Runnable {
 
         try {
 
-            
             if (!isFinished) {
                 System.out.println("already running!");
                 return;
@@ -254,6 +253,8 @@ public class FastQWorkerRunnable implements Runnable {
 
             shouldSaveState = false;
             isFinished = true;
+
+            queue.add(new FastQDelta(-1, -1, -1, -1));
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -494,7 +495,7 @@ public class FastQWorkerRunnable implements Runnable {
 
             for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
 
-              //  if (!useDocProposal) {
+                //  if (!useDocProposal) {
                 //Sample Word topic mass
                 double sample = ThreadLocalRandom.current().nextDouble() * (trees[type].tree[1]);
 
@@ -579,7 +580,7 @@ public class FastQWorkerRunnable implements Runnable {
 //                    }
                 }
 
-               // }
+                // }
             }
 
             useDocProposal = !useDocProposal;
@@ -592,7 +593,7 @@ public class FastQWorkerRunnable implements Runnable {
 
             if (currentTopic != oldTopic) {
 
-                queue.add(new FastQDelta( currentTopic, oldTopic, type, 0));
+                queue.add(new FastQDelta(currentTopic, oldTopic, type, 0));
                 // Decrement the global type topic count totals
 //                currentTypeTopicCounts[oldTopic]--;
 //                // Decrement the global topic count totals
