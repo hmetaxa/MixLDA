@@ -23,7 +23,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * @author David Mimno, Andrew McCallum
  */
-public class FastWorkerRunnable implements Runnable {
+public class FastQWorkerRunnable implements Runnable {
 
     boolean isFinished = true;
     ArrayList<TopicAssignment> data;
@@ -53,7 +53,7 @@ public class FastWorkerRunnable implements Runnable {
     int MHsteps = 2;
     boolean useCycleProposals = false;
 
-    public FastWorkerRunnable(int numTopics,
+    public FastQWorkerRunnable(int numTopics,
             double[] alpha, double alphaSum,
             double beta, Randoms random,
             ArrayList<TopicAssignment> data,
@@ -186,6 +186,7 @@ public class FastWorkerRunnable implements Runnable {
 
         try {
 
+            
             if (!isFinished) {
                 System.out.println("already running!");
                 return;

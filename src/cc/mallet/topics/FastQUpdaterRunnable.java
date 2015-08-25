@@ -7,6 +7,8 @@ package cc.mallet.topics;
 
 import cc.mallet.util.Randoms;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  *
@@ -14,17 +16,88 @@ import java.util.ArrayList;
  */
 public class FastQUpdaterRunnable implements Runnable {
 
-     public FastQUpdaterRunnable(int numTopics,
-            double[] alpha, double alphaSum,
-            double beta, Randoms random,
-            ArrayList<TopicAssignment> data,
+    protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
+    protected int[] tokensPerTopic; // indexed by <topic index>
+    protected FTree[] trees; //store 
+    protected List<ConcurrentLinkedQueue<FastQDelta>> queues;
+    protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    protected double alphaSum;
+    protected double beta;   // Prior on per-topic multinomial distribution over words
+    protected double betaSum;
+    boolean useCycleProposals = false;
+    public static final double DEFAULT_BETA = 0.01;
+
+    public FastQUpdaterRunnable(
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
-            int startDoc, int numDocs, FTree[] trees) {
-         
-     }
-     
-    public void run() {
+            FTree[] trees,
+            List<ConcurrentLinkedQueue<FastQDelta>> queues,
+            double[] alpha, double alphaSum,
+            double beta, boolean useCycleProposals) {
+
+        this.alphaSum = alphaSum;
+        this.alpha = alpha;
+        this.beta = beta;
+        this.betaSum = beta * typeTopicCounts.length;
+        this.queues = queues;
+        this.typeTopicCounts = typeTopicCounts;
+        this.tokensPerTopic = tokensPerTopic;
+        this.trees = trees;
+        this.useCycleProposals = useCycleProposals;
 
     }
+
+    public boolean isFinished = false;
+
+    public void run() {
+
+        if (!isFinished) {
+            System.out.println("already running!");
+            return;
+        }
+
+        try {
+            while (!isFinished) {
+
+                FastQDelta delta;
+                int[] currentTypeTopicCounts;
+                for (int x = 0; x < queues.size(); x++) {
+                    while ((delta = queues.get(x).poll()) != null) {
+
+                        currentTypeTopicCounts = typeTopicCounts[delta.Type];
+
+                        tokensPerTopic[delta.OldTopic]--;
+                        assert (tokensPerTopic[delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
+                        //Update tree
+                        if (useCycleProposals) {
+                            trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
+                        } else {
+                            trees[delta.Type].update(delta.OldTopic, (alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
+                        }
+
+                        //add new count
+                        currentTypeTopicCounts[delta.NewTopic]++;
+                        tokensPerTopic[delta.NewTopic]++;
+                        if (useCycleProposals) {
+                            trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                        } else {
+                            trees[delta.Type].update(delta.NewTopic, (alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                        }
+
+                    }
+
+                }
+
+                try {
+                    Thread.currentThread().sleep(20);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 }

@@ -5,7 +5,11 @@
  */
 package cc.mallet.topics;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.Arrays;
+import java.io.Serializable;
 
 /**
  *
@@ -13,77 +17,123 @@ import java.util.Arrays;
  */
 public class FTree {
 
-    protected double[] w;
-    protected int T;
+// implements Serializable, Cloneable, Iterable<Double>
+    /**
+     * serializable value *
+     */
+   
+
+    protected double[] tree;
+    protected int size;
+
+    
+//     private static final long serialVersionUID = -680739021358875431L;
+//     
+//    /**
+//     * stored hash *
+//     */
+//    private transient int hash;
+//
+//    /**
+//     * stored string *
+//     */
+//    private transient String treeString;
+//
+//    /* default reading serialization */
+//    private void readObject(ObjectInputStream inputStream) throws ClassNotFoundException, IOException {
+//        inputStream.defaultReadObject();
+//    }
+//
+//    /* default writing serialization */
+//    private void writeObject(ObjectOutputStream outputStream) throws IOException {
+//        outputStream.defaultWriteObject();
+//    }
 
     public FTree() {
-        T = 0;
-        w = null;
+        size = 0;
+        tree = null;
     }
 
-    public FTree(int num) {
-        init(num);
+    public FTree(int size) {
+        init(size);
     }
 
-    public void init(int num) {
-        T = num;
-        w = new double[2 * T];
+    public void init(int size) {
+
+        if (size <= 0 || size == Integer.MAX_VALUE) {
+            throw new IllegalArgumentException();
+        }
+
+        this.size = size;
+        tree = new double[2 * size];
+
+       // this.hash = 0;
+        //this.treeString = null;
     }
 
     public FTree(double[] weights) {
-        T = weights.length;
-        init(T);
+        size = weights.length;
+        init(size);
         constructTree(weights);
     }
 
 //    public void recompute(double[] weights) {
 //        constructTree(weights);
 //    }
-    public FTree clone() {
-        FTree ret = new FTree(T);
-        System.arraycopy(w, 0, ret.w, 0, T);
-        return ret;
+    public synchronized FTree clone() {
+        try {
+            FTree ret = (FTree) super.clone(); // new FTree(size);
+            ret.tree = Arrays.copyOf(this.tree, this.tree.length);
+            return ret;
+        } catch (CloneNotSupportedException e) {
+            // this shouldn't happen, since we are Cloneable
+            throw new InternalError();
+        }
     }
 
-    public void constructTree(double[] weights) {
+    public synchronized void constructTree(double[] weights) {
         // Reversely initialize elements
-        for (int i = 2 * T - 1; i > 0; --i) {
-            if (i >= T) {
-                w[i] = weights[i - T];
+        for (int i = 2 * size - 1; i > 0; --i) {
+            if (i >= size) {
+                tree[i] = weights[i - size];
             } else {
-                w[i] = w[2 * i] + w[2 * i + 1];
+                tree[i] = tree[2 * i] + tree[2 * i + 1];
             }
         }
     }
 
-    public int sample(double u) {
+    public synchronized int sample(double u) {
+        if (u > tree[1]) {
+            throw new IllegalArgumentException();
+        }
+
         int i = 1;
-       // u = u * w[i];
-        while (i < T) {
-            if (u < w[2 * i]) {
+
+        while (i < size) {
+            if (u < tree[2 * i]) {
                 i = 2 * i;
             } else {
-                u = u - w[2 * i];
+                u = u - tree[2 * i];
                 i = 2 * i + 1;
             }
         }
 
-        return i - T;
+        return i - size;
     }
 
-    public void update(int t, double new_w) {
+    public synchronized void update(int t, double new_w) {
         // t = 0..T-1, 
-        int i = t + T;
-        double delta = new_w - w[i];
+        int i = t + size;
+        double delta = new_w - tree[i];
         while (i > 0) {
-            w[i] += delta;
+            tree[i] += delta;
             i = i / 2;
         }
     }
 
-    public double getComponent(int t) {
+    public synchronized double getComponent(int t) {
         // t = 0..T-1
-        return w[t + T];
+        return tree[t + size];
     }
 
     public static void main(String[] args) {

@@ -35,11 +35,11 @@ import cc.mallet.util.MalletLogger;
  *
  * @author David Mimno, Andrew McCallum Omiros test mercucial
  */
-public class FastParallelTopicModel implements Serializable {
+public class FastQParallelTopicModel implements Serializable {
 
     public static final int UNASSIGNED_TOPIC = -1;
 
-    public static Logger logger = MalletLogger.getLogger(FastParallelTopicModel.class.getName());
+    public static Logger logger = MalletLogger.getLogger(FastQParallelTopicModel.class.getName());
 
     public ArrayList<TopicAssignment> data;  // the training instances and their topic assignments
     public Alphabet alphabet; // the alphabet for the input data
@@ -64,11 +64,15 @@ public class FastParallelTopicModel implements Serializable {
 
     public static final double DEFAULT_BETA = 0.01;
 
-    public int[][] typeTopicCounts; // indexed by <feature index, topic index>
-    public int[] tokensPerTopic; // indexed by <topic index>
-
+    //we should only have one updating thread that updates global counts, 
+    // otherwise use AtomicIntegerArray for tokensPerTopic and split typeTopicCounts in such a way that only one thread updates topicCounts for a specific type
+    
+    public int[][] typeTopicCounts; //
+    public int[] tokensPerTopic; // indexed by <topic index> 
     public FTree[] trees; //store 
 
+    public List<ConcurrentLinkedQueue<FastQDelta>> queues; 
+    
     // for dirichlet estimation
     public int[] docLengthCounts; // histogram of document sizes
     public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -101,11 +105,11 @@ public class FastParallelTopicModel implements Serializable {
 
     int numThreads = 1;
 
-    public FastParallelTopicModel(int numberOfTopics) {
+    public FastQParallelTopicModel(int numberOfTopics) {
         this(numberOfTopics, numberOfTopics, DEFAULT_BETA);
     }
 
-    public FastParallelTopicModel(int numberOfTopics, double alphaSum, double beta) {
+    public FastQParallelTopicModel(int numberOfTopics, double alphaSum, double beta) {
         this(newLabelAlphabet(numberOfTopics), alphaSum, beta);
     }
 
@@ -117,7 +121,7 @@ public class FastParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta) {
+    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta) {
         this.data = new ArrayList<TopicAssignment>();
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -663,11 +667,14 @@ public class FastParallelTopicModel implements Serializable {
         long startTime = System.currentTimeMillis();
 
         FastWorkerRunnable[] runnables = new FastWorkerRunnable[numThreads];
+        queues = new  ArrayList<ConcurrentLinkedQueue<FastQDelta>> (numThreads); 
+        
+        
 
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
 
-        if (numThreads > 1) {
+        if (numThreads > 1) {                     
 
             for (int thread = 0; thread < numThreads; thread++) {
                 int[] runnableTotals = new int[numTopics];
@@ -1597,12 +1604,12 @@ public class FastParallelTopicModel implements Serializable {
         }
     }
 
-    public static FastParallelTopicModel read(File f) throws Exception {
+    public static FastQParallelTopicModel read(File f) throws Exception {
 
-        FastParallelTopicModel topicModel = null;
+        FastQParallelTopicModel topicModel = null;
 
         ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-        topicModel = (FastParallelTopicModel) ois.readObject();
+        topicModel = (FastQParallelTopicModel) ois.readObject();
         ois.close();
 
         topicModel.initializeHistograms();
@@ -1618,7 +1625,7 @@ public class FastParallelTopicModel implements Serializable {
 
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
-            FastParallelTopicModel lda = new FastParallelTopicModel(numTopics, 50.0, 0.01);
+            FastQParallelTopicModel lda = new FastQParallelTopicModel(numTopics, 50.0, 0.01);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training);

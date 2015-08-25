@@ -77,28 +77,30 @@ public class iMixTopicModelExample {
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
-        
+
         try {
 
-            double[] temp = {4, 2, 1, 3};
+            double[] temp = {0.3, 1.5, 0.4, 0.3};
             FTree tree = new FTree(temp);
 
-            int tmp = tree.sample(3);
-            logger.info("FTree sample 3 (1):"+tmp);
-            
-            tmp = tree.sample(7);
-            logger.info("FTree sample 7 (3):"+tmp);
-            
-            tree.update(2, 4);
-            
-            tmp = tree.sample(7);
-            logger.info("FTree sample 7 (2):"+tmp);
-            
+            int tmp = tree.sample(2.1);
+            logger.info("FTree sample 2.1 (2):" + tmp);
+
+            double tmp2 = tree.getComponent(0);
+            logger.info("FTree getComponent(0):" + tmp2);
+
+            tmp2 = tree.getComponent(3);
+            logger.info("FTree getComponent(3):" + tmp2);
+
+            tree.update(2, 1.4);
+
+            tmp = tree.sample(3.19);
+            logger.info("FTree sample 3.19 (2):" + tmp);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
                 + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
@@ -174,14 +176,15 @@ public class iMixTopicModelExample {
 
                     grantType = "FP7";
 
-                    experimentDescription += "Topic modeling analyzing:\n1)Abstracts of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
+                    experimentDescription += "Topic modeling analyzing:\n1)Full text of publications and project descriptions related to " + grantType + "\n2)Research Areas\n3)Venues (e.g., PubMed, Arxiv, ACM)\n4)Grants per Publication Links\n SimilarityType:" + similarityType.toString();
 
                     sql = "select pubs.originalid AS DocId, \n"
                             + "                            CASE WHEN IFNULL(pubs.fulltext,'')='' THEN pubs.abstract ELSE pubs.fulltext END AS TEXT,\n"
                             //+ "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.title||' '||pubs.fulltext ELSE pubs.title||' '||pubs.abstract END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.projectId,'\t') as GrantIds,"
                             + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN  ''  else Journal END as Venue, \n"
+                            //+ "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
                             + "                    'PubAbstract'   AS TEXTType \n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid \n"
@@ -196,8 +199,7 @@ public class iMixTopicModelExample {
                             + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.projectId in (SELECT links.projectId from Links ))\n"
-
-                     + " LIMIT 20000";
+                            + " LIMIT 20000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
 //                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
