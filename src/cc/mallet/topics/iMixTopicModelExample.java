@@ -83,7 +83,7 @@ public class iMixTopicModelExample {
             double[] temp = {0.3, 1.5, 0.4, 0.3};
             FTree tree = new FTree(temp);
 
-            int tmp = tree.sample(2.1);
+            int tmp = tree.sample(2.1/2.5);
             logger.info("FTree sample 2.1 (2):" + tmp);
 
             double tmp2 = tree.getComponent(0);
@@ -94,7 +94,7 @@ public class iMixTopicModelExample {
 
             tree.update(2, 1.4);
 
-            tmp = tree.sample(3.19);
+            tmp = tree.sample(3.19/3.5);
             logger.info("FTree sample 3.19 (2):" + tmp);
 
         } catch (Exception e) {
@@ -183,8 +183,8 @@ public class iMixTopicModelExample {
                             //+ "                            CASE WHEN IFNULL(pubs.abstract,'')='' THEN pubs.title||' '||pubs.fulltext ELSE pubs.title||' '||pubs.abstract END AS TEXT,\n"
                             + "                            GROUP_CONCAT(links.projectId,'\t') as GrantIds,"
                             + "                     GROUP_CONCAT(Category2,'\t') as Areas, \n"
-                            + "                        CASE WHEN IFNULL(journal,'')='' THEN  ''  else Journal END as Venue, \n"
-                            //+ "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
+                            //+ "                        CASE WHEN IFNULL(journal,'')='' THEN  ''  else Journal END as Venue, \n"
+                            + "                        CASE WHEN IFNULL(journal,'')='' THEN  Repository  else Journal END as Venue, \n"
                             + "                    'PubAbstract'   AS TEXTType \n"
                             + "                            from pubs \n"
                             + "                            inner join links on links.OriginalId = pubs.originalid \n"
@@ -820,7 +820,7 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runFastParallelModel = true;
+                boolean runFastParallelModel = false;
                 if (runFastParallelModel) {
                     FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 1.0, 0.01);
 
@@ -828,7 +828,7 @@ public class iMixTopicModelExample {
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(1);
+                    modelOrig.setNumThreads(3);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);
@@ -848,7 +848,7 @@ public class iMixTopicModelExample {
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(1);
+                    modelOrig.setNumThreads(3);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);

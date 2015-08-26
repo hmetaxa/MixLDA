@@ -103,10 +103,12 @@ public class FTree {
     }
 
     public synchronized int sample(double u) {
-        if (u > tree[1]) {
+        if (u > 1) {
             throw new IllegalArgumentException();
         }
 
+        // due to multi threading / queue based updates, we should only pass the sample [0,1] from uniform
+        u = u * tree[1];
         int i = 1;
 
         while (i < size) {
@@ -121,10 +123,10 @@ public class FTree {
         return i - size;
     }
 
-    public synchronized void update(int t, double new_w) {
+    public synchronized void update(int topic, double new_value) {
         // t = 0..T-1, 
-        int i = t + size;
-        double delta = new_w - tree[i];
+        int i = topic + size;
+        double delta = new_value - tree[i];
         while (i > 0) {
             tree[i] += delta;
             i = i / 2;
@@ -143,7 +145,7 @@ public class FTree {
             double[] temp = {1, 2, 3, 4};
             FTree tree = new FTree(temp);
 
-            int tmp = tree.sample(3);
+            int tmp = tree.sample(0.4);
 
         } catch (Exception e) {
             e.printStackTrace();

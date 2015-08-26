@@ -10,7 +10,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CyclicBarrier;
 
 /**
  *
@@ -26,6 +28,7 @@ public class FastQUpdaterRunnable implements Runnable {
     protected double alphaSum;
     protected double beta;   // Prior on per-topic multinomial distribution over words
     protected double betaSum;
+    private final CyclicBarrier cyclicBarrier;
     boolean useCycleProposals = false;
     public static final double DEFAULT_BETA = 0.01;
 
@@ -35,9 +38,11 @@ public class FastQUpdaterRunnable implements Runnable {
             FTree[] trees,
             List<ConcurrentLinkedQueue<FastQDelta>> queues,
             double[] alpha, double alphaSum,
-            double beta, boolean useCycleProposals) {
+            double beta, boolean useCycleProposals,
+            CyclicBarrier cyclicBarrier) {
 
         this.alphaSum = alphaSum;
+        this.cyclicBarrier = cyclicBarrier;
         this.alpha = alpha;
         this.beta = beta;
         this.betaSum = beta * typeTopicCounts.length;
@@ -76,23 +81,23 @@ public class FastQUpdaterRunnable implements Runnable {
                         }
                         currentTypeTopicCounts = typeTopicCounts[delta.Type];
 
+                        // Decrement the global topic count totals
+                        currentTypeTopicCounts[delta.OldTopic]--;
+                        currentTypeTopicCounts[delta.NewTopic]++;
+                        
                         tokensPerTopic[delta.OldTopic]--;
                         assert (tokensPerTopic[delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
+                        tokensPerTopic[delta.NewTopic]++;
+                        
                         //Update tree
                         if (useCycleProposals) {
                             trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
-                        } else {
-                            trees[delta.Type].update(delta.OldTopic, (alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
-                        }
-
-                        //add new count
-                        currentTypeTopicCounts[delta.NewTopic]++;
-                        tokensPerTopic[delta.NewTopic]++;
-                        if (useCycleProposals) {
                             trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
                         } else {
+                            trees[delta.Type].update(delta.OldTopic, (alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
                             trees[delta.Type].update(delta.NewTopic, (alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
                         }
+                        
 
                     }
 
@@ -104,6 +109,16 @@ public class FastQUpdaterRunnable implements Runnable {
                     ex.printStackTrace();
                 }
 
+            }
+
+            try {
+                cyclicBarrier.await();
+            } catch (InterruptedException e) {
+                System.out.println("Main Thread interrupted!");
+                e.printStackTrace();
+            } catch (BrokenBarrierException e) {
+                System.out.println("Main Thread interrupted!");
+                e.printStackTrace();
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -252,6 +252,28 @@ public class FastWorkerRunnable implements Runnable {
         }
     }
 
+    public static int lower_bound(double[] arr, double key, int len) {
+        //int len = arr.length;
+        int lo = 0;
+        int hi = len - 1;
+        int mid = (lo + hi) / 2;
+        while (true) {
+            //int cmp = arr[mid].compareTo(key);
+            if (arr[mid] >= key) {
+                hi = mid - 1;
+                if (hi < lo) {
+                    return mid;
+                }
+            } else {
+                lo = mid + 1;
+                if (hi < lo) {
+                    return mid < len - 1 ? mid + 1 : -1;
+                }
+            }
+            mid = (lo + hi) / 2; //(hi-lo)/2+lo in order not to overflow?  or  (lo + hi) >>> 1
+        }
+    }
+
     public static int lower_bound(Comparable[] arr, Comparable key) {
         int len = arr.length;
         int lo = 0;
@@ -279,7 +301,7 @@ public class FastWorkerRunnable implements Runnable {
             boolean readjustTopicsAndStats /* currently ignored */) {
 
         int[] oneDocTopics = topicSequence.getFeatures();
-
+        double[] topicDocWordMasses = new double[numTopics];
         int[] currentTypeTopicCounts;
         int[] localTopicIndex = new int[numTopics];
         int type, oldTopic, newTopic;
@@ -288,6 +310,7 @@ public class FastWorkerRunnable implements Runnable {
 
         int[] localTopicCounts = new int[numTopics];
 
+        //Double[] topicDocWordMasses = new Double[numTopics];
         //		populate topic counts
         for (int position = 0; position < docLength; position++) {
             if (oneDocTopics[position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
@@ -354,12 +377,12 @@ public class FastWorkerRunnable implements Runnable {
                 assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
                 // Multi core approximation: do not update fTree[w] apriori
                 trees[type].update(oldTopic, (alpha[oldTopic] * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
-
             }
 
             //		compute word / doc mass for binary search
             double topicDocWordMass = 0.0;
-            Double topicDocWordMasses[] = new Double[nonZeroTopics];
+            //double[] topicDocWordMasses = new double[nonZeroTopics];
+            //Arrays.fill(topicDocWordMasses, (Double)0.0);
 
             for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                 int topic = localTopicIndex[denseIndex];
@@ -372,15 +395,30 @@ public class FastWorkerRunnable implements Runnable {
 
             }
 
-            double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
+            double nextUniform = ThreadLocalRandom.current().nextDouble();
+            double sample = nextUniform * (topicDocWordMass + trees[type].tree[1]);
+            newTopic = -1;
+
+            //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
             if (sample < topicDocWordMass) {
 
-                int tmp = lower_bound(topicDocWordMasses, sample);
+                int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
                 newTopic = localTopicIndex[tmp]; //actual topic
+//                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+//                        int topic = localTopicIndex[denseIndex];
+//                        int n = localTopicCounts[topic];
+//
+//                        sample -= (currentTypeTopicCounts[topic] + beta) * n / (tokensPerTopic[topic] + betaSum);
+//
+//                        if (sample <= 0.0) {
+//                            newTopic = topic;
+//                            break;
+//                        }
+//            
 
             } else {
-                sample -= topicDocWordMass;
-                newTopic = trees[type].sample(sample);
+                //sample -= topicDocWordMass;
+                newTopic = trees[type].sample(nextUniform);
             }
 
             if (newTopic == -1) {
@@ -424,6 +462,18 @@ public class FastWorkerRunnable implements Runnable {
 
             trees[type].update(newTopic, (alpha[newTopic] * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum)));
 
+//            if (newTopic != oldTopic) {
+//
+//                currentTypeTopicCounts[oldTopic]--;
+//                currentTypeTopicCounts[newTopic]++;
+//
+//                tokensPerTopic[oldTopic]--;
+//                assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
+//                tokensPerTopic[newTopic]++;
+//
+//                trees[type].update(oldTopic, (alpha[oldTopic] * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
+//                trees[type].update(newTopic, (alpha[newTopic] * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum)));
+//            }
         }
 
         if (shouldSaveState) {
@@ -486,9 +536,9 @@ public class FastWorkerRunnable implements Runnable {
 
             for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
 
-              //  if (!useDocProposal) {
+                //  if (!useDocProposal) {
                 //Sample Word topic mass
-                double sample = ThreadLocalRandom.current().nextDouble() * (trees[type].tree[1]);
+                double sample = ThreadLocalRandom.current().nextDouble();// * (trees[type].tree[1]);
 
                 //	Make sure it actually gets set
                 newTopic = -1;
@@ -571,7 +621,7 @@ public class FastWorkerRunnable implements Runnable {
 //                    }
                 }
 
-               // }
+                // }
             }
 
             useDocProposal = !useDocProposal;

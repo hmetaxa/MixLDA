@@ -664,8 +664,8 @@ public class FastQParallelTopicModel implements Serializable {
     public void estimate() throws IOException {
 
         long startTime = System.currentTimeMillis();
+        final CyclicBarrier barrier = new CyclicBarrier(numThreads + 2);//one for the current thread and one for the updater
 
-      
         FastQWorkerRunnable[] runnables = new FastQWorkerRunnable[numThreads];
         queues = new ArrayList<ConcurrentLinkedQueue<FastQDelta>>(numThreads);
 
@@ -734,7 +734,7 @@ public class FastQParallelTopicModel implements Serializable {
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
-                    thread, queues.get(thread));
+                    thread, queues.get(thread), barrier);
 
             runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -746,15 +746,14 @@ public class FastQParallelTopicModel implements Serializable {
             runnables[thread].makeOnlyThread();
         }
 
-          FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
+        FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
                 tokensPerTopic,
                 trees,
                 queues,
                 alpha, alphaSum,
-                beta, useCycleProposals);
+                beta, useCycleProposals, barrier);
 
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
-        
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads + 1); 
 
         for (int iteration = 1; iteration <= numIterations; iteration++) {
 
@@ -786,38 +785,47 @@ public class FastQParallelTopicModel implements Serializable {
                 //runnables[thread].run();
             }
 
-            // I'm getting some problems that look like 
-            //  a thread hasn't started yet when it is first
-            //  polled, so it appears to be finished. 
-            // This only occurs in very short corpora.
             try {
-                Thread.sleep(20);
+                barrier.await();
             } catch (InterruptedException e) {
-
+                System.out.println("Main Thread interrupted!");
+                e.printStackTrace();
+            } catch (BrokenBarrierException e) {
+                System.out.println("Main Thread interrupted!");
+                e.printStackTrace();
             }
 
-            //TODO: use Barrier here 
-            boolean finished = false;
-            while (!finished) {
-
-                try {
-                    Thread.sleep(10);
-                } catch (InterruptedException e) {
-
-                }
-
-                finished = true;
-
-                // Are all the threads done?
-                for (int thread = 0; thread < numThreads; thread++) {
-                    //logger.info("thread " + thread + " done? " + runnables[thread].isFinished);
-                    finished = finished && runnables[thread].isFinished;
-                }
-                
-                finished = finished && updater.isFinished;
-
-            }
-
+//            // I'm getting some problems that look like 
+//            //  a thread hasn't started yet when it is first
+//            //  polled, so it appears to be finished. 
+//            // This only occurs in very short corpora.
+//            try {
+//                Thread.sleep(20);
+//            } catch (InterruptedException e) {
+//
+//            }
+//
+//            //TODO: use Barrier here 
+//            boolean finished = false;
+//            while (!finished) {
+//
+//                try {
+//                    Thread.sleep(10);
+//                } catch (InterruptedException e) {
+//
+//                }
+//
+//                finished = true;
+//
+//                // Are all the threads done?
+//                for (int thread = 0; thread < numThreads; thread++) {
+//                    //logger.info("thread " + thread + " done? " + runnables[thread].isFinished);
+//                    finished = finished && runnables[thread].isFinished;
+//                }
+//                
+//                finished = finished && updater.isFinished;
+//
+//            }
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
             if (elapsedMillis < 5000) {
                 logger.info(elapsedMillis + "ms ");
