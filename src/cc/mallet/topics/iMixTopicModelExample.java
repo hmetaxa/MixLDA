@@ -62,13 +62,13 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 200;
-        int maxNumTopics = 200;
+        int numTopics = 400;
+        int maxNumTopics = 400;
         int numIterations = 500; //Max 2000
         int independentIterations = 0;
         int burnIn = 50;
         int optimizeInterval = 20;
-        ExperimentType experimentType = ExperimentType.Authors;
+        ExperimentType experimentType = ExperimentType.FullGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -199,7 +199,7 @@ public class iMixTopicModelExample {
                             + " 'ProjectAbstract' AS TEXTType \n"
                             + "                            from projectView\n"
                             + "                            where IFNULL(abstract,'')<>''  and (projectView.projectId in (SELECT links.projectId from Links ))\n"
-                            + " LIMIT 20000";
+                            + " LIMIT 40000";
 //                        " select Doc.DocId, Doc.text, GROUP_CONCAT(GrantPerDoc.GrantId,'\t') as GrantIds  "
 //                        + " from Doc inner join "
 //                        + " GrantPerDoc on Doc.DocId=GrantPerDoc.DocId "
@@ -391,6 +391,8 @@ public class iMixTopicModelExample {
                 Statement statement = connection.createStatement();
                 statement.setQueryTimeout(60);  // set timeout to 30 sec.
                 ResultSet rs = statement.executeQuery(sql);
+                logger.info("SQL Query executed");
+                
                 String txt = "";
                 while (rs.next()) {
                     // read the result set
