@@ -42,8 +42,10 @@ public class FastQWorkerRunnable implements Runnable {
     protected double beta;   // Prior on per-topic multinomial distribution over words
     protected double betaSum;
     public static final double DEFAULT_BETA = 0.01;
-    protected double smoothingOnlyMass = 0.0;
-    protected Double[] smoothingOnlyCumValues;
+    protected double docSmoothingOnlyMass = 0.0;
+    protected double[] docSmoothingOnlyCumValues;
+    
+    
     protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
     protected int[] tokensPerTopic; // indexed by <topic index>
     // for dirichlet estimation
@@ -56,7 +58,7 @@ public class FastQWorkerRunnable implements Runnable {
     protected int threadId = -1;
     protected ConcurrentLinkedQueue<FastQDelta> queue;
     private final CyclicBarrier cyclicBarrier;
-    int MHsteps = 1;
+    protected int MHsteps = 2;
     boolean useCycleProposals = false;
 
     public FastQWorkerRunnable(int numTopics,
@@ -67,6 +69,7 @@ public class FastQWorkerRunnable implements Runnable {
             int[] tokensPerTopic,
             int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
             int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier
+            //, FTree betaSmoothingTree
     ) {
 
         this.data = data;
@@ -102,7 +105,7 @@ public class FastQWorkerRunnable implements Runnable {
         this.numDocs = numDocs;
         this.useCycleProposals = useCycleProposals;
 
-        smoothingOnlyCumValues = new Double[numTopics];
+        docSmoothingOnlyCumValues = new double[numTopics];
 
         //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
@@ -204,13 +207,15 @@ public class FastQWorkerRunnable implements Runnable {
 
             isFinished = false;
 
-            // Initialize the smoothing-only sampling bucket (Sum(a[i])
-            smoothingOnlyMass = 0;
+            // Initialize the doc smoothing-only sampling bucket (Sum(a[i])
+            docSmoothingOnlyMass = 0;
             // cachedCoefficients cumulative array that will be used for binary search
             for (int topic = 0; topic < numTopics; topic++) {
-                smoothingOnlyMass += alpha[topic];
-                smoothingOnlyCumValues[topic] = smoothingOnlyMass;
+                docSmoothingOnlyMass += alpha[topic];
+                docSmoothingOnlyCumValues[topic] = docSmoothingOnlyMass;
             }
+            
+            
 
             //init trees
 //            double[] temp = new double[numTopics];
@@ -392,11 +397,11 @@ public class FastQWorkerRunnable implements Runnable {
 
             //		compute word / doc mass for binary search
             double topicDocWordMass = 0.0;
-            
+
             for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                 int topic = localTopicIndex[denseIndex];
                 int n = localTopicCounts[topic];
-                topicDocWordMass += (currentTypeTopicCounts[topic] + beta) * n / (tokensPerTopic[topic] + betaSum);
+                topicDocWordMass += n* (currentTypeTopicCounts[topic] + beta) / (tokensPerTopic[topic] + betaSum);
                 //topicDocWordMass +=  n * trees[type].getComponent(topic);
                 topicDocWordMasses[denseIndex] = topicDocWordMass;
 
@@ -411,6 +416,23 @@ public class FastQWorkerRunnable implements Runnable {
 
                 int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
                 newTopic = localTopicIndex[tmp]; //actual topic
+
+//                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+//                    int topic = localTopicIndex[denseIndex];
+//                    int n = localTopicCounts[topic];
+//
+//                    sample -= n * (currentTypeTopicCounts[topic] + beta) / (tokensPerTopic[topic] + betaSum);
+//
+//                    if (sample <= 0.0) {
+//                        newTopic = topic;
+//                        break;
+//                    }
+//                }
+//
+//                if (tmpnewTopic != newTopic) {
+//                    System.err.println("Binary search error: " + tmpnewTopic + " " + newTopic);
+//                }
+
             } else {
                 //sample -= topicDocWordMass;
                 newTopic = trees[type].sample(nextUniform);
@@ -513,7 +535,6 @@ public class FastQWorkerRunnable implements Runnable {
                 //in every Metropolis hasting step we are taking two samples cycling related doc & word proposals and we eventually keep the best one
                 // we can sample from doc topic mass immediately after word topic mass, as it doesn't get affected by current topic selection!! 
                 //--> thus we get & check both samples from cycle proposal in every step
-                
 
                 //  if (!useDocProposal) {
                 //Sample Word topic mass
@@ -557,26 +578,25 @@ public class FastQWorkerRunnable implements Runnable {
                // } else {
 
                 // Sample Doc topic mass 
-                
-                sample = ThreadLocalRandom.current().nextDouble() * (smoothingOnlyMass + docLength - 1);
+                sample = ThreadLocalRandom.current().nextDouble() * (docSmoothingOnlyMass + docLength - 1);
                 double origSample = sample;
 
                 //	Make sure it actually gets set
                 newTopic = -1;
 
-                if (sample < smoothingOnlyMass) {
+                if (sample < docSmoothingOnlyMass) {
 
-                    newTopic = lower_bound(smoothingOnlyCumValues, sample);
+                    newTopic = lower_bound(docSmoothingOnlyCumValues, sample, numTopics);
 
                 } else { //just select one random topic from DocTopics excluding the current one
-                    sample -= smoothingOnlyMass;
+                    sample -= docSmoothingOnlyMass;
                     int tmpPos = (int) sample < position ? (int) sample : (int) sample + 1;
                     newTopic = oneDocTopics[tmpPos];
 
                 }
 
                 if (newTopic == -1) {
-                    System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + smoothingOnlyMass);
+                    System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + docSmoothingOnlyMass);
                     newTopic = numTopics - 1; // TODO is this appropriate
                     //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
                 }
@@ -652,4 +672,10 @@ public class FastQWorkerRunnable implements Runnable {
         }
 
     }
+    
+    
+ 
+    
+    
+     
 }

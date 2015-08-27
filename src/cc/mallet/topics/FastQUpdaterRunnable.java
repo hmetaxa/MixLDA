@@ -28,6 +28,7 @@ public class FastQUpdaterRunnable implements Runnable {
     protected double alphaSum;
     protected double beta;   // Prior on per-topic multinomial distribution over words
     protected double betaSum;
+    //protected FTree betaSmoothingTree;
     private final CyclicBarrier cyclicBarrier;
     boolean useCycleProposals = false;
     public static final double DEFAULT_BETA = 0.01;
@@ -39,7 +40,9 @@ public class FastQUpdaterRunnable implements Runnable {
             List<ConcurrentLinkedQueue<FastQDelta>> queues,
             double[] alpha, double alphaSum,
             double beta, boolean useCycleProposals,
-            CyclicBarrier cyclicBarrier) {
+            CyclicBarrier cyclicBarrier
+    //        , FTree betaSmoothingTree
+    ) {
 
         this.alphaSum = alphaSum;
         this.cyclicBarrier = cyclicBarrier;
@@ -51,6 +54,7 @@ public class FastQUpdaterRunnable implements Runnable {
         this.tokensPerTopic = tokensPerTopic;
         this.trees = trees;
         this.useCycleProposals = useCycleProposals;
+        //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
 
     }
@@ -93,6 +97,9 @@ public class FastQUpdaterRunnable implements Runnable {
                         if (useCycleProposals) {
                             trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
                             trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                            
+                            //betaSmoothingTree.update(delta.OldTopic, (beta / (tokensPerTopic[delta.OldTopic] + betaSum)));
+                            //betaSmoothingTree.update(delta.NewTopic, ( beta / (tokensPerTopic[delta.NewTopic] + betaSum)));
                         } else {
                             trees[delta.Type].update(delta.OldTopic, (alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
                             trees[delta.Type].update(delta.NewTopic, (alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));

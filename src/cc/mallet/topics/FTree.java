@@ -10,6 +10,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.Arrays;
 import java.io.Serializable;
+import java.util.BitSet;
 
 /**
  *
@@ -25,6 +26,8 @@ public class FTree {
 
     protected double[] tree;
     protected int size;
+    //protected BitSet activeTopics ; 
+    //protected int activeTopicsNum ; 
 
     
 //     private static final long serialVersionUID = -680739021358875431L;
@@ -66,6 +69,7 @@ public class FTree {
 
         this.size = size;
         tree = new double[2 * size];
+        //activeTopics = new BitSet(size);
 
        // this.hash = 0;
         //this.treeString = null;
@@ -92,7 +96,17 @@ public class FTree {
     }
 
     public synchronized void constructTree(double[] weights) {
-        // Reversely initialize elements
+//        activeTopicsNum = 0;
+//     for (int i = 0; i <size; i++) {
+//         boolean activeTopic = weights[i]!=0;
+//         activeTopics.set(i, activeTopic);
+//          activeTopicsNum ++;    
+//     }
+//
+//     activeTopicsNum += 2; //leave two spare topics
+//     tree = new double[2 * activeTopicsNum];
+// Reversely initialize elements
+        Arrays.fill(tree, 0);
         for (int i = 2 * size - 1; i > 0; --i) {
             if (i >= size) {
                 tree[i] = weights[i - size];

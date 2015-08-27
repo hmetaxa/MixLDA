@@ -375,7 +375,7 @@ public class FastWorkerRunnable implements Runnable {
                 // Decrement the global topic count totals
                 tokensPerTopic[oldTopic]--;
                 assert (tokensPerTopic[oldTopic] >= 0) : "old Topic " + oldTopic + " below 0";
-                // Multi core approximation: do not update fTree[w] apriori
+
                 trees[type].update(oldTopic, (alpha[oldTopic] * (currentTypeTopicCounts[oldTopic] + beta) / (tokensPerTopic[oldTopic] + betaSum)));
             }
 
@@ -389,8 +389,7 @@ public class FastWorkerRunnable implements Runnable {
                 int n = localTopicCounts[topic];
 
                 //	initialize the normalization constant for the (B * n_{t|d}) term
-                topicDocWordMass += (currentTypeTopicCounts[topic] + beta) * n / (tokensPerTopic[topic] + betaSum);
-                //topicDocWordMass +=  n * trees[type].getComponent(topic);
+                topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta) / (tokensPerTopic[topic] + betaSum);
                 topicDocWordMasses[denseIndex] = topicDocWordMass;
 
             }
@@ -403,18 +402,22 @@ public class FastWorkerRunnable implements Runnable {
             if (sample < topicDocWordMass) {
 
                 int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
-                newTopic = localTopicIndex[tmp]; //actual topic
-//                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-//                        int topic = localTopicIndex[denseIndex];
-//                        int n = localTopicCounts[topic];
-//
-//                        sample -= (currentTypeTopicCounts[topic] + beta) * n / (tokensPerTopic[topic] + betaSum);
-//
-//                        if (sample <= 0.0) {
-//                            newTopic = topic;
-//                            break;
-//                        }
-//            
+                int tmpnewTopic = localTopicIndex[tmp]; //actual topic
+                
+                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                    int topic = localTopicIndex[denseIndex];
+                    int n = localTopicCounts[topic];
+
+                    sample -= n * (currentTypeTopicCounts[topic] + beta) / (tokensPerTopic[topic] + betaSum);
+
+                    if (sample <= 0.0) {
+                        newTopic = topic;
+                        break;
+                    }
+                }
+                
+                if (tmpnewTopic!=newTopic) 
+                    System.err.println("Binary search error: " + tmpnewTopic + " " + newTopic);
 
             } else {
                 //sample -= topicDocWordMass;

@@ -64,11 +64,11 @@ public class iMixTopicModelExample {
         //boolean ignoreSkewness = true;
         int numTopics = 400;
         int maxNumTopics = 400;
-        int numIterations = 500; //Max 2000
+        int numIterations = 800; //Max 2000
         int independentIterations = 0;
-        int burnIn = 50;
-        int optimizeInterval = 20;
-        ExperimentType experimentType = ExperimentType.FullGrants;
+        int burnIn = 100;
+        int optimizeInterval = 50;
+        ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -822,15 +822,15 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runFastParallelModel = false;
+                boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
-                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 1.0, 0.01);
+                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 10.0, 0.01);
 
                     modelOrig.addInstances(instances[0]);
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(3);
+                    modelOrig.setNumThreads(1);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);
@@ -844,13 +844,13 @@ public class iMixTopicModelExample {
 
                 boolean runOrigParallelModel = true;
                 if (runOrigParallelModel) {
-                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 1.0, 0.01);
+                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 10.0, 0.01);
 
                     modelOrig.addInstances(instances[0]);
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(3);
+                    modelOrig.setNumThreads(1);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);

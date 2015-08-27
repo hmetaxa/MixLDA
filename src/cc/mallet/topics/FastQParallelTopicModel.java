@@ -69,6 +69,7 @@ public class FastQParallelTopicModel implements Serializable {
     public int[][] typeTopicCounts; //
     public int[] tokensPerTopic; // indexed by <topic index> 
     public FTree[] trees; //store 
+    //public FTree betaSmoothingTree; //store  we will have big overhead on updating (two more tree updates)
 
     public List<ConcurrentLinkedQueue<FastQDelta>> queues;
 
@@ -95,7 +96,7 @@ public class FastQParallelTopicModel implements Serializable {
     public NumberFormat formatter;
     public boolean printLogLikelihood = true;
 
-    boolean useCycleProposals = false;
+    boolean useCycleProposals = true;
 
     // The number of times each type appears in the corpus
     int[] typeTotals;
@@ -397,6 +398,17 @@ public class FastQParallelTopicModel implements Serializable {
             Arrays.fill(temp, 0);
 
         }
+
+        if (useCycleProposals) {
+            //Arrays.fill(temp, 0);
+
+            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+            }
+            
+//            betaSmoothingTree = new FTree(temp);
+        }
+
     }
 
     public void sumTypeTopicCounts(FastWorkerRunnable[] runnables) {
@@ -480,6 +492,16 @@ public class FastQParallelTopicModel implements Serializable {
             //reset temp
             Arrays.fill(temp, 0);
 
+        }
+        
+         if (useCycleProposals) {
+            //Arrays.fill(temp, 0);
+
+            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+            }
+            
+//            betaSmoothingTree.constructTree(temp);
         }
     }
 
@@ -734,7 +756,9 @@ public class FastQParallelTopicModel implements Serializable {
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
-                    thread, queues.get(thread), barrier);
+                    thread, queues.get(thread), barrier
+                    //,betaSmoothingTree
+            );
 
             runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
@@ -751,9 +775,11 @@ public class FastQParallelTopicModel implements Serializable {
                 trees,
                 queues,
                 alpha, alphaSum,
-                beta, useCycleProposals, barrier);
+                beta, useCycleProposals, barrier
+        //        , betaSmoothingTree
+        );
 
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads + 1); 
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads + 1);
 
         for (int iteration = 1; iteration <= numIterations; iteration++) {
 
