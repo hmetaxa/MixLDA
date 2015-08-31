@@ -824,7 +824,8 @@ public class iMixTopicModelExample {
 
                 boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
-                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 10.0, 0.01);
+                    boolean useCycleProposals = false;
+                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 10.0, 0.01, useCycleProposals);
 
                     modelOrig.addInstances(instances[0]);
 
@@ -850,7 +851,7 @@ public class iMixTopicModelExample {
 
                     // Use two parallel samplers, which each look at one half the corpus and combine
                     //  statistics after every iteration.
-                    modelOrig.setNumThreads(1);
+                    modelOrig.setNumThreads(2);
                     // Run the model for 50 iterations and stop (this is for testing only, 
                     //  for real applications, use 1000 to 2000 iterations)
                     modelOrig.setNumIterations(numIterations);

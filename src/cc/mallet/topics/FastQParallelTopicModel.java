@@ -106,11 +106,11 @@ public class FastQParallelTopicModel implements Serializable {
     int numThreads = 1;
 
     public FastQParallelTopicModel(int numberOfTopics) {
-        this(numberOfTopics, numberOfTopics, DEFAULT_BETA);
+        this(numberOfTopics, numberOfTopics, DEFAULT_BETA, false);
     }
 
-    public FastQParallelTopicModel(int numberOfTopics, double alphaSum, double beta) {
-        this(newLabelAlphabet(numberOfTopics), alphaSum, beta);
+    public FastQParallelTopicModel(int numberOfTopics, double alphaSum, double beta, boolean useCycleProposals) {
+        this(newLabelAlphabet(numberOfTopics), alphaSum, beta, useCycleProposals);
     }
 
     private static LabelAlphabet newLabelAlphabet(int numTopics) {
@@ -121,7 +121,8 @@ public class FastQParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta) {
+    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta, boolean useCycleProposals) {
+        this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<TopicAssignment>();
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
@@ -1647,7 +1648,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
-            FastQParallelTopicModel lda = new FastQParallelTopicModel(numTopics, 50.0, 0.01);
+            FastQParallelTopicModel lda = new FastQParallelTopicModel(numTopics, 50.0, 0.01, true);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training);
