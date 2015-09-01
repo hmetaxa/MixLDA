@@ -62,8 +62,8 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 400;
-        int maxNumTopics = 400;
+        int numTopics = 100;
+        int maxNumTopics = 100;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
@@ -824,7 +824,7 @@ public class iMixTopicModelExample {
 
                 boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
-                    boolean useCycleProposals = false;
+                    boolean useCycleProposals = true;
                     FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 10.0, 0.01, useCycleProposals);
 
                     modelOrig.addInstances(instances[0]);

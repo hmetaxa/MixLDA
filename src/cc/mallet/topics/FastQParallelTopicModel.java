@@ -250,9 +250,9 @@ public class FastQParallelTopicModel implements Serializable {
 
         trees = new FTree[numTypes];
 
-        int doc = 0;
+        
         for (Instance instance : training) {
-            doc++;
+
             FeatureSequence tokens = (FeatureSequence) instance.getData();
             for (int position = 0; position < tokens.getLength(); position++) {
                 int type = tokens.getIndexAtPosition(position);
@@ -272,7 +272,6 @@ public class FastQParallelTopicModel implements Serializable {
             typeTopicCounts[type] = new int[numTopics];
         }
 
-        doc = 0;
 
         Randoms random = null;
         if (randomSeed == -1) {
@@ -282,7 +281,7 @@ public class FastQParallelTopicModel implements Serializable {
         }
 
         for (Instance instance : training) {
-            doc++;
+            
 
             FeatureSequence tokens = (FeatureSequence) instance.getData();
             LabelSequence topicSequence
@@ -412,63 +411,7 @@ public class FastQParallelTopicModel implements Serializable {
 
     }
 
-    public void sumTypeTopicCounts(FastWorkerRunnable[] runnables) {
 
-        // Clear the topic totals
-        Arrays.fill(tokensPerTopic, 0);
-
-        // Clear the type/topic counts, only 
-        //  looking at the entries before the first 0 entry.
-        for (int type = 0; type < numTypes; type++) {
-
-            int[] targetCounts = typeTopicCounts[type];
-            Arrays.fill(targetCounts, 0);
-
-        }
-
-        for (int thread = 0; thread < numThreads; thread++) {
-
-            // Handle the total-tokens-per-topic array
-            int[] sourceTotals = runnables[thread].getTokensPerTopic();
-
-            // Now handle the individual type topic counts
-            int[][] sourceTypeTopicCounts
-                    = runnables[thread].getTypeTopicCounts();
-
-            for (int topic = 0; topic < numTopics; topic++) {
-                tokensPerTopic[topic] += sourceTotals[topic];
-
-                for (int type = 0; type < numTypes; type++) {
-                    typeTopicCounts[type][topic] += sourceTypeTopicCounts[type][topic];
-                }
-            }
-
-        }
-
-        recalcTrees();
-
-        /* // Debuggging code to ensure counts are being 
-         // reconstructed correctly.
-
-         for (int type = 0; type < numTypes; type++) {
-			
-         int[] targetCounts = typeTopicCounts[type];
-			
-         int index = 0;
-         int count = 0;
-         while (index < targetCounts.length &&
-         targetCounts[index] > 0) {
-         count += targetCounts[index] >> topicBits;
-         index++;
-         }
-			
-         if (count != typeTotals[type]) {
-         System.err.println("Expected " + typeTotals[type] + ", found " + count);
-         }
-			
-         }
-         */
-    }
 
     private void recalcTrees() {
         //recalc trees
@@ -495,15 +438,15 @@ public class FastQParallelTopicModel implements Serializable {
 
         }
         
-         if (useCycleProposals) {
-            //Arrays.fill(temp, 0);
-
-            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
-            }
-            
-//            betaSmoothingTree.constructTree(temp);
-        }
+//         if (useCycleProposals) {
+//            //Arrays.fill(temp, 0);
+//
+//            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+//                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+//            }
+//            
+////            betaSmoothingTree.constructTree(temp);
+//        }
     }
 
     /**
@@ -695,47 +638,6 @@ public class FastQParallelTopicModel implements Serializable {
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
 
-//        if (numThreads > 1) {                     
-//
-//            for (int thread = 0; thread < numThreads; thread++) {
-//                int[] runnableTotals = new int[numTopics];
-//                System.arraycopy(tokensPerTopic, 0, runnableTotals, 0, numTopics);
-//
-//                FTree[] runnableTrees = new FTree[numTypes];
-//
-//                int[][] runnableCounts = new int[numTypes][];
-//                for (int type = 0; type < numTypes; type++) {
-//                    int[] counts = new int[typeTopicCounts[type].length];
-//                    System.arraycopy(typeTopicCounts[type], 0, counts, 0, counts.length);
-//                    runnableCounts[type] = counts;
-//                    runnableTrees[type] = trees[type].clone();
-//                }
-//
-//                // some docs may be missing at the end due to integer division
-//                if (thread == numThreads - 1) {
-//                    docsPerThread = data.size() - offset;
-//                }
-//
-//                Randoms random = null;
-//                if (randomSeed == -1) {
-//                    random = new Randoms();
-//                } else {
-//                    random = new Randoms(randomSeed);
-//                }
-//
-//                runnables[thread] = new FastWorkerRunnable(numTopics,
-//                        alpha, alphaSum, beta,
-//                        random, data,
-//                        runnableCounts, runnableTotals,
-//                        offset, docsPerThread, runnableTrees, useCycleProposals);
-//
-//                runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
-//
-//                offset += docsPerThread;
-//            }//
-//        } else {
-        // If there is only one thread, copy the typeTopicCounts
-        //  arrays directly, rather than allocating new memory.
         for (int thread = 0; thread < numThreads; thread++) {
 
             // some docs may be missing at the end due to integer division
@@ -764,11 +666,8 @@ public class FastQParallelTopicModel implements Serializable {
             runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
 
             offset += docsPerThread;
-            // If there is only one thread, we 
-            //  can avoid communications overhead.
-            // This switch informs the thread not to 
-            //  gather statistics for its portion of the data.
-            runnables[thread].makeOnlyThread();
+            
+            //runnables[thread].makeOnlyThread();
         }
 
         FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,

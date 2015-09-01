@@ -22,14 +22,11 @@ public class FTree {
     /**
      * serializable value *
      */
-   
-
     protected double[] tree;
     protected int size;
     //protected BitSet activeTopics ; 
     //protected int activeTopicsNum ; 
 
-    
 //     private static final long serialVersionUID = -680739021358875431L;
 //     
 //    /**
@@ -51,7 +48,6 @@ public class FTree {
 //    private void writeObject(ObjectOutputStream outputStream) throws IOException {
 //        outputStream.defaultWriteObject();
 //    }
-
     public FTree() {
         size = 0;
         tree = null;
@@ -71,7 +67,7 @@ public class FTree {
         tree = new double[2 * size];
         //activeTopics = new BitSet(size);
 
-       // this.hash = 0;
+        // this.hash = 0;
         //this.treeString = null;
     }
 
@@ -96,15 +92,7 @@ public class FTree {
     }
 
     public synchronized void constructTree(double[] weights) {
-//        activeTopicsNum = 0;
-//     for (int i = 0; i <size; i++) {
-//         boolean activeTopic = weights[i]!=0;
-//         activeTopics.set(i, activeTopic);
-//          activeTopicsNum ++;    
-//     }
-//
-//     activeTopicsNum += 2; //leave two spare topics
-//     tree = new double[2 * activeTopicsNum];
+
 // Reversely initialize elements
         Arrays.fill(tree, 0);
         for (int i = 2 * size - 1; i > 0; --i) {
@@ -126,12 +114,13 @@ public class FTree {
         int i = 1;
 
         while (i < size) {
-            if (u < tree[2 * i]) {
-                i = 2 * i;
-            } else {
-                u = u - tree[2 * i];
-                i = 2 * i + 1;
-            }
+            i = u < tree[2 * i] ? 2 * i : 2 * i + 1;
+//            if (u < tree[2 * i]) {
+//                i = 2 * i;
+//            } else {
+//                u = u - tree[2 * i];
+//                i = 2 * i + 1;
+//            }
         }
 
         return i - size;
