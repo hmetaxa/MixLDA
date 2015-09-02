@@ -25,6 +25,7 @@ import cc.mallet.types.*;
 import cc.mallet.topics.TopicAssignment;
 import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
+import gnu.trove.map.hash.TObjectIntHashMap;
 
 /**
  * Simple parallel threaded implementation of LDA, following Newman, Asuncion,
@@ -35,11 +36,11 @@ import cc.mallet.util.MalletLogger;
  *
  * @author David Mimno, Andrew McCallum Omiros test mercucial
  */
-public class FastQParallelTopicModel implements Serializable {
+public class FastQMVParallelTopicModel implements Serializable {
 
     public static final int UNASSIGNED_TOPIC = -1;
 
-    public static Logger logger = MalletLogger.getLogger(FastQParallelTopicModel.class.getName());
+    public static Logger logger = MalletLogger.getLogger(FastQMVParallelTopicModel.class.getName());
 
     public ArrayList<TopicAssignment> data;  // the training instances and their topic assignments
     public Alphabet alphabet; // the alphabet for the input data
@@ -105,11 +106,11 @@ public class FastQParallelTopicModel implements Serializable {
 
     int numThreads = 1;
 
-    public FastQParallelTopicModel(int numberOfTopics) {
+    public FastQMVParallelTopicModel(int numberOfTopics) {
         this(numberOfTopics, numberOfTopics, DEFAULT_BETA, false);
     }
 
-    public FastQParallelTopicModel(int numberOfTopics, double alphaSum, double beta, boolean useCycleProposals) {
+    public FastQMVParallelTopicModel(int numberOfTopics, double alphaSum, double beta, boolean useCycleProposals) {
         this(newLabelAlphabet(numberOfTopics), alphaSum, beta, useCycleProposals);
     }
 
@@ -121,7 +122,7 @@ public class FastQParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta, boolean useCycleProposals) {
+    public FastQMVParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta, boolean useCycleProposals) {
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<TopicAssignment>();
         this.topicAlphabet = topicAlphabet;
@@ -235,6 +236,123 @@ public class FastQParallelTopicModel implements Serializable {
         this.modelFilename = filename;
     }
 
+//       public void addInstances(InstanceList[] training) {
+//
+//        //    Iterator<Integer> keySetIterator = map.keySet().iterator();
+////while(keySetIterator.hasNext()){
+//        TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
+//
+//        for (Byte i = 0; i < numModalities; i++) {
+//
+//            Alphabet tmpAlphabet = training[i].getDataAlphabet();
+//            Integer tmpNumTypes = tmpAlphabet.size();
+//            alphabet[i] = tmpAlphabet;
+//
+//            String modInfo = "Modality<" + i + ">[" + (training[i].size() > 0 ? training[i].get(0).getSource().toString() : "-") + "] Size:" + training[i].size() + " Alphabet count: " + tmpAlphabet.size();
+//            logger.info(modInfo);
+//            appendMetadata(modInfo);
+//            numTypes[i] = tmpNumTypes;
+//            betaSum[i] = beta[i] * tmpNumTypes;
+//
+//            alpha[i] = new double[numTopics];
+//            Arrays.fill(this.alpha[i], alphaSum[i] / numTopics);
+//
+//            //[i] = 1;
+//            typeTopicCounts[i] = new int[tmpNumTypes][];
+//            tokensPerTopic[i] = new int[numTopics];
+//
+//            typeTotals[i] = new int[tmpNumTypes];
+//            //typeSkewIndexes[i] = new double[tmpNumTypes];
+//
+//            Randoms random = null;
+//            if (randomSeed == -1) {
+//                random = new Randoms();
+//            } else {
+//                random = new Randoms(randomSeed);
+//            }
+//
+//            int doc = 0;
+//
+//            for (Instance instance : training[i]) {
+//                doc++;
+//                long iterationStart = System.currentTimeMillis();
+//
+//                FeatureSequence tokens = (FeatureSequence) instance.getData();
+//                int size = tokens.size();
+//
+//                int[] topics = new int[size]; //topicSequence.getFeatures();
+//                for (int position = 0; position < topics.length; position++) {
+//
+//                    //int topic = random.nextInt(numTopics);
+//                    int type = tokens.getIndexAtPosition(position);
+//                    typeTotals[i][type]++;
+//
+//                    int topic = ThreadLocalRandom.current().nextInt(numTopics);//nextInt(numCommonTopics + numIndependentTopics);
+////                    if (topic >= numCommonTopics) {
+////                        topic = topic - numCommonTopics + 1;
+////                        topic = numCommonTopics - 1 + numIndependentTopics * i + topic;
+////                    }
+//                    topics[position] = topic;
+//                }
+//
+//                //lblSequence.
+//                TopicAssignment t;
+//                if (checkConvergenceRate) {
+//                    t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics), new long[size]);
+//                } else {
+//                    t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
+//                }
+//                MixTopicModelTopicAssignment mt;
+//                String entityId = (String) instance.getName();
+//
+//                //int index = i == 0 ? -1 : data.indexOf(mt);
+//                int index = -1;
+//                //if (i != 0 && (entityPosition.containsKey(entityId))) {
+//
+//                if (i != 0 && entityPosition.containsKey(entityId)) {
+//
+//                    index = entityPosition.get(entityId);
+//                    mt = data.get(index);
+//                    mt.Assignments[i] = t;
+//
+//                } else {
+//                    mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[numModalities]);
+//                    mt.Assignments[i] = t;
+//                    data.add(mt);
+//                    index = data.size() - 1;
+//                    entityPosition.put(entityId, index);
+//                }
+//
+//                long elapsedMillis = System.currentTimeMillis() - iterationStart;
+//                if (doc % 100 == 0) {
+//                    logger.fine(elapsedMillis + "ms " + "  docNum:" + doc);
+//
+//                }
+//
+//            }
+//
+//            //omiros here
+//            maxTypeCount[i] = 0;
+//            avgTypeCount[i] = 0d;
+//
+//            // Allocate enough space so that we never have to worry about
+//            //  overflows: either the number of topics or the number of times
+//            //  the type occurs.
+//            for (int type = 0; type < numTypes[i]; type++) {
+//                avgTypeCount[i] += (double) typeTotals[i][type] / (double) numTypes[i];
+//                if (typeTotals[i][type] > maxTypeCount[i]) {
+//                    maxTypeCount[i] = typeTotals[i][type];
+//                }
+//                typeTopicCounts[i][type] = new int[Math.min(numTopics, typeTotals[i][type])];
+//            }
+//
+//        }
+//
+//        //LabelSequence lblSequence =  new LabelSequence(topicAlphabet);
+//        buildInitialTypeTopicCounts();
+//
+//        initializeHistograms();
+//    }
     public void addInstances(InstanceList training) {
 
         alphabet = training.getDataAlphabet();
@@ -490,7 +608,7 @@ public class FastQParallelTopicModel implements Serializable {
         topicDocCounts = new int[numTopics][maxTokens + 1];
     }
 
-    public void optimizeAlpha(FastQWorkerRunnable[] runnables) {
+    public void optimizeAlpha(FastQMVWorkerRunnable[] runnables) {
 
         // First clear the sufficient statistic histograms
         Arrays.fill(docLengthCounts, 0);
@@ -601,7 +719,7 @@ public class FastQParallelTopicModel implements Serializable {
         alphaSum = numTopics;
     }
 
-    public void optimizeBeta(FastQWorkerRunnable[] runnables) {
+    public void optimizeBeta(FastQMVWorkerRunnable[] runnables) {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
         //  we would need to store a maxTypeCount + 1 count.
@@ -656,7 +774,7 @@ public class FastQParallelTopicModel implements Serializable {
         long startTime = System.currentTimeMillis();
         final CyclicBarrier barrier = new CyclicBarrier(numThreads + 2);//one for the current thread and one for the updater
 
-        FastQWorkerRunnable[] runnables = new FastQWorkerRunnable[numThreads];
+        FastQMVWorkerRunnable[] runnables = new FastQMVWorkerRunnable[numThreads];
         queues = new ArrayList<ConcurrentLinkedQueue<FastQDelta>>(numThreads);
 
         int docsPerThread = data.size() / numThreads;
@@ -678,7 +796,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             queues.add(new ConcurrentLinkedQueue<FastQDelta>());
 
-            runnables[thread] = new FastQWorkerRunnable(numTopics,
+            runnables[thread] = new FastQMVWorkerRunnable(numTopics,
                     alpha, alphaSum, beta,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
@@ -694,7 +812,7 @@ public class FastQParallelTopicModel implements Serializable {
             //runnables[thread].makeOnlyThread();
         }
 
-        FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
+        FastQMVUpdaterRunnable updater = new FastQMVUpdaterRunnable(typeTopicCounts,
                 tokensPerTopic,
                 trees,
                 queues,
@@ -1266,7 +1384,7 @@ public class FastQParallelTopicModel implements Serializable {
 
     }
 
-public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normalized, boolean smoothed) {		
+  public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normalized, boolean smoothed) {		
 		double[][] result = new double[numTopics][numTypes];
 		int[] subCorpusTokensPerTopic = new int[numTopics];
 		
@@ -1449,7 +1567,7 @@ public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normali
 			}
 		}
 	}
-	
+		
         
     public void printState(File f) throws IOException {
         PrintStream out
@@ -1735,12 +1853,12 @@ public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normali
         }
     }
 
-    public static FastQParallelTopicModel read(File f) throws Exception {
+    public static FastQMVParallelTopicModel read(File f) throws Exception {
 
-        FastQParallelTopicModel topicModel = null;
+        FastQMVParallelTopicModel topicModel = null;
 
         ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-        topicModel = (FastQParallelTopicModel) ois.readObject();
+        topicModel = (FastQMVParallelTopicModel) ois.readObject();
         ois.close();
 
         topicModel.initializeHistograms();
@@ -1756,7 +1874,7 @@ public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normali
 
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
-            FastQParallelTopicModel lda = new FastQParallelTopicModel(numTopics, 50.0, 0.01, true);
+            FastQMVParallelTopicModel lda = new FastQMVParallelTopicModel(numTopics, 50.0, 0.01, true);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training);
