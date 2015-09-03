@@ -117,16 +117,16 @@ public class FastQWorkerRunnable implements Runnable {
         return typeTopicCounts;
     }
 
-    public int[] getDocLengthCounts() {
-        return docLengthCounts;
-    }
+//    public int[] getDocLengthCounts() {
+//        return docLengthCounts;
+//    }
 
     public int[][] getTopicDocCounts() {
         return topicDocCounts;
     }
 
     public void initializeAlphaStatistics(int size) {
-        docLengthCounts = new int[size];
+//        docLengthCounts = new int[size];
         topicDocCounts = new int[numTopics][size];
     }
 
@@ -383,7 +383,7 @@ public class FastQWorkerRunnable implements Runnable {
         if (shouldSaveState) {
             // Update the document-topic count histogram,
             //  for dirichlet estimation
-            docLengthCounts[docLength]++;
+            //[docLength]++;
 
             for (int topic = 0; topic < numTopics; topic++) {
                 topicDocCounts[topic][localTopicCounts[topic]]++;
@@ -550,7 +550,7 @@ public class FastQWorkerRunnable implements Runnable {
         if (shouldSaveState) {
             // Update the document-topic count histogram,
             //  for dirichlet estimation
-            docLengthCounts[docLength]++;
+            //[docLength]++;
 
             for (int topic = 0; topic < numTopics; topic++) {
                 topicDocCounts[topic][localTopicCounts[topic]]++;

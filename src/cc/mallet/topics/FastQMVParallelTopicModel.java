@@ -48,11 +48,6 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public int numTopics; // Number of topics to be fit
 
-    // These values are used to encode type/topic counts as
-    //  count/topic pairs in a single int.
-    public int topicMask;
-    public int topicBits;
-
     public int numTypes;
     public int totalTokens;
 
@@ -128,16 +123,6 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
 
-        if (Integer.bitCount(numTopics) == 1) {
-            // exact power of 2
-            topicMask = numTopics - 1;
-            topicBits = Integer.bitCount(topicMask);
-        } else {
-            // otherwise add an extra bit
-            topicMask = Integer.highestOneBit(numTopics) * 2 - 1;
-            topicBits = Integer.bitCount(topicMask);
-        }
-
         this.alphaSum = alphaSum;
         this.alpha = new double[numTopics];
         Arrays.fill(alpha, alphaSum / numTopics);
@@ -148,8 +133,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
 
-        logger.info("Coded LDA: " + numTopics + " topics, " + topicBits + " topic bits, "
-                + Integer.toBinaryString(topicMask) + " topic mask");
+        logger.info("FastQ LDA: " + numTopics + " topics ");
     }
 
     public Alphabet getAlphabet() {
@@ -463,9 +447,10 @@ public class FastQMVParallelTopicModel implements Serializable {
         typeTopicCounts = new int[numTypes][];
         tokensPerTopic = new int[numTopics];
 
-		// Get the total number of occurrences of each word type
+        // Get the total number of occurrences of each word type
         //int[] typeTotals = new int[numTypes];
         typeTotals = new int[numTypes];
+        trees = new FTree[numTypes];
 
         // Create the type-topic counts data structure
         for (TopicAssignment document : data) {
@@ -479,14 +464,11 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         maxTypeCount = 0;
 
-		// Allocate enough space so that we never have to worry about
-        //  overflows: either the number of topics or the number of times
-        //  the type occurs.
         for (int type = 0; type < numTypes; type++) {
             if (typeTotals[type] > maxTypeCount) {
                 maxTypeCount = typeTotals[type];
             }
-            typeTopicCounts[type] = new int[Math.min(numTopics, typeTotals[type])];
+            typeTopicCounts[type] = new int[numTopics];
         }
 
         for (TopicAssignment document : data) {
@@ -685,39 +667,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         logger.info("[Alpha: [" + alphaStr + "] ");
     }
 
-    public void temperAlpha(FastWorkerRunnable[] runnables) {
-
-        // First clear the sufficient statistic histograms
-        Arrays.fill(docLengthCounts, 0);
-        for (int topic = 0; topic < topicDocCounts.length; topic++) {
-            Arrays.fill(topicDocCounts[topic], 0);
-        }
-
-        for (int thread = 0; thread < numThreads; thread++) {
-            int[] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-            int[][] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-
-            for (int count = 0; count < sourceLengthCounts.length; count++) {
-                if (sourceLengthCounts[count] > 0) {
-                    sourceLengthCounts[count] = 0;
-                }
-            }
-
-            for (int topic = 0; topic < numTopics; topic++) {
-
-                for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-                    if (sourceTopicCounts[topic][count] > 0) {
-                        sourceTopicCounts[topic][count] = 0;
-                    }
-                }
-            }
-        }
-
-        for (int topic = 0; topic < numTopics; topic++) {
-            alpha[topic] = 1.0;
-        }
-        alphaSum = numTopics;
-    }
+  
 
     public void optimizeBeta(FastQMVWorkerRunnable[] runnables) {
         // The histogram starts at count 0, so if all of the
@@ -1384,191 +1334,187 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     }
 
-  public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normalized, boolean smoothed) {		
-		double[][] result = new double[numTopics][numTypes];
-		int[] subCorpusTokensPerTopic = new int[numTopics];
-		
-		for (int doc = 0; doc < data.size(); doc++) {
-			if (documentMask[doc]) {
-				int[] words = ((FeatureSequence) data.get(doc).instance.getData()).getFeatures();
-				int[] topics = data.get(doc).topicSequence.getFeatures();
-				for (int position = 0; position < topics.length; position++) {
-					result[ topics[position] ][ words[position] ]++;
-					subCorpusTokensPerTopic[ topics[position] ]++;
-				}
-			}
-		}
+    public double[][] getSubCorpusTopicWords(boolean[] documentMask, boolean normalized, boolean smoothed) {
+        double[][] result = new double[numTopics][numTypes];
+        int[] subCorpusTokensPerTopic = new int[numTopics];
 
-		if (smoothed) {
-			for (int topic = 0; topic < numTopics; topic++) {
-				for (int type = 0; type < numTypes; type++) {
-					result[topic][type] += beta;
-				}
-			}
-		}
+        for (int doc = 0; doc < data.size(); doc++) {
+            if (documentMask[doc]) {
+                int[] words = ((FeatureSequence) data.get(doc).instance.getData()).getFeatures();
+                int[] topics = data.get(doc).topicSequence.getFeatures();
+                for (int position = 0; position < topics.length; position++) {
+                    result[topics[position]][words[position]]++;
+                    subCorpusTokensPerTopic[topics[position]]++;
+                }
+            }
+        }
 
-		if (normalized) {
-			double[] topicNormalizers = new double[numTopics];
-			if (smoothed) {
-				for (int topic = 0; topic < numTopics; topic++) {
-					topicNormalizers[topic] = 1.0 / (subCorpusTokensPerTopic[topic] + numTypes * beta);
-				}
-			}
-			else {
-				for (int topic = 0; topic < numTopics; topic++) {
-					topicNormalizers[topic] = 1.0 / subCorpusTokensPerTopic[topic];
-				}
-			}
+        if (smoothed) {
+            for (int topic = 0; topic < numTopics; topic++) {
+                for (int type = 0; type < numTypes; type++) {
+                    result[topic][type] += beta;
+                }
+            }
+        }
 
-			for (int topic = 0; topic < numTopics; topic++) {
-				for (int type = 0; type < numTypes; type++) {
-					result[topic][type] *= topicNormalizers[topic];
-				}
-			}
-		}
+        if (normalized) {
+            double[] topicNormalizers = new double[numTopics];
+            if (smoothed) {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    topicNormalizers[topic] = 1.0 / (subCorpusTokensPerTopic[topic] + numTypes * beta);
+                }
+            } else {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    topicNormalizers[topic] = 1.0 / subCorpusTokensPerTopic[topic];
+                }
+            }
 
-		return result;
-	}
+            for (int topic = 0; topic < numTopics; topic++) {
+                for (int type = 0; type < numTypes; type++) {
+                    result[topic][type] *= topicNormalizers[topic];
+                }
+            }
+        }
 
-	public double[][] getTopicWords(boolean normalized, boolean smoothed) {
-		double[][] result = new double[numTopics][numTypes];
+        return result;
+    }
 
-		for (int type = 0; type < numTypes; type++) {
-			int[] topicCounts = typeTopicCounts[type];
+    public double[][] getTopicWords(boolean normalized, boolean smoothed) {
+        double[][] result = new double[numTopics][numTypes];
 
-			int index = 0;
-			while (index < topicCounts.length &&
-				   topicCounts[index] > 0) {
+        for (int type = 0; type < numTypes; type++) {
+            int[] topicCounts = typeTopicCounts[type];
 
-				int topic = topicCounts[index] & topicMask;
-				int count = topicCounts[index] >> topicBits;
+            int index = 0;
+            while (index < topicCounts.length
+                    && topicCounts[index] > 0) {
 
-				result[topic][type] += count;
+                result[index][type] += topicCounts[index];
 
-				index++;
-			}
-		}
+                index++;
+            }
+        }
 
-		if (smoothed) {
-			for (int topic = 0; topic < numTopics; topic++) {
-				for (int type = 0; type < numTypes; type++) {
-					result[topic][type] += beta;
-				}
-			}
-		}
+        if (smoothed) {
+            for (int topic = 0; topic < numTopics; topic++) {
+                for (int type = 0; type < numTypes; type++) {
+                    result[topic][type] += beta;
+                }
+            }
+        }
 
-		if (normalized) {
-			double[] topicNormalizers = new double[numTopics];
-			if (smoothed) {
-				for (int topic = 0; topic < numTopics; topic++) {
-					topicNormalizers[topic] = 1.0 / (tokensPerTopic[topic] + numTypes * beta);
-				}
-			}
-			else {
-				for (int topic = 0; topic < numTopics; topic++) {
-					topicNormalizers[topic] = 1.0 / tokensPerTopic[topic];
-				}
-			}
+        if (normalized) {
+            double[] topicNormalizers = new double[numTopics];
+            if (smoothed) {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    topicNormalizers[topic] = 1.0 / (tokensPerTopic[topic] + numTypes * beta);
+                }
+            } else {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    topicNormalizers[topic] = 1.0 / tokensPerTopic[topic];
+                }
+            }
 
-			for (int topic = 0; topic < numTopics; topic++) {
-				for (int type = 0; type < numTypes; type++) {
-					result[topic][type] *= topicNormalizers[topic];
-				}
-			}
-		}
+            for (int topic = 0; topic < numTopics; topic++) {
+                for (int type = 0; type < numTypes; type++) {
+                    result[topic][type] *= topicNormalizers[topic];
+                }
+            }
+        }
 
-		return result;
-	}
+        return result;
+    }
 
-	public double[][] getDocumentTopics(boolean normalized, boolean smoothed) {
-		double[][] result = new double[data.size()][numTopics];
+    public double[][] getDocumentTopics(boolean normalized, boolean smoothed) {
+        double[][] result = new double[data.size()][numTopics];
 
-		for (int doc = 0; doc < data.size(); doc++) {
-			int[] topics = data.get(doc).topicSequence.getFeatures();
-			for (int position = 0; position < topics.length; position++) {
-				result[doc][ topics[position] ]++;
-			}
+        for (int doc = 0; doc < data.size(); doc++) {
+            int[] topics = data.get(doc).topicSequence.getFeatures();
+            for (int position = 0; position < topics.length; position++) {
+                result[doc][topics[position]]++;
+            }
 
-			if (smoothed) {
-				for (int topic = 0; topic < numTopics; topic++) {
-					result[doc][topic] += alpha[topic];
-				}
-			}
+            if (smoothed) {
+                for (int topic = 0; topic < numTopics; topic++) {
+                    result[doc][topic] += alpha[topic];
+                }
+            }
 
-			if (normalized) {
-				double sum = 0.0;
-				for (int topic = 0; topic < numTopics; topic++) {
-					sum += result[doc][topic];
-				}
-				double normalizer = 1.0 / sum;
-				for (int topic = 0; topic < numTopics; topic++) {
-					result[doc][topic] *= normalizer;
-				}				
-			}
-		}
+            if (normalized) {
+                double sum = 0.0;
+                for (int topic = 0; topic < numTopics; topic++) {
+                    sum += result[doc][topic];
+                }
+                double normalizer = 1.0 / sum;
+                for (int topic = 0; topic < numTopics; topic++) {
+                    result[doc][topic] *= normalizer;
+                }
+            }
+        }
 
-		return result;
-	}
-	
-	public ArrayList<TreeSet<IDSorter>> getTopicDocuments(double smoothing) {
-		ArrayList<TreeSet<IDSorter>> topicSortedDocuments = new ArrayList<TreeSet<IDSorter>>(numTopics);
+        return result;
+    }
 
-		// Initialize the tree sets
-		for (int topic = 0; topic < numTopics; topic++) {
-			topicSortedDocuments.add(new TreeSet<IDSorter>());
-		}
+    public ArrayList<TreeSet<IDSorter>> getTopicDocuments(double smoothing) {
+        ArrayList<TreeSet<IDSorter>> topicSortedDocuments = new ArrayList<TreeSet<IDSorter>>(numTopics);
 
-		int[] topicCounts = new int[numTopics];
+        // Initialize the tree sets
+        for (int topic = 0; topic < numTopics; topic++) {
+            topicSortedDocuments.add(new TreeSet<IDSorter>());
+        }
 
-		for (int doc = 0; doc < data.size(); doc++) {
-			int[] topics = data.get(doc).topicSequence.getFeatures();
-			for (int position = 0; position < topics.length; position++) {
-				topicCounts[ topics[position] ]++;
-			}
+        int[] topicCounts = new int[numTopics];
 
-			for (int topic = 0; topic < numTopics; topic++) {
-				topicSortedDocuments.get(topic).add(new IDSorter(doc, (topicCounts[topic] + smoothing) / (topics.length + numTopics * smoothing) ));
-				topicCounts[topic] = 0;
-			}
-		}
+        for (int doc = 0; doc < data.size(); doc++) {
+            int[] topics = data.get(doc).topicSequence.getFeatures();
+            for (int position = 0; position < topics.length; position++) {
+                topicCounts[topics[position]]++;
+            }
 
-		return topicSortedDocuments;
-	}
-	
-	public void printTopicDocuments (PrintWriter out) {
-		printTopicDocuments (out, 100);
-	}
+            for (int topic = 0; topic < numTopics; topic++) {
+                topicSortedDocuments.get(topic).add(new IDSorter(doc, (topicCounts[topic] + smoothing) / (topics.length + numTopics * smoothing)));
+                topicCounts[topic] = 0;
+            }
+        }
 
-	/**
-	 *  @param out		  A print writer
-	 *  @param count      Print this number of top documents
-	 */
-	public void printTopicDocuments (PrintWriter out, int max)	{
-		out.println("#topic doc name proportion ...");
-		
-		ArrayList<TreeSet<IDSorter>> topicSortedDocuments = getTopicDocuments(10.0);
+        return topicSortedDocuments;
+    }
 
-		for (int topic = 0; topic < numTopics; topic++) {
-			TreeSet<IDSorter> sortedDocuments = topicSortedDocuments.get(topic);
-			
-			int i = 0;
-			for (IDSorter sorter: sortedDocuments) {
-				if (i == max) { break; }
-				
-				int doc = sorter.getID();
-				double proportion = sorter.getWeight();
-				String name = (String) data.get(doc).instance.getName();
-				if (name == null) {
-					name = "no-name";
-				}
-				out.format("%d %d %s %f\n", topic, doc, name, proportion);
-				
-				i++;
-			}
-		}
-	}
-		
-        
+    public void printTopicDocuments(PrintWriter out) {
+        printTopicDocuments(out, 100);
+    }
+
+    /**
+     * @param out	A print writer
+     * @param count Print this number of top documents
+     */
+    public void printTopicDocuments(PrintWriter out, int max) {
+        out.println("#topic doc name proportion ...");
+
+        ArrayList<TreeSet<IDSorter>> topicSortedDocuments = getTopicDocuments(10.0);
+
+        for (int topic = 0; topic < numTopics; topic++) {
+            TreeSet<IDSorter> sortedDocuments = topicSortedDocuments.get(topic);
+
+            int i = 0;
+            for (IDSorter sorter : sortedDocuments) {
+                if (i == max) {
+                    break;
+                }
+
+                int doc = sorter.getID();
+                double proportion = sorter.getWeight();
+                String name = (String) data.get(doc).instance.getName();
+                if (name == null) {
+                    name = "no-name";
+                }
+                out.format("%d %d %s %f\n", topic, doc, name, proportion);
+
+                i++;
+            }
+        }
+    }
+
     public void printState(File f) throws IOException {
         PrintStream out
                 = new PrintStream(new GZIPOutputStream(new BufferedOutputStream(new FileOutputStream(f))));
@@ -1760,9 +1706,6 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         out.writeInt(numTopics);
 
-        out.writeInt(topicMask);
-        out.writeInt(topicBits);
-
         out.writeInt(numTypes);
 
         out.writeObject(alpha);
@@ -1805,9 +1748,6 @@ public class FastQMVParallelTopicModel implements Serializable {
         topicAlphabet = (LabelAlphabet) in.readObject();
 
         numTopics = in.readInt();
-
-        topicMask = in.readInt();
-        topicBits = in.readInt();
 
         numTypes = in.readInt();
 
