@@ -13,6 +13,8 @@ public class FastQDelta {
 
     public int NewTopic;
     public int OldTopic;
+    public int DocOldTopicCnt; //to update histograms
+    public int DocNewTopicCnt;
     public int Type;
     public int Modality;
 

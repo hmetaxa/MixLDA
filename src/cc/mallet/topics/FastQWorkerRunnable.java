@@ -38,9 +38,10 @@ public class FastQWorkerRunnable implements Runnable {
     protected int topicBits;
     protected int numTypes;
     protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-    protected double alphaSum;
-    protected double beta;   // Prior on per-topic multinomial distribution over words
-    protected double betaSum;
+    protected double[] alphaSum;
+    protected double[] beta;   // Prior on per-topic multinomial distribution over words
+    protected double[] betaSum;
+    protected double[] gamma; 
     public static final double DEFAULT_BETA = 0.01;
     protected double docSmoothingOnlyMass = 0.0;
     protected double[] docSmoothingOnlyCumValues;
@@ -60,13 +61,14 @@ public class FastQWorkerRunnable implements Runnable {
     boolean useCycleProposals = false;
 
     public FastQWorkerRunnable(int numTopics,
-            double[] alpha, double alphaSum,
-            double beta, Randoms random,
+            double[] alpha, double[] alphaSum,
+            double[] beta, Randoms random,
             ArrayList<TopicAssignment> data,
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
             int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
-            int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier
+            int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier,
+            double[] gamma
     //, FTree betaSmoothingTree
     ) {
 
@@ -96,8 +98,9 @@ public class FastQWorkerRunnable implements Runnable {
         this.alphaSum = alphaSum;
         this.alpha = alpha;
         this.beta = beta;
-        this.betaSum = beta * numTypes;
+        this.betaSum = betaSum;
         this.random = random;
+        this.gamma = gamma;
 
         this.startDoc = startDoc;
         this.numDocs = numDocs;
@@ -134,7 +137,7 @@ public class FastQWorkerRunnable implements Runnable {
         shouldSaveState = true;
     }
 
-    public void resetBeta(double beta, double betaSum) {
+    public void resetBeta(double[] beta, double[] betaSum) {
         this.beta = beta;
         this.betaSum = betaSum;
     }
@@ -151,7 +154,7 @@ public class FastQWorkerRunnable implements Runnable {
             if (useCycleProposals) {
                 // cachedCoefficients cumulative array that will be used for binary search
                 for (int topic = 0; topic < numTopics; topic++) {
-                    docSmoothingOnlyMass += alpha[topic];
+                    docSmoothingOnlyMass += gamma[0] * alpha[topic];
                     docSmoothingOnlyCumValues[topic] = docSmoothingOnlyMass;
                 }
             }
@@ -323,7 +326,7 @@ public class FastQWorkerRunnable implements Runnable {
             for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                 int topic = localTopicIndex[denseIndex];
                 int n = localTopicCounts[topic];
-                topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta) / (tokensPerTopic[topic] + betaSum);
+                topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta[0]) / (tokensPerTopic[topic] + betaSum[0]);
                 //topicDocWordMass +=  n * trees[type].getComponent(topic);
                 topicDocWordMasses[denseIndex] = topicDocWordMass;
 
@@ -457,10 +460,10 @@ public class FastQWorkerRunnable implements Runnable {
                     //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                     // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
                     // BUT global cnts are changing due to QUeue based updates so there is no meaning in them
-                    double model_old = (localTopicCounts[currentTopic] + alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
-                    double model_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
-                    double prop_old = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
-                    double prop_new = (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
+                    double model_old = (localTopicCounts[currentTopic] + gamma[0] *alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    double model_new = (localTopicCounts[newTopic] + gamma[0] *alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                    double prop_old = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    double prop_new = (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
                     double acceptance = (model_new * prop_old) / (model_old * prop_new);
 
 //                    double prop_old2 = (oldTopic == currentTopic)
@@ -506,14 +509,14 @@ public class FastQWorkerRunnable implements Runnable {
                     //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                     // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
 
-                    double model_old = (localTopicCounts[currentTopic] + alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
-                    double model_new = (localTopicCounts[newTopic] + alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
+                    double model_old = (localTopicCounts[currentTopic] +gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    double model_new = (localTopicCounts[newTopic] + gamma[0] *alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
                     double prop_old = (oldTopic == currentTopic)
-                            ? (localTopicCounts[currentTopic] + 1 + alpha[currentTopic])
-                            : (localTopicCounts[currentTopic] + alpha[currentTopic]);
+                            ? (localTopicCounts[currentTopic] + 1 +gamma[0] * alpha[currentTopic])
+                            : (localTopicCounts[currentTopic] +gamma[0] * alpha[currentTopic]);
                     double prop_new = (newTopic == oldTopic)
-                            ? (localTopicCounts[newTopic] + 1 + alpha[newTopic])
-                            : (localTopicCounts[newTopic] + alpha[newTopic]);
+                            ? (localTopicCounts[newTopic] + 1 +gamma[0] *alpha[newTopic])
+                            : (localTopicCounts[newTopic] +gamma[0] * alpha[newTopic]);
                     double acceptance = (model_new * prop_old) / (model_old * prop_new);
                     //acceptance = (temp_new * prop_old * trees[type].getComponent(newTopic)) / (temp_old * prop_new * trees[type].getComponent(oldTopic));
 

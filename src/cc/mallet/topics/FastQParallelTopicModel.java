@@ -55,9 +55,10 @@ public class FastQParallelTopicModel implements Serializable {
     public int totalTokens;
 
     public double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-    public double alphaSum;
-    public double beta;   // Prior on per-topic multinomial distribution over words
-    public double betaSum;
+    public double[] alphaSum;
+    public double[] beta;   // Prior on per-topic multinomial distribution over words
+    public double[] betaSum;
+    public double[] gamma;
 
     public boolean usingSymmetricAlpha = false;
 
@@ -99,7 +100,7 @@ public class FastQParallelTopicModel implements Serializable {
 
     // The number of times each type appears in the corpus
     int[] typeTotals;
-    // The max over typeTotals, used for beta optimization
+    // The max over typeTotals, used for beta[0] optimization
     int maxTypeCount;
 
     int numThreads = 1;
@@ -120,16 +121,21 @@ public class FastQParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alphaSum, double beta, boolean useCycleProposals) {
+    public FastQParallelTopicModel(LabelAlphabet topicAlphabet, double alpha, double beta, boolean useCycleProposals) {
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<TopicAssignment>();
         this.topicAlphabet = topicAlphabet;
         this.numTopics = topicAlphabet.size();
 
-        this.alphaSum = alphaSum;
+        this.alphaSum = new double[1];
+        this.alphaSum[0] = numTopics * alpha;
         this.alpha = new double[numTopics];
-        Arrays.fill(alpha, alphaSum / numTopics);
-        this.beta = beta;
+
+        this.betaSum = new double[1];
+        this.beta = new double[1];
+        this.beta[0] = beta;
+        this.gamma = new double[1];
+        this.gamma[0] = 1;
 
         tokensPerTopic = new int[numTopics];
 
@@ -228,7 +234,7 @@ public class FastQParallelTopicModel implements Serializable {
         alphabet = training.getDataAlphabet();
         numTypes = alphabet.size();
 
-        betaSum = beta * numTypes;
+        betaSum[0] = beta[0] * numTypes;
 
 //        typeTopicCounts = new int[numTypes][];
 //
@@ -284,8 +290,9 @@ public class FastQParallelTopicModel implements Serializable {
             data.add(t);
         }
 
-        buildInitialTypeTopicCounts();
         initializeHistograms();
+        buildInitialTypeTopicCounts();
+        
     }
 
     public void initializeFromState(File stateFile) throws IOException {
@@ -324,24 +331,23 @@ public class FastQParallelTopicModel implements Serializable {
             }
         }
 
-        buildInitialTypeTopicCounts();
         initializeHistograms();
+        buildInitialTypeTopicCounts();
+        
     }
 
     public void buildInitialTypeTopicCounts() {
 
         typeTopicCounts = new int[numTypes][];
         tokensPerTopic = new int[numTopics];
+        
 
         // Get the total number of occurrences of each word type
         //int[] typeTotals = new int[numTypes];
         typeTotals = new int[numTypes];
         trees = new FTree[numTypes];
 
-        for (int t = 0; t < numTopics; t++) {
-            Arrays.fill(topicDocCounts[t], 0);
-        }
-
+        
         // Create the type-topic counts data structure
         for (TopicAssignment document : data) {
 
@@ -395,11 +401,11 @@ public class FastQParallelTopicModel implements Serializable {
             int[] currentTypeTopicCounts = typeTopicCounts[w];
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-//                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
+//                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
                 if (useCycleProposals) {
-                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
                 } else {
-                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                 }
 
             }
@@ -415,7 +421,7 @@ public class FastQParallelTopicModel implements Serializable {
             //Arrays.fill(temp, 0);
 
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                temp[currentTopic] = (beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
             }
 
 //            betaSmoothingTree = new FTree(temp);
@@ -431,11 +437,11 @@ public class FastQParallelTopicModel implements Serializable {
             int[] currentTypeTopicCounts = typeTopicCounts[w];
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta)  / (tokensPerTopic[currentTopic] + betaSum);
+                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum);
                 if (useCycleProposals) {
-                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
                 } else {
-                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                 }
 
             }
@@ -452,7 +458,7 @@ public class FastQParallelTopicModel implements Serializable {
 //            //Arrays.fill(temp, 0);
 //
 //            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-//                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+//                temp[currentTopic] = (beta[0]) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
 //            }
 //            
 ////            betaSmoothingTree.constructTree(temp);
@@ -483,6 +489,13 @@ public class FastQParallelTopicModel implements Serializable {
 
         docLengthCounts = new int[maxTokens + 1];
         topicDocCounts = new int[numTopics][maxTokens + 1];
+        
+        for (int t = 0; t < numTopics; t++) {
+            Arrays.fill(topicDocCounts[t], 0);
+        }
+
+        
+         
 
     }
 
@@ -534,20 +547,20 @@ public class FastQParallelTopicModel implements Serializable {
         }
 
         if (usingSymmetricAlpha) {
-            alphaSum = Dirichlet.learnSymmetricConcentration(topicDocCounts[0],
+            alphaSum[0] = Dirichlet.learnSymmetricConcentration(topicDocCounts[0],
                     docLengthCounts,
                     numTopics,
-                    alphaSum);
+                    alphaSum[0]);
             for (int topic = 0; topic < numTopics; topic++) {
-                alpha[topic] = alphaSum / numTopics;
+                alpha[topic] = alphaSum[0] / numTopics;
             }
         } else {
             try {
-                alphaSum = Dirichlet.learnParameters(alpha, topicDocCounts, docLengthCounts, 1.001, 1.0, 1);
+                alphaSum[0] = Dirichlet.learnParameters(alpha, topicDocCounts, docLengthCounts, 1.001, 1.0, 1);
             } catch (RuntimeException e) {
                 // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
                 logger.warning("Dirichlet optimization has become unstable. Resetting to alpha_t = 1.0.");
-                alphaSum = numTopics;
+                alphaSum[0] = numTopics;
                 for (int topic = 0; topic < numTopics; topic++) {
                     alpha[topic] = 1.0;
                 }
@@ -597,18 +610,18 @@ public class FastQParallelTopicModel implements Serializable {
             topicSizeHistogram[tokensPerTopic[topic]]++;
         }
 
-        betaSum = Dirichlet.learnSymmetricConcentration(countHistogram,
+        betaSum[0] = Dirichlet.learnSymmetricConcentration(countHistogram,
                 topicSizeHistogram,
                 numTypes,
-                betaSum);
-        beta = betaSum / numTypes;
+                betaSum[0]);
+        beta[0] = betaSum[0] / numTypes;
 
         //TODO: copy/update trees in threads
-        logger.info("[beta: " + formatter.format(beta) + "] ");
+        logger.info("[beta[0]: " + formatter.format(beta[0]) + "] ");
         // Now publish the new value
-        for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread].resetBeta(beta, betaSum);
-        }
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            runnables[thread].resetBeta(beta[0], betaSum);
+//        }
 
     }
 
@@ -644,7 +657,7 @@ public class FastQParallelTopicModel implements Serializable {
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
-                    thread, queues.get(thread), barrier
+                    thread, queues.get(thread), barrier, gamma
             //,betaSmoothingTree
             );
 
@@ -659,8 +672,13 @@ public class FastQParallelTopicModel implements Serializable {
                 tokensPerTopic,
                 trees,
                 queues,
-                alpha, alphaSum,
-                beta, useCycleProposals, barrier
+                alpha, alphaSum[0],
+                beta[0], useCycleProposals, barrier,
+                numTopics,
+                docLengthCounts,
+                topicDocCounts,
+                numTypes,
+                maxTypeCount
         //        , betaSmoothingTree
         );
 
@@ -682,14 +700,20 @@ public class FastQParallelTopicModel implements Serializable {
                 this.write(new File(modelFilename + '.' + iteration));
             }
 
+            updater.setOptimizeParams(false);
+            if (iteration > burninPeriod && optimizeInterval != 0
+                        && iteration % saveSampleInterval == 0) {
+                    updater.setOptimizeParams(true);
+                }
+            
             executor.submit(updater);
             // if (numThreads > 1) {
             // Submit runnables to thread pool
             for (int thread = 0; thread < numThreads; thread++) {
-                if (iteration > burninPeriod && optimizeInterval != 0
-                        && iteration % saveSampleInterval == 0) {
-                    runnables[thread].collectAlphaStatistics();
-                }
+//                if (iteration > burninPeriod && optimizeInterval != 0
+//                        && iteration % saveSampleInterval == 0) {
+//                    runnables[thread].collectAlphaStatistics();
+//                }
 
                 logger.fine("submitting thread " + thread);
                 executor.submit(runnables[thread]);
@@ -744,17 +768,17 @@ public class FastQParallelTopicModel implements Serializable {
                 logger.info((elapsedMillis / 1000) + "s ");
             }
 
-            if (iteration > burninPeriod && optimizeInterval != 0
-                    && iteration % optimizeInterval == 0) {
-
-                optimizeAlpha(runnables);
-                optimizeBeta(runnables);
-
-                //recalc trees for multi threaded recalc every time .. for single threaded only when beta (or alpha in not cyvling proposal) is changing
-                recalcTrees();
-
-                logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
-            }
+//            if (iteration > burninPeriod && optimizeInterval != 0
+//                    && iteration % optimizeInterval == 0) {
+//
+//                //optimizeAlpha(runnables);
+//                //optimizeBeta(runnables);
+//
+//                //recalc trees for multi threaded recalc every time .. for single threaded only when beta[0] (or alpha in not cyvling proposal) is changing
+//                //recalcTrees();
+//
+//                logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
+//            }
 
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
@@ -1096,7 +1120,7 @@ public class FastQParallelTopicModel implements Serializable {
 
     /**
      * Print an unnormalized weight for every word in every topic. Most of these
-     * will be equal to the smoothing parameter beta.
+     * will be equal to the smoothing parameter beta[0].
      */
     public void printTopicWordWeights(PrintWriter out) throws IOException {
         // Probably not the most efficient way to do this...
@@ -1105,7 +1129,7 @@ public class FastQParallelTopicModel implements Serializable {
             for (int type = 0; type < numTypes; type++) {
 
                 //int[] topicCounts = typeTopicCounts[type];
-                double weight = beta;
+                double weight = beta[0];
                 weight += typeTopicCounts[type][topic];
 
                 out.println(topic + "\t" + alphabet.lookupObject(type) + "\t" + weight);
@@ -1207,7 +1231,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             // And normalize
             for (int topic = 0; topic < numTopics; topic++) {
-                sortedTopics[topic].set(topic, (alpha[topic] + topicCounts[topic]) / (docLen + alphaSum));
+                sortedTopics[topic].set(topic, (alpha[topic] + topicCounts[topic]) / (docLen + alphaSum[0]));
             }
 
             Arrays.sort(sortedTopics);
@@ -1245,7 +1269,7 @@ public class FastQParallelTopicModel implements Serializable {
         if (smoothed) {
             for (int topic = 0; topic < numTopics; topic++) {
                 for (int type = 0; type < numTypes; type++) {
-                    result[topic][type] += beta;
+                    result[topic][type] += beta[0];
                 }
             }
         }
@@ -1254,7 +1278,7 @@ public class FastQParallelTopicModel implements Serializable {
             double[] topicNormalizers = new double[numTopics];
             if (smoothed) {
                 for (int topic = 0; topic < numTopics; topic++) {
-                    topicNormalizers[topic] = 1.0 / (subCorpusTokensPerTopic[topic] + numTypes * beta);
+                    topicNormalizers[topic] = 1.0 / (subCorpusTokensPerTopic[topic] + numTypes * beta[0]);
                 }
             } else {
                 for (int topic = 0; topic < numTopics; topic++) {
@@ -1291,7 +1315,7 @@ public class FastQParallelTopicModel implements Serializable {
         if (smoothed) {
             for (int topic = 0; topic < numTopics; topic++) {
                 for (int type = 0; type < numTypes; type++) {
-                    result[topic][type] += beta;
+                    result[topic][type] += beta[0];
                 }
             }
         }
@@ -1300,7 +1324,7 @@ public class FastQParallelTopicModel implements Serializable {
             double[] topicNormalizers = new double[numTopics];
             if (smoothed) {
                 for (int topic = 0; topic < numTopics; topic++) {
-                    topicNormalizers[topic] = 1.0 / (tokensPerTopic[topic] + numTypes * beta);
+                    topicNormalizers[topic] = 1.0 / (tokensPerTopic[topic] + numTypes * beta[0]);
                 }
             } else {
                 for (int topic = 0; topic < numTopics; topic++) {
@@ -1423,7 +1447,7 @@ public class FastQParallelTopicModel implements Serializable {
             out.print(alpha[topic] + " ");
         }
         out.println();
-        out.println("#beta : " + beta);
+        out.println("#beta[0] : " + beta[0]);
 
         for (int doc = 0; doc < data.size(); doc++) {
             FeatureSequence tokenSequence = (FeatureSequence) data.get(doc).instance.getData();
@@ -1496,16 +1520,16 @@ public class FastQParallelTopicModel implements Serializable {
             }
 
             // subtract the (count + parameter) sum term
-            logLikelihood -= Dirichlet.logGammaStirling(alphaSum + docTopics.length);
+            logLikelihood -= Dirichlet.logGammaStirling(alphaSum[0] + docTopics.length);
 
             Arrays.fill(topicCounts, 0);
         }
 
         // add the parameter sum term
-        logLikelihood += data.size() * Dirichlet.logGammaStirling(alphaSum);
+        logLikelihood += data.size() * Dirichlet.logGammaStirling(alphaSum[0]);
 
         // And the topics
-        // Count the number of type-topic pairs that are not just (logGamma(beta) - logGamma(beta))
+        // Count the number of type-topic pairs that are not just (logGamma(beta[0]) - logGamma(beta[0]))
         int nonZeroTypeTopics = 0;
 
         for (int type = 0; type < numTypes; type++) {
@@ -1519,7 +1543,7 @@ public class FastQParallelTopicModel implements Serializable {
                 int count = topicCounts[index];
                 if (count > 0) {
                     nonZeroTypeTopics++;
-                    logLikelihood += Dirichlet.logGammaStirling(beta + count);
+                    logLikelihood += Dirichlet.logGammaStirling(beta[0] + count);
 
                     if (Double.isNaN(logLikelihood)) {
                         logger.warning("NaN in log likelihood calculation");
@@ -1536,7 +1560,7 @@ public class FastQParallelTopicModel implements Serializable {
 
         for (int topic = 0; topic < numTopics; topic++) {
             logLikelihood
-                    -= Dirichlet.logGammaStirling((beta * numTypes)
+                    -= Dirichlet.logGammaStirling((beta[0] * numTypes)
                             + tokensPerTopic[topic]);
 
             if (Double.isNaN(logLikelihood)) {
@@ -1549,18 +1573,18 @@ public class FastQParallelTopicModel implements Serializable {
 
         }
 
-        // logGamma(|V|*beta) for every topic
+        // logGamma(|V|*beta[0]) for every topic
         logLikelihood
-                += Dirichlet.logGammaStirling(beta * numTypes) * numTopics;
+                += Dirichlet.logGammaStirling(beta[0] * numTypes) * numTopics;
 
-        // logGamma(beta) for all type/topic pairs with non-zero count
+        // logGamma(beta[0]) for all type/topic pairs with non-zero count
         logLikelihood
-                -= Dirichlet.logGammaStirling(beta) * nonZeroTypeTopics;
+                -= Dirichlet.logGammaStirling(beta[0]) * nonZeroTypeTopics;
 
         if (Double.isNaN(logLikelihood)) {
             logger.info("at the end");
         } else if (Double.isInfinite(logLikelihood)) {
-            logger.info("Infinite value beta " + beta + " * " + numTypes);
+            logger.info("Infinite value beta[0] " + beta[0] + " * " + numTypes);
             return 0;
         }
 
@@ -1573,7 +1597,7 @@ public class FastQParallelTopicModel implements Serializable {
     public TopicInferencer getInferencer() {
         return new TopicInferencer(typeTopicCounts, tokensPerTopic,
                 data.get(0).instance.getDataAlphabet(),
-                alpha, beta, betaSum);
+                alpha, beta[0], betaSum[0]);
     }
 
     /**
@@ -1581,7 +1605,7 @@ public class FastQParallelTopicModel implements Serializable {
      * under this model
      */
     public MarginalProbEstimator getProbEstimator() {
-        return new MarginalProbEstimator(numTopics, alpha, alphaSum, beta,
+        return new MarginalProbEstimator(numTopics, alpha, alphaSum[0], beta[0],
                 typeTopicCounts, tokensPerTopic);
     }
 
@@ -1602,9 +1626,10 @@ public class FastQParallelTopicModel implements Serializable {
         out.writeInt(numTypes);
 
         out.writeObject(alpha);
-        out.writeDouble(alphaSum);
-        out.writeDouble(beta);
-        out.writeDouble(betaSum);
+        out.writeObject(alphaSum);
+        out.writeObject(beta);
+        out.writeObject(betaSum);
+        out.writeObject(gamma);
 
         out.writeObject(typeTopicCounts);
         out.writeObject(tokensPerTopic);
@@ -1645,9 +1670,10 @@ public class FastQParallelTopicModel implements Serializable {
         numTypes = in.readInt();
 
         alpha = (double[]) in.readObject();
-        alphaSum = in.readDouble();
-        beta = in.readDouble();
-        betaSum = in.readDouble();
+        alphaSum = (double[]) in.readObject();
+        beta = (double[]) in.readObject();
+        betaSum = (double[]) in.readObject();
+        gamma = (double[]) in.readObject();
 
         typeTopicCounts = (int[][]) in.readObject();
         tokensPerTopic = (int[]) in.readObject();
