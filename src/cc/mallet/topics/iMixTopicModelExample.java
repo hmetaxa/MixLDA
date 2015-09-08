@@ -66,8 +66,8 @@ public class iMixTopicModelExample {
         int maxNumTopics = 100;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
-        int burnIn = 100;
-        int optimizeInterval = 50;
+        int burnIn = 50;
+        int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
@@ -824,8 +824,8 @@ public class iMixTopicModelExample {
 
                 boolean runFastParallelModel = true;
                 if (runFastParallelModel) {
-                    boolean useCycleProposals = true;
-                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 10.0, 0.01, useCycleProposals);
+                    boolean useCycleProposals = false;
+                    FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 0.01, 0.01, useCycleProposals);
 
                     modelOrig.addInstances(instances[0]);
 
@@ -845,7 +845,7 @@ public class iMixTopicModelExample {
 
                 boolean runOrigParallelModel = true;
                 if (runOrigParallelModel) {
-                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, 10.0, 0.01);
+                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics*0.01, 0.01);
 
                     modelOrig.addInstances(instances[0]);
 

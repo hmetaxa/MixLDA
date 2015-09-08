@@ -130,7 +130,7 @@ public class FastQParallelTopicModel implements Serializable {
         this.alphaSum = new double[1];
         this.alphaSum[0] = numTopics * alpha;
         this.alpha = new double[numTopics];
-
+        Arrays.fill(this.alpha, alpha);
         this.betaSum = new double[1];
         this.beta = new double[1];
         this.beta[0] = beta;
@@ -292,7 +292,7 @@ public class FastQParallelTopicModel implements Serializable {
 
         initializeHistograms();
         buildInitialTypeTopicCounts();
-        
+
     }
 
     public void initializeFromState(File stateFile) throws IOException {
@@ -333,21 +333,19 @@ public class FastQParallelTopicModel implements Serializable {
 
         initializeHistograms();
         buildInitialTypeTopicCounts();
-        
+
     }
 
     public void buildInitialTypeTopicCounts() {
 
         typeTopicCounts = new int[numTypes][];
         tokensPerTopic = new int[numTopics];
-        
 
         // Get the total number of occurrences of each word type
         //int[] typeTotals = new int[numTypes];
         typeTotals = new int[numTypes];
         trees = new FTree[numTypes];
 
-        
         // Create the type-topic counts data structure
         for (TopicAssignment document : data) {
 
@@ -372,7 +370,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             FeatureSequence tokens = (FeatureSequence) document.instance.getData();
             FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
-
+            int[] localTopicCounts = new int[numTopics];
             int[] topics = topicSequence.getFeatures();
             for (int position = 0; position < tokens.size(); position++) {
 
@@ -382,15 +380,17 @@ public class FastQParallelTopicModel implements Serializable {
                     continue;
                 }
 
-                if (tokensPerTopic[topic] > 0) {
-                    topicDocCounts[topic][tokensPerTopic[topic]]--;
-                }
+                localTopicCounts[topics[position]]++;
+
                 tokensPerTopic[topic]++;
-                topicDocCounts[topic][tokensPerTopic[topic]]++;
 
                 int type = tokens.getIndexAtPosition(position);
                 typeTopicCounts[type][topic]++;
 
+            }
+
+            for (int topic = 0; topic < numTopics; topic++) {
+                topicDocCounts[topic][localTopicCounts[topic]]++;
             }
         }
 
@@ -405,7 +405,7 @@ public class FastQParallelTopicModel implements Serializable {
                 if (useCycleProposals) {
                     temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
                 } else {
-                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    temp[currentTopic] = gamma[0] * alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                 }
 
             }
@@ -441,7 +441,7 @@ public class FastQParallelTopicModel implements Serializable {
                 if (useCycleProposals) {
                     temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
                 } else {
-                    temp[currentTopic] = alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    temp[currentTopic] = gamma[0] * alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                 }
 
             }
@@ -489,13 +489,10 @@ public class FastQParallelTopicModel implements Serializable {
 
         docLengthCounts = new int[maxTokens + 1];
         topicDocCounts = new int[numTopics][maxTokens + 1];
-        
+
         for (int t = 0; t < numTopics; t++) {
             Arrays.fill(topicDocCounts[t], 0);
         }
-
-        
-         
 
     }
 
@@ -503,49 +500,48 @@ public class FastQParallelTopicModel implements Serializable {
 
         // First clear the sufficient statistic histograms
         //Arrays.fill(docLengthCounts, 0);
-        for (int topic = 0; topic < topicDocCounts.length; topic++) {
-            Arrays.fill(topicDocCounts[topic], 0);
-        }
-
-        for (int thread = 0; thread < numThreads; thread++) {
-            //int[] sourceLengthCounts = runnables[thread].getDocLengthCounts();
-            int[][] sourceTopicCounts = runnables[thread].getTopicDocCounts();
-
-//            for (int count = 0; count < sourceLengthCounts.length; count++) {
-//                if (sourceLengthCounts[count] > 0) {
-//                    docLengthCounts[count] += sourceLengthCounts[count];
-//                    sourceLengthCounts[count] = 0;
+//        for (int topic = 0; topic < topicDocCounts.length; topic++) {
+//            Arrays.fill(topicDocCounts[topic], 0);
+//        }
+//
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            //int[] sourceLengthCounts = runnables[thread].getDocLengthCounts();
+//            int[][] sourceTopicCounts = runnables[thread].getTopicDocCounts();
+//
+////            for (int count = 0; count < sourceLengthCounts.length; count++) {
+////                if (sourceLengthCounts[count] > 0) {
+////                    docLengthCounts[count] += sourceLengthCounts[count];
+////                    sourceLengthCounts[count] = 0;
+////                }
+////            }
+//            for (int topic = 0; topic < numTopics; topic++) {
+//
+//                if (!usingSymmetricAlpha) {
+//                    for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
+//                        if (sourceTopicCounts[topic][count] > 0) {
+//                            topicDocCounts[topic][count] += sourceTopicCounts[topic][count];
+//                            sourceTopicCounts[topic][count] = 0;
+//                        }
+//                    }
+//                } else {
+//                    // For the symmetric version, we only need one 
+//                    //  count array, which I'm putting in the same 
+//                    //  data structure, but for topic 0. All other
+//                    //  topic histograms will be empty.
+//                    // I'm duplicating this for loop, which 
+//                    //  isn't the best thing, but it means only checking
+//                    //  whether we are symmetric or not numTopics times, 
+//                    //  instead of numTopics * longest document length.
+//                    for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
+//                        if (sourceTopicCounts[topic][count] > 0) {
+//                            topicDocCounts[0][count] += sourceTopicCounts[topic][count];
+//                            //			 ^ the only change
+//                            sourceTopicCounts[topic][count] = 0;
+//                        }
+//                    }
 //                }
 //            }
-            for (int topic = 0; topic < numTopics; topic++) {
-
-                if (!usingSymmetricAlpha) {
-                    for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-                        if (sourceTopicCounts[topic][count] > 0) {
-                            topicDocCounts[topic][count] += sourceTopicCounts[topic][count];
-                            sourceTopicCounts[topic][count] = 0;
-                        }
-                    }
-                } else {
-                    // For the symmetric version, we only need one 
-                    //  count array, which I'm putting in the same 
-                    //  data structure, but for topic 0. All other
-                    //  topic histograms will be empty.
-                    // I'm duplicating this for loop, which 
-                    //  isn't the best thing, but it means only checking
-                    //  whether we are symmetric or not numTopics times, 
-                    //  instead of numTopics * longest document length.
-                    for (int count = 0; count < sourceTopicCounts[topic].length; count++) {
-                        if (sourceTopicCounts[topic][count] > 0) {
-                            topicDocCounts[0][count] += sourceTopicCounts[topic][count];
-                            //			 ^ the only change
-                            sourceTopicCounts[topic][count] = 0;
-                        }
-                    }
-                }
-            }
-        }
-
+//        }
         if (usingSymmetricAlpha) {
             alphaSum[0] = Dirichlet.learnSymmetricConcentration(topicDocCounts[0],
                     docLengthCounts,
@@ -653,32 +649,40 @@ public class FastQParallelTopicModel implements Serializable {
             queues.add(new ConcurrentLinkedQueue<FastQDelta>());
 
             runnables[thread] = new FastQWorkerRunnable(numTopics,
-                    alpha, alphaSum, beta,
+                    alpha, alphaSum, beta, betaSum, gamma,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
-                    thread, queues.get(thread), barrier, gamma
+                    thread, queues.get(thread), barrier
             //,betaSmoothingTree
             );
 
-            runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
-
+            //runnables[thread].initializeAlphaStatistics(docLengthCounts.length);
             offset += docsPerThread;
 
             //runnables[thread].makeOnlyThread();
+        }
+
+        Randoms randomUpd = null;
+        if (randomSeed == -1) {
+            randomUpd = new Randoms();
+        } else {
+            randomUpd = new Randoms(randomSeed);
         }
 
         FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
                 tokensPerTopic,
                 trees,
                 queues,
-                alpha, alphaSum[0],
-                beta[0], useCycleProposals, barrier,
+                alpha, alphaSum,
+                beta, betaSum, gamma,
+                useCycleProposals, barrier,
                 numTopics,
                 docLengthCounts,
                 topicDocCounts,
                 numTypes,
-                maxTypeCount
+                maxTypeCount,
+                randomUpd
         //        , betaSmoothingTree
         );
 
@@ -702,10 +706,10 @@ public class FastQParallelTopicModel implements Serializable {
 
             updater.setOptimizeParams(false);
             if (iteration > burninPeriod && optimizeInterval != 0
-                        && iteration % saveSampleInterval == 0) {
-                    updater.setOptimizeParams(true);
-                }
-            
+                    && iteration % saveSampleInterval == 0) {
+                updater.setOptimizeParams(true);
+            }
+
             executor.submit(updater);
             // if (numThreads > 1) {
             // Submit runnables to thread pool
@@ -779,7 +783,6 @@ public class FastQParallelTopicModel implements Serializable {
 //
 //                logger.info("[O " + (System.currentTimeMillis() - iterationStart) + "] ");
 //            }
-
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
                     double LL = modelLogLikelihood();
@@ -1163,7 +1166,7 @@ public class FastQParallelTopicModel implements Serializable {
         // Add the smoothing parameters and normalize
         double sum = 0.0;
         for (int topic = 0; topic < numTopics; topic++) {
-            topicDistribution[topic] += alpha[topic];
+            topicDistribution[topic] += gamma[0] * alpha[topic];
             sum += topicDistribution[topic];
         }
 
@@ -1231,7 +1234,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             // And normalize
             for (int topic = 0; topic < numTopics; topic++) {
-                sortedTopics[topic].set(topic, (alpha[topic] + topicCounts[topic]) / (docLen + alphaSum[0]));
+                sortedTopics[topic].set(topic, (gamma[0] * alpha[topic] + topicCounts[topic]) / (docLen + alphaSum[0]));
             }
 
             Arrays.sort(sortedTopics);
@@ -1353,7 +1356,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             if (smoothed) {
                 for (int topic = 0; topic < numTopics; topic++) {
-                    result[doc][topic] += alpha[topic];
+                    result[doc][topic] += gamma[0] * alpha[topic];
                 }
             }
 
@@ -1444,7 +1447,7 @@ public class FastQParallelTopicModel implements Serializable {
         out.println("#doc source pos typeindex type topic");
         out.print("#alpha : ");
         for (int topic = 0; topic < numTopics; topic++) {
-            out.print(alpha[topic] + " ");
+            out.print(gamma[0] * alpha[topic] + " ");
         }
         out.println();
         out.println("#beta[0] : " + beta[0]);
@@ -1500,7 +1503,7 @@ public class FastQParallelTopicModel implements Serializable {
         int[] docTopics;
 
         for (int topic = 0; topic < numTopics; topic++) {
-            topicLogGammas[topic] = Dirichlet.logGammaStirling(alpha[topic]);
+            topicLogGammas[topic] = Dirichlet.logGammaStirling(gamma[0] * alpha[topic]);
         }
 
         for (int doc = 0; doc < data.size(); doc++) {
@@ -1514,7 +1517,7 @@ public class FastQParallelTopicModel implements Serializable {
 
             for (int topic = 0; topic < numTopics; topic++) {
                 if (topicCounts[topic] > 0) {
-                    logLikelihood += (Dirichlet.logGammaStirling(alpha[topic] + topicCounts[topic])
+                    logLikelihood += (Dirichlet.logGammaStirling(gamma[0] * alpha[topic] + topicCounts[topic])
                             - topicLogGammas[topic]);
                 }
             }

@@ -35,16 +35,16 @@ public class FastQUpdaterRunnable implements Runnable {
     protected FTree[] trees; //store 
     protected List<ConcurrentLinkedQueue<FastQDelta>> queues;
     protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
-    protected double alphaSum;
-    protected double beta;   // Prior on per-topic multinomial distribution over words
-    protected double betaSum;
+    protected double[] alphaSum;
+    protected double[] beta;   // Prior on per-topic multinomial distribution over words
+    protected double[] betaSum;
 
     protected double tablesCnt;
-    protected double gamma = 1;
+    protected double[] gamma;
     protected double gammaRoot = 10;
     protected int numTopics;
     protected int numTypes;
-    // The max over typeTotals, used for beta optimization
+    // The max over typeTotals, used for beta[0] optimization
     protected int maxTypeCount;
     protected Randoms random;
     protected int[] docLengthCounts; // histogram of document sizes
@@ -56,7 +56,7 @@ public class FastQUpdaterRunnable implements Runnable {
     public static final double DEFAULT_BETA = 0.01;
     boolean optimizeParams = false;
 
-    // Optimize gamma hyper params
+    // Optimize gamma[0] hyper params
     RandomSamplers samp;
     HashSet<Integer> inActiveTopicIndex = new HashSet<Integer>(); //inactive topic index for all modalities
     private NumberFormat formatter;
@@ -66,14 +66,19 @@ public class FastQUpdaterRunnable implements Runnable {
             int[] tokensPerTopic,
             FTree[] trees,
             List<ConcurrentLinkedQueue<FastQDelta>> queues,
-            double[] alpha, double alphaSum,
-            double beta, boolean useCycleProposals,
+            double[] alpha, 
+            double[] alphaSum,
+            double[] beta, 
+            double[] betaSum, 
+            double[] gamma,
+            boolean useCycleProposals,
             CyclicBarrier cyclicBarrier,
             int numTopics,
             int[] docLengthCounts,
             int[][] topicDocCounts,
             int numTypes,
-            int maxTypeCount
+            int maxTypeCount,
+            Randoms random
     //        , FTree betaSmoothingTree
     ) {
 
@@ -82,6 +87,7 @@ public class FastQUpdaterRunnable implements Runnable {
         this.alpha = alpha;
         this.beta = beta;
         this.betaSum = betaSum;
+        this.gamma = gamma;
         this.queues = queues;
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
@@ -91,6 +97,7 @@ public class FastQUpdaterRunnable implements Runnable {
         this.docLengthCounts = docLengthCounts;
         this.topicDocCounts = topicDocCounts;
         this.numTypes = numTypes;
+        this.random = random;
         //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
 
@@ -112,13 +119,12 @@ public class FastQUpdaterRunnable implements Runnable {
         }
         isFinished = false;
         if (optimizeParams) {
-            optimizeGamma();
             updateAlphaAndSmoothing();
+            //optimizeGamma();
             optimizeBeta();
             recalcTrees();
         }
 
-        
         try {
             while (!isFinished) {
 
@@ -138,29 +144,31 @@ public class FastQUpdaterRunnable implements Runnable {
                         currentTypeTopicCounts[delta.OldTopic]--;
                         currentTypeTopicCounts[delta.NewTopic]++;
 
-                        topicDocCounts[delta.OldTopic][tokensPerTopic[delta.OldTopic]]--;
                         tokensPerTopic[delta.OldTopic]--;
                         assert (tokensPerTopic[delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
-                        if (tokensPerTopic[delta.OldTopic] > 0) {
-                            topicDocCounts[delta.OldTopic][tokensPerTopic[delta.OldTopic]]++;
-                        }
 
-                        if (tokensPerTopic[delta.NewTopic] > 0) {
-                            topicDocCounts[delta.NewTopic][tokensPerTopic[delta.NewTopic]]--;
-                        }
                         tokensPerTopic[delta.NewTopic]++;
-                        topicDocCounts[delta.NewTopic][tokensPerTopic[delta.NewTopic]]++;
+
+                        //update histograms
+                        topicDocCounts[delta.OldTopic][delta.DocOldTopicCnt + 1]--;
+                        if (delta.DocOldTopicCnt > 0) {
+                            topicDocCounts[delta.OldTopic][delta.DocOldTopicCnt]++;
+                        }
+                        if (delta.DocNewTopicCnt > 1) {
+                            topicDocCounts[delta.NewTopic][delta.DocNewTopicCnt - 1]--;
+                        }
+                        topicDocCounts[delta.NewTopic][delta.DocNewTopicCnt]++;
 
                         //Update tree
                         if (useCycleProposals) {
-                            trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
-                            trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                            trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta[0]) / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
+                            trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta[0]) / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
 
-                            //betaSmoothingTree.update(delta.OldTopic, (beta / (tokensPerTopic[delta.OldTopic] + betaSum)));
-                            //betaSmoothingTree.update(delta.NewTopic, ( beta / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                            //betaSmoothingTree.update(delta.OldTopic, (beta[0] / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
+                            //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
                         } else {
-                            trees[delta.Type].update(delta.OldTopic, (gamma *alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta) / (tokensPerTopic[delta.OldTopic] + betaSum)));
-                            trees[delta.Type].update(delta.NewTopic, (gamma *alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta) / (tokensPerTopic[delta.NewTopic] + betaSum)));
+                            trees[delta.Type].update(delta.OldTopic, (gamma[0] * alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[0]) / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
+                            trees[delta.Type].update(delta.NewTopic, (gamma[0] * alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[0]) / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
                         }
 
                     }
@@ -189,7 +197,7 @@ public class FastQUpdaterRunnable implements Runnable {
         }
     }
 
-      public void optimizeBeta() {
+    public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
         //  we would need to store a maxTypeCount + 1 count.
@@ -224,21 +232,21 @@ public class FastQUpdaterRunnable implements Runnable {
             topicSizeHistogram[tokensPerTopic[topic]]++;
         }
 
-        betaSum = Dirichlet.learnSymmetricConcentration(countHistogram,
+        betaSum[0] = Dirichlet.learnSymmetricConcentration(countHistogram,
                 topicSizeHistogram,
                 numTypes,
-                betaSum);
-        beta = betaSum / numTypes;
+                betaSum[0]);
+        beta[0] = betaSum[0] / numTypes;
 
         //TODO: copy/update trees in threads
-        logger.info("[beta: " + formatter.format(beta) + "] ");
+        logger.info("[beta[0]: " + formatter.format(beta[0]) + "] ");
         // Now publish the new value
-       // for (int thread = 0; thread < numThreads; thread++) {
-       //     runnables[thread].resetBeta(beta, betaSum);
-       // }
+        // for (int thread = 0; thread < numThreads; thread++) {
+        //     runnables[thread].resetBeta(beta[0], betaSum[0]);
+        // }
 
     }
-      
+
     private void optimizeGamma() {
 
         // hyperparameters for DP and Dirichlet samplers
@@ -266,7 +274,7 @@ public class FastQUpdaterRunnable implements Runnable {
 //            totalTables += tablesPerModality[mod];
 //        }
         for (int r = 0; r < R; r++) {
-            // gamma: root level (Escobar+West95) with n = T
+            // gamma[0]: root level (Escobar+West95) with n = T
             // (14)
             double eta = samp.randBeta(gammaRoot + 1, tablesCnt);
             double bloge = bgamma - log(eta);
@@ -283,19 +291,19 @@ public class FastQUpdaterRunnable implements Runnable {
             for (int j = 0; j < docLengthCounts.length; j++) {
                 for (int i = 0; i < docLengthCounts[j]; i++) {
                     // (49) (corrected)
-                    qs += samp.randBernoulli(j / (j + gamma));
+                    qs += samp.randBernoulli(j / (j + gamma[0]));
                     // (48)
-                    qw += log(samp.randBeta(gamma + 1, j));
+                    qw += log(samp.randBeta(gamma[0] + 1, j));
                 }
             }
             // (47)
-            gamma = samp.randGamma(aalpha + tablesCnt - qs, 1. / (balpha - qw));
+            gamma[0] = samp.randGamma(aalpha + tablesCnt - qs, 1. / (balpha - qw));
 
             //  }
         }
         logger.info("GammaRoot: " + gammaRoot);
         //for (byte m = 0; m < numModalities; m++) {
-        logger.info("Gamma: " + gamma);
+        logger.info("Gamma: " + gamma[0]);
         //}
 
     }
@@ -324,14 +332,14 @@ public class FastQUpdaterRunnable implements Runnable {
 
                     int curTbls = 0;
                     try {
-                        curTbls = random.nextAntoniak(gamma * alpha[t], i);
+                        curTbls = random.nextAntoniak(gamma[0] * alpha[t], i);
 
                     } catch (Exception e) {
                         curTbls = 1;
                     }
 
                     mk[t] += (topicDocCounts[t][i] * curTbls);
-                    //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                    //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[0][m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
                     // nmk[m].get(k));
                 } else if (topicDocCounts[t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
                 {
@@ -344,7 +352,7 @@ public class FastQUpdaterRunnable implements Runnable {
 
         //for (byte m = 0; m < numModalities; m++) {
         //alpha[m].fill(0, numTopics, 0);
-        alphaSum = 0;
+        alphaSum[0] = 0;
         mk[numTopics] = gammaRoot;
         tablesCnt = Vectors.sum(mk);
 
@@ -353,9 +361,18 @@ public class FastQUpdaterRunnable implements Runnable {
         for (int kk = 0; kk <= numTopics; kk++) {
             //int k = kactive.get(kk);
             alpha[kk] = tt[kk];
-            alphaSum += gamma * tt[kk];
+            alphaSum[0] += gamma[0] * tt[kk];
             //tau.set(k, tt[kk]);
         }
+        
+        logger.info("AlphaSum: " + alphaSum[0]);
+        //for (byte m = 0; m < numModalities; m++) {
+        String alphaStr = "";
+        for (int topic = 0; topic < numTopics; topic++) {
+            alphaStr += formatter.format(alpha[topic]) + " ";
+        }
+        
+        logger.info("[Alpha: [" + alphaStr + "] ");
 
 //            if (alpha[m].size() < numTopics + 1) {
 //                alpha[m].add(tt[numTopics]);
@@ -364,7 +381,7 @@ public class FastQUpdaterRunnable implements Runnable {
 //            }
         //tau.set(K, tt[K]);
         //}
-      //Recalc trees
+        //Recalc trees
     }
 
     private double[] sampleDirichlet(double[] p) {
@@ -412,11 +429,11 @@ public class FastQUpdaterRunnable implements Runnable {
             int[] currentTypeTopicCounts = typeTopicCounts[w];
             for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta)  / (tokensPerTopic[currentTopic] + betaSum);
+                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
                 if (useCycleProposals) {
-                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
                 } else {
-                    temp[currentTopic] = gamma *alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
+                    temp[currentTopic] = gamma[0] * alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                 }
 
             }
@@ -433,7 +450,7 @@ public class FastQUpdaterRunnable implements Runnable {
 //            //Arrays.fill(temp, 0);
 //
 //            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-//                temp[currentTopic] = (beta) / (tokensPerTopic[currentTopic] + betaSum); //with cycle proposal
+//                temp[currentTopic] = (beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
 //            }
 //            
 ////            betaSmoothingTree.constructTree(temp);

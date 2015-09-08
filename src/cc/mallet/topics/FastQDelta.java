@@ -13,8 +13,8 @@ public class FastQDelta {
 
     public int NewTopic;
     public int OldTopic;
-    public int DocOldTopicCnt; //to update histograms
-    public int DocNewTopicCnt;
+    public int DocOldTopicCnt; //latest (current) value to update histograms
+    public int DocNewTopicCnt; //latest (current) value to update histograms
     public int Type;
     public int Modality;
 
@@ -22,11 +22,14 @@ public class FastQDelta {
 
     }
 
-    public FastQDelta(int newT, int OldT, int type, int mod) {
+    public FastQDelta(int oldT, int newT, int type, int mod, int docOldTopicCnt, int docNewTopicCnt) {
         NewTopic = newT;
-        OldTopic = OldT;
+        OldTopic = oldT;
         Type = type;
         Modality = mod;
+        DocOldTopicCnt = docOldTopicCnt;
+        DocNewTopicCnt = docNewTopicCnt;
+        
 
     }
 

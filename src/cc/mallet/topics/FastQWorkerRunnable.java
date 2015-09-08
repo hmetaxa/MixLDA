@@ -41,7 +41,7 @@ public class FastQWorkerRunnable implements Runnable {
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
     protected double[] betaSum;
-    protected double[] gamma; 
+    protected double[] gamma;
     public static final double DEFAULT_BETA = 0.01;
     protected double docSmoothingOnlyMass = 0.0;
     protected double[] docSmoothingOnlyCumValues;
@@ -49,8 +49,8 @@ public class FastQWorkerRunnable implements Runnable {
     protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
     protected int[] tokensPerTopic; // indexed by <topic index>
     // for dirichlet estimation
-    protected int[] docLengthCounts; // histogram of document sizes
-    protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
+    //protected int[] docLengthCounts; // histogram of document sizes
+    //protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
     protected FTree[] trees; //store 
     protected Randoms random;
@@ -62,13 +62,15 @@ public class FastQWorkerRunnable implements Runnable {
 
     public FastQWorkerRunnable(int numTopics,
             double[] alpha, double[] alphaSum,
-            double[] beta, Randoms random,
+            double[] beta,
+            double[] betaSum,
+            double[] gamma,
+            Randoms random,
             ArrayList<TopicAssignment> data,
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
             int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
-            int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier,
-            double[] gamma
+            int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier
     //, FTree betaSmoothingTree
     ) {
 
@@ -123,16 +125,13 @@ public class FastQWorkerRunnable implements Runnable {
 //    public int[] getDocLengthCounts() {
 //        return docLengthCounts;
 //    }
-
-    public int[][] getTopicDocCounts() {
-        return topicDocCounts;
-    }
-
-    public void initializeAlphaStatistics(int size) {
-//        docLengthCounts = new int[size];
-        topicDocCounts = new int[numTopics][size];
-    }
-
+//    public int[][] getTopicDocCounts() {
+//        return topicDocCounts;
+//    }
+//    public void initializeAlphaStatistics(int size) {
+////        docLengthCounts = new int[size];
+//     //   topicDocCounts = new int[numTopics][size];
+//    }
     public void collectAlphaStatistics() {
         shouldSaveState = true;
     }
@@ -171,8 +170,6 @@ public class FastQWorkerRunnable implements Runnable {
                 LabelSequence topicSequence
                         = (LabelSequence) data.get(doc).topicSequence;
 
-        
-                 
                 if (useCycleProposals) {
                     sampleTopicsForOneDocCyclingProposals(tokenSequence, topicSequence,
                             true);
@@ -186,7 +183,7 @@ public class FastQWorkerRunnable implements Runnable {
             shouldSaveState = false;
             //isFinished = true;
 
-            queue.add(new FastQDelta(-1, -1, -1, -1));
+            queue.add(new FastQDelta(-1, -1, -1, -1, -1, -1));
 
             try {
                 cyclicBarrier.await();
@@ -378,21 +375,20 @@ public class FastQWorkerRunnable implements Runnable {
 
             //add delta to the queue
             if (newTopic != oldTopic) {
-                queue.add(new FastQDelta(newTopic, oldTopic, type, 0));
+                queue.add(new FastQDelta(oldTopic, newTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[newTopic]));
             }
 
         }
 
-        if (shouldSaveState) {
-            // Update the document-topic count histogram,
-            //  for dirichlet estimation
-            //[docLength]++;
-
-            for (int topic = 0; topic < numTopics; topic++) {
-                topicDocCounts[topic][localTopicCounts[topic]]++;
-            }
-        }
-
+//        if (shouldSaveState) {
+//            // Update the document-topic count histogram,
+//            //  for dirichlet estimation
+//            //[docLength]++;
+//
+//            for (int topic = 0; topic < numTopics; topic++) {
+//                topicDocCounts[topic][localTopicCounts[topic]]++;
+//            }
+//        }
     }
 
     protected void sampleTopicsForOneDocCyclingProposals(FeatureSequence tokenSequence,
@@ -460,8 +456,8 @@ public class FastQWorkerRunnable implements Runnable {
                     //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                     // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
                     // BUT global cnts are changing due to QUeue based updates so there is no meaning in them
-                    double model_old = (localTopicCounts[currentTopic] + gamma[0] *alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    double model_new = (localTopicCounts[newTopic] + gamma[0] *alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                    double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
                     double prop_old = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
                     double prop_new = (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
                     double acceptance = (model_new * prop_old) / (model_old * prop_new);
@@ -487,7 +483,7 @@ public class FastQWorkerRunnable implements Runnable {
 
                 //	Make sure it actually gets set
                 newTopic = -1;
-                
+
                 if (sample < docSmoothingOnlyMass) {
 
                     newTopic = lower_bound(docSmoothingOnlyCumValues, sample, numTopics);
@@ -509,14 +505,14 @@ public class FastQWorkerRunnable implements Runnable {
                     //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                     // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
 
-                    double model_old = (localTopicCounts[currentTopic] +gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    double model_new = (localTopicCounts[newTopic] + gamma[0] *alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                    double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
                     double prop_old = (oldTopic == currentTopic)
-                            ? (localTopicCounts[currentTopic] + 1 +gamma[0] * alpha[currentTopic])
-                            : (localTopicCounts[currentTopic] +gamma[0] * alpha[currentTopic]);
+                            ? (localTopicCounts[currentTopic] + 1 + gamma[0] * alpha[currentTopic])
+                            : (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]);
                     double prop_new = (newTopic == oldTopic)
-                            ? (localTopicCounts[newTopic] + 1 +gamma[0] *alpha[newTopic])
-                            : (localTopicCounts[newTopic] +gamma[0] * alpha[newTopic]);
+                            ? (localTopicCounts[newTopic] + 1 + gamma[0] * alpha[newTopic])
+                            : (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]);
                     double acceptance = (model_new * prop_old) / (model_old * prop_new);
                     //acceptance = (temp_new * prop_old * trees[type].getComponent(newTopic)) / (temp_old * prop_new * trees[type].getComponent(oldTopic));
 
@@ -544,22 +540,21 @@ public class FastQWorkerRunnable implements Runnable {
 
             if (currentTopic != oldTopic) {
 
-                queue.add(new FastQDelta(currentTopic, oldTopic, type, 0));
+                queue.add(new FastQDelta(oldTopic, currentTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[currentTopic]));
 
             }
 
         }
 
-        if (shouldSaveState) {
-            // Update the document-topic count histogram,
-            //  for dirichlet estimation
-            //[docLength]++;
-
-            for (int topic = 0; topic < numTopics; topic++) {
-                topicDocCounts[topic][localTopicCounts[topic]]++;
-            }
-        }
-
+//        if (shouldSaveState) {
+//            // Update the document-topic count histogram,
+//            //  for dirichlet estimation
+//            //[docLength]++;
+//
+//            for (int topic = 0; topic < numTopics; topic++) {
+//                topicDocCounts[topic][localTopicCounts[topic]]++;
+//            }
+//        }
     }
 
 }
