@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 import org.knowceans.util.RandomSamplers;
 import org.knowceans.util.Vectors;
@@ -66,10 +67,10 @@ public class FastQUpdaterRunnable implements Runnable {
             int[] tokensPerTopic,
             FTree[] trees,
             List<ConcurrentLinkedQueue<FastQDelta>> queues,
-            double[] alpha, 
+            double[] alpha,
             double[] alphaSum,
-            double[] beta, 
-            double[] betaSum, 
+            double[] beta,
+            double[] betaSum,
             double[] gamma,
             boolean useCycleProposals,
             CyclicBarrier cyclicBarrier,
@@ -98,9 +99,15 @@ public class FastQUpdaterRunnable implements Runnable {
         this.topicDocCounts = topicDocCounts;
         this.numTypes = numTypes;
         this.random = random;
+        this.maxTypeCount = maxTypeCount;
+
+        formatter = NumberFormat.getInstance();
+        formatter.setMaximumFractionDigits(5);
+
+        this.samp = new RandomSamplers(ThreadLocalRandom.current());
+
         //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
-
     }
 
     public boolean isFinished = true;
@@ -120,7 +127,7 @@ public class FastQUpdaterRunnable implements Runnable {
         isFinished = false;
         if (optimizeParams) {
             updateAlphaAndSmoothing();
-            //optimizeGamma();
+            optimizeGamma();
             optimizeBeta();
             recalcTrees();
         }
@@ -357,21 +364,21 @@ public class FastQUpdaterRunnable implements Runnable {
         tablesCnt = Vectors.sum(mk);
 
         double[] tt = sampleDirichlet(mk);
-
-        for (int kk = 0; kk <= numTopics; kk++) {
+        // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
+        for (int kk = 0; kk < numTopics; kk++) {
             //int k = kactive.get(kk);
             alpha[kk] = tt[kk];
             alphaSum[0] += gamma[0] * tt[kk];
             //tau.set(k, tt[kk]);
         }
-        
+
         logger.info("AlphaSum: " + alphaSum[0]);
         //for (byte m = 0; m < numModalities; m++) {
         String alphaStr = "";
         for (int topic = 0; topic < numTopics; topic++) {
             alphaStr += formatter.format(alpha[topic]) + " ";
         }
-        
+
         logger.info("[Alpha: [" + alphaStr + "] ");
 
 //            if (alpha[m].size() < numTopics + 1) {

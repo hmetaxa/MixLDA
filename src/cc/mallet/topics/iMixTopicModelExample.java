@@ -66,8 +66,8 @@ public class iMixTopicModelExample {
         int maxNumTopics = 100;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
-        int burnIn = 50;
-        int optimizeInterval = 20;
+        int burnIn = 20;
+        int optimizeInterval = 10;
         ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
