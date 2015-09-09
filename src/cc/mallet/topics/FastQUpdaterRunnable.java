@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -34,7 +35,7 @@ public class FastQUpdaterRunnable implements Runnable {
     protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
     protected int[] tokensPerTopic; // indexed by <topic index>
     protected FTree[] trees; //store 
-    protected List<ConcurrentLinkedQueue<FastQDelta>> queues;
+    protected List<Queue<FastQDelta>> queues;
     protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
@@ -66,7 +67,7 @@ public class FastQUpdaterRunnable implements Runnable {
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
             FTree[] trees,
-            List<ConcurrentLinkedQueue<FastQDelta>> queues,
+            //List<ConcurrentLinkedQueue<FastQDelta>> queues, in order not to remain in GC 
             double[] alpha,
             double[] alphaSum,
             double[] beta,
@@ -89,7 +90,7 @@ public class FastQUpdaterRunnable implements Runnable {
         this.beta = beta;
         this.betaSum = betaSum;
         this.gamma = gamma;
-        this.queues = queues;
+        //this.queues = queues;
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
         this.trees = trees;
@@ -114,6 +115,10 @@ public class FastQUpdaterRunnable implements Runnable {
 
     public void setOptimizeParams(boolean optimizeParams) {
         this.optimizeParams = optimizeParams;
+    }
+    
+    public void setQueues(List<Queue<FastQDelta>> queues) {
+        this.queues = queues;
     }
 
     public void run() {

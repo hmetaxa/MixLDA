@@ -16,6 +16,7 @@ import java.text.NumberFormat;
 
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
+import java.util.Queue;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CyclicBarrier;
@@ -55,7 +56,7 @@ public class FastQWorkerRunnable implements Runnable {
     protected FTree[] trees; //store 
     protected Randoms random;
     protected int threadId = -1;
-    protected ConcurrentLinkedQueue<FastQDelta> queue;
+    protected Queue<FastQDelta> queue;
     private final CyclicBarrier cyclicBarrier;
     protected int MHsteps = 1;
     boolean useCycleProposals = false;
@@ -70,13 +71,15 @@ public class FastQWorkerRunnable implements Runnable {
             int[][] typeTopicCounts,
             int[] tokensPerTopic,
             int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
-            int threadId, ConcurrentLinkedQueue<FastQDelta> queue, CyclicBarrier cyclicBarrier
+            int threadId,
+//            ConcurrentLinkedQueue<FastQDelta> queue, 
+            CyclicBarrier cyclicBarrier
     //, FTree betaSmoothingTree
     ) {
 
         this.data = data;
         this.threadId = threadId;
-        this.queue = queue;
+        //this.queue = queue;
         this.cyclicBarrier = cyclicBarrier;
 
         this.numTopics = numTopics;
@@ -114,6 +117,10 @@ public class FastQWorkerRunnable implements Runnable {
         //				   Integer.toBinaryString(topicMask) + " topic mask");
     }
 
+     public void setQueue( Queue<FastQDelta> queue) {
+        this.queue = queue;
+    }
+     
     public int[] getTokensPerTopic() {
         return tokensPerTopic;
     }
@@ -248,93 +255,94 @@ public class FastQWorkerRunnable implements Runnable {
             FeatureSequence topicSequence,
             boolean readjustTopicsAndStats /* currently ignored */) {
 
-        int[] oneDocTopics = topicSequence.getFeatures();
+        try {
+            int[] oneDocTopics = topicSequence.getFeatures();
 
-        int[] currentTypeTopicCounts;
-        int[] localTopicIndex = new int[numTopics];
-        double[] topicDocWordMasses = new double[numTopics];
-        int type, oldTopic, newTopic;
-        FTree currentTree;
+            int[] currentTypeTopicCounts;
+            int[] localTopicIndex = new int[numTopics];
+            double[] topicDocWordMasses = new double[numTopics];
+            int type, oldTopic, newTopic;
+            FTree currentTree;
 
-        int docLength = tokenSequence.getLength();
+            int docLength = tokenSequence.getLength();
 
-        int[] localTopicCounts = new int[numTopics];
+            int[] localTopicCounts = new int[numTopics];
 
-        //		populate topic counts
-        for (int position = 0; position < docLength; position++) {
-            if (oneDocTopics[position] == FastQParallelTopicModel.UNASSIGNED_TOPIC) {
-                continue;
+            //		populate topic counts
+            for (int position = 0; position < docLength; position++) {
+                if (oneDocTopics[position] == FastQParallelTopicModel.UNASSIGNED_TOPIC) {
+                    continue;
+                }
+                localTopicCounts[oneDocTopics[position]]++;
             }
-            localTopicCounts[oneDocTopics[position]]++;
-        }
 
-        // Build an array that densely lists the topics that
-        //  have non-zero counts.
-        int denseIndex = 0;
-        for (int topic = 0; topic < numTopics; topic++) {
-            if (localTopicCounts[topic] != 0) {
-                localTopicIndex[denseIndex] = topic;
-                denseIndex++;
+            // Build an array that densely lists the topics that
+            //  have non-zero counts.
+            int denseIndex = 0;
+            for (int topic = 0; topic < numTopics; topic++) {
+                if (localTopicCounts[topic] != 0) {
+                    localTopicIndex[denseIndex] = topic;
+                    denseIndex++;
+                }
             }
-        }
 
-        // Record the total number of non-zero topics
-        int nonZeroTopics = denseIndex;
+            // Record the total number of non-zero topics
+            int nonZeroTopics = denseIndex;
 
-        //	Iterate over the positions (words) in the document 
-        for (int position = 0; position < docLength; position++) {
-            type = tokenSequence.getIndexAtPosition(position);
-            oldTopic = oneDocTopics[position];
+            //	Iterate over the positions (words) in the document 
+            for (int position = 0; position < docLength; position++) {
+                type = tokenSequence.getIndexAtPosition(position);
+                oldTopic = oneDocTopics[position];
 
-            currentTypeTopicCounts = typeTopicCounts[type];
-            currentTree = trees[type];
+                currentTypeTopicCounts = typeTopicCounts[type];
+                currentTree = trees[type];
 
-            if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
+                if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
 
-                // Decrement the local doc/topic counts
-                localTopicCounts[oldTopic]--;
+                    // Decrement the local doc/topic counts
+                    localTopicCounts[oldTopic]--;
 
-                // Maintain the dense index, if we are deleting
-                //  the old topic
-                if (localTopicCounts[oldTopic] == 0) {
-                    // First get to the dense location associated with  the old topic.
-                    denseIndex = 0;
-                    // We know it's in there somewhere, so we don't  need bounds checking.
-                    while (localTopicIndex[denseIndex] != oldTopic) {
-                        denseIndex++;
-                    }
-                    // shift all remaining dense indices to the left.
-                    while (denseIndex < nonZeroTopics) {
-                        if (denseIndex < localTopicIndex.length - 1) {
-                            localTopicIndex[denseIndex]
-                                    = localTopicIndex[denseIndex + 1];
+                    // Maintain the dense index, if we are deleting
+                    //  the old topic
+                    if (localTopicCounts[oldTopic] == 0) {
+                        // First get to the dense location associated with  the old topic.
+                        denseIndex = 0;
+                        // We know it's in there somewhere, so we don't  need bounds checking.
+                        while (localTopicIndex[denseIndex] != oldTopic) {
+                            denseIndex++;
                         }
-                        denseIndex++;
+                        // shift all remaining dense indices to the left.
+                        while (denseIndex < nonZeroTopics) {
+                            if (denseIndex < localTopicIndex.length - 1) {
+                                localTopicIndex[denseIndex]
+                                        = localTopicIndex[denseIndex + 1];
+                            }
+                            denseIndex++;
+                        }
+                        nonZeroTopics--;
                     }
-                    nonZeroTopics--;
+
+                    // Decrement the global type topic counts  at the end (through delta / queue)
                 }
 
-                // Decrement the global type topic counts  at the end (through delta / queue)
-            }
+                //		compute word / doc mass for binary search
+                double topicDocWordMass = 0.0;
 
-            //		compute word / doc mass for binary search
-            double topicDocWordMass = 0.0;
+                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                    int topic = localTopicIndex[denseIndex];
+                    int n = localTopicCounts[topic];
+                    topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta[0]) / (tokensPerTopic[topic] + betaSum[0]);
+                    //topicDocWordMass +=  n * trees[type].getComponent(topic);
+                    topicDocWordMasses[denseIndex] = topicDocWordMass;
 
-            for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                int topic = localTopicIndex[denseIndex];
-                int n = localTopicCounts[topic];
-                topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta[0]) / (tokensPerTopic[topic] + betaSum[0]);
-                //topicDocWordMass +=  n * trees[type].getComponent(topic);
-                topicDocWordMasses[denseIndex] = topicDocWordMass;
+                }
 
-            }
+                double nextUniform = ThreadLocalRandom.current().nextDouble();
+                double sample = nextUniform * (topicDocWordMass + currentTree.tree[1]);
+                newTopic = -1;
 
-            double nextUniform = ThreadLocalRandom.current().nextDouble();
-            double sample = nextUniform * (topicDocWordMass + currentTree.tree[1]);
-            newTopic = -1;
-
-            //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
-            newTopic = sample < topicDocWordMass ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)] : currentTree.sample(nextUniform);
+                //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
+                newTopic = sample < topicDocWordMass ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)] : currentTree.sample(nextUniform);
 //            if (sample < topicDocWordMass) {
 //
 //                //int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
@@ -345,39 +353,44 @@ public class FastQWorkerRunnable implements Runnable {
 //                newTopic = currentTree.sample(nextUniform);
 //            }
 
-            if (newTopic == -1) {
-                System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].tree[1]);
-                newTopic = numTopics - 1; // TODO is this appropriate
-                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-            }
-
-            //assert(newTopic != -1);
-            //			Put that new topic into the counts
-            oneDocTopics[position] = newTopic;
-
-            //increment local counts
-            localTopicCounts[newTopic]++;
-
-            // If this is a new topic for this document, add the topic to the dense index.
-            if (localTopicCounts[newTopic] == 1) {
-                // First find the point where we  should insert the new topic by going to
-                //  the end  and working backwards
-                denseIndex = nonZeroTopics;
-                while (denseIndex > 0
-                        && localTopicIndex[denseIndex - 1] > newTopic) {
-                    localTopicIndex[denseIndex]
-                            = localTopicIndex[denseIndex - 1];
-                    denseIndex--;
+                if (newTopic == -1) {
+                    System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].tree[1]);
+                    newTopic = numTopics - 1; // TODO is this appropriate
+                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
                 }
-                localTopicIndex[denseIndex] = newTopic;
-                nonZeroTopics++;
+
+                //assert(newTopic != -1);
+                //			Put that new topic into the counts
+                oneDocTopics[position] = newTopic;
+
+                //increment local counts
+                localTopicCounts[newTopic]++;
+
+                // If this is a new topic for this document, add the topic to the dense index.
+                if (localTopicCounts[newTopic] == 1) {
+                    // First find the point where we  should insert the new topic by going to
+                    //  the end  and working backwards
+                    denseIndex = nonZeroTopics;
+                    while (denseIndex > 0
+                            && localTopicIndex[denseIndex - 1] > newTopic) {
+                        localTopicIndex[denseIndex]
+                                = localTopicIndex[denseIndex - 1];
+                        denseIndex--;
+                    }
+                    localTopicIndex[denseIndex] = newTopic;
+                    nonZeroTopics++;
+                }
+
+                //add delta to the queue
+                if (newTopic != oldTopic) {
+                    //queue.add(new FastQDelta(oldTopic, newTopic, type, 0, 1, 1));
+                    queue.add(new FastQDelta(oldTopic, newTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[newTopic]));
+                }
+
             }
 
-            //add delta to the queue
-            if (newTopic != oldTopic) {
-                queue.add(new FastQDelta(oldTopic, newTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[newTopic]));
-            }
-
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
 //        if (shouldSaveState) {

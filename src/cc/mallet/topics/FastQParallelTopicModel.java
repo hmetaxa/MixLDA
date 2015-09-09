@@ -25,6 +25,7 @@ import cc.mallet.types.*;
 import cc.mallet.topics.TopicAssignment;
 import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
+import java.util.Queue;
 
 /**
  * Simple parallel threaded implementation of LDA, following Newman, Asuncion,
@@ -71,8 +72,7 @@ public class FastQParallelTopicModel implements Serializable {
     public FTree[] trees; //store 
     //public FTree betaSmoothingTree; //store  we will have big overhead on updating (two more tree updates)
 
-    public List<ConcurrentLinkedQueue<FastQDelta>> queues;
-
+    //public List<ConcurrentLinkedQueue<FastQDelta>> queues;
     // for dirichlet estimation
     public int[] docLengthCounts; // histogram of document sizes
     public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -627,7 +627,6 @@ public class FastQParallelTopicModel implements Serializable {
         final CyclicBarrier barrier = new CyclicBarrier(numThreads + 2);//one for the current thread and one for the updater
 
         FastQWorkerRunnable[] runnables = new FastQWorkerRunnable[numThreads];
-        queues = new ArrayList<ConcurrentLinkedQueue<FastQDelta>>(numThreads);
 
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
@@ -646,14 +645,14 @@ public class FastQParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            queues.add(new ConcurrentLinkedQueue<FastQDelta>());
-
             runnables[thread] = new FastQWorkerRunnable(numTopics,
                     alpha, alphaSum, beta, betaSum, gamma,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
-                    thread, queues.get(thread), barrier
+                    thread,
+                    //queues.get(thread), 
+                    barrier
             //,betaSmoothingTree
             );
 
@@ -673,7 +672,7 @@ public class FastQParallelTopicModel implements Serializable {
         FastQUpdaterRunnable updater = new FastQUpdaterRunnable(typeTopicCounts,
                 tokensPerTopic,
                 trees,
-                queues,
+                //queues,
                 alpha, alphaSum,
                 beta, betaSum, gamma,
                 useCycleProposals, barrier,
@@ -686,9 +685,22 @@ public class FastQParallelTopicModel implements Serializable {
         //        , betaSmoothingTree
         );
 
+//         List<Queue<FastQDelta>> queues = new ArrayList<Queue<FastQDelta>>(numThreads);
+//            for (int thread = 0; thread < numThreads; thread++) {
+//               // queues.add(new ConcurrentLinkedQueue<FastQDelta>());
+//                queues.add(new LinkedBlockingQueue<FastQDelta>());
+//            }
+//            
         ExecutorService executor = Executors.newFixedThreadPool(numThreads + 1);
 
         for (int iteration = 1; iteration <= numIterations; iteration++) {
+
+            List<Queue<FastQDelta>> queues = new ArrayList<Queue<FastQDelta>>(numThreads);
+            for (int thread = 0; thread < numThreads; thread++) {
+                //queues.add(new ConcurrentLinkedQueue<FastQDelta>());
+
+                queues.add(new LinkedBlockingQueue<FastQDelta>());
+            }
 
             long iterationStart = System.currentTimeMillis();
 
@@ -710,15 +722,20 @@ public class FastQParallelTopicModel implements Serializable {
                 updater.setOptimizeParams(true);
             }
 
+            updater.setQueues(queues);
             executor.submit(updater);
             // if (numThreads > 1) {
             // Submit runnables to thread pool
             for (int thread = 0; thread < numThreads; thread++) {
+
+                
+
 //                if (iteration > burninPeriod && optimizeInterval != 0
 //                        && iteration % saveSampleInterval == 0) {
 //                    runnables[thread].collectAlphaStatistics();
 //                }
-
+                runnables[thread].setQueue(queues.get(thread));
+                
                 logger.fine("submitting thread " + thread);
                 executor.submit(runnables[thread]);
                 //runnables[thread].run();
