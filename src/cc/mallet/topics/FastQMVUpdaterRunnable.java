@@ -32,25 +32,29 @@ import org.knowceans.util.Vectors;
 public class FastQMVUpdaterRunnable implements Runnable {
 
     public static Logger logger = MalletLogger.getLogger(FastQMVUpdaterRunnable.class.getName());
-    protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
-    protected int[] tokensPerTopic; // indexed by <topic index>
-    protected FTree[] trees; //store 
+    protected int[][][] typeTopicCounts; // indexed by <feature index, topic index>
+    protected int[][] tokensPerTopic; // indexed by <topic index>
+    protected FTree[][] trees; //store 
     protected List<Queue<FastQDelta>> queues;
-    protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    protected double[][] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
     protected double[] betaSum;
 
-    protected double tablesCnt;
-    protected double[] gamma;
-    protected double gammaRoot = 10;
+    protected double[] tablesCnt; // tables count per modality 
+    protected double[] gamma; //gamma per modality 
+    protected double gammaRoot = 10; // gammaRoot for all modalities (sumTables cnt)
     protected int numTopics;
-    protected int numTypes;
+    public byte numModalities; // Number of modalities
+    protected int numTypes[];
     // The max over typeTotals, used for beta[0] optimization
-    protected int maxTypeCount;
+    protected int maxTypeCount[];
     protected Randoms random;
-    protected int[] docLengthCounts; // histogram of document sizes
-    public int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
+    protected int[][] docLengthCounts; // histogram of document sizes
+    public int[][][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
+
+    protected double[] docSmoothingOnlyMass;
+    protected double[][] docSmoothingOnlyCumValues;
 
     //protected FTree betaSmoothingTree;
     private final CyclicBarrier cyclicBarrier;
@@ -64,22 +68,25 @@ public class FastQMVUpdaterRunnable implements Runnable {
     private NumberFormat formatter;
 
     public FastQMVUpdaterRunnable(
-            int[][] typeTopicCounts,
-            int[] tokensPerTopic,
-            FTree[] trees,
+            int[][][] typeTopicCounts,
+            int[][] tokensPerTopic,
+            FTree[][] trees,
             //List<ConcurrentLinkedQueue<FastQDelta>> queues, in order not to remain in GC 
-            double[] alpha,
+            double[][] alpha,
             double[] alphaSum,
             double[] beta,
             double[] betaSum,
             double[] gamma,
+            double[] docSmoothingOnlyMass,
+            double[][] docSmoothingOnlyCumValues,
             boolean useCycleProposals,
             CyclicBarrier cyclicBarrier,
             int numTopics,
-            int[] docLengthCounts,
-            int[][] topicDocCounts,
-            int numTypes,
-            int maxTypeCount,
+            byte numModalities,
+            int[][] docLengthCounts,
+            int[][][] topicDocCounts,
+            int[] numTypes,
+            int[] maxTypeCount,
             Randoms random
     //        , FTree betaSmoothingTree
     ) {
@@ -96,17 +103,22 @@ public class FastQMVUpdaterRunnable implements Runnable {
         this.trees = trees;
         this.useCycleProposals = useCycleProposals;
         this.numTopics = numTopics;
+        this.numModalities = numModalities;
         this.docLengthCounts = docLengthCounts;
         this.topicDocCounts = topicDocCounts;
         this.numTypes = numTypes;
         this.random = random;
         this.maxTypeCount = maxTypeCount;
 
+        this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
+        this.docSmoothingOnlyMass = docSmoothingOnlyMass;
+
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
 
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
+        tablesCnt = new double[numModalities];
         //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
     }
@@ -116,7 +128,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
     public void setOptimizeParams(boolean optimizeParams) {
         this.optimizeParams = optimizeParams;
     }
-    
+
     public void setQueues(List<Queue<FastQDelta>> queues) {
         this.queues = queues;
     }
@@ -150,37 +162,37 @@ public class FastQMVUpdaterRunnable implements Runnable {
                             isFinished = finishedSamplingTreads.size() == queues.size();
                             continue;
                         }
-                        currentTypeTopicCounts = typeTopicCounts[delta.Type];
+                        currentTypeTopicCounts = typeTopicCounts[delta.Modality][delta.Type];
 
                         // Decrement the global topic count totals
                         currentTypeTopicCounts[delta.OldTopic]--;
                         currentTypeTopicCounts[delta.NewTopic]++;
 
-                        tokensPerTopic[delta.OldTopic]--;
-                        assert (tokensPerTopic[delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
+                        tokensPerTopic[delta.Modality][delta.OldTopic]--;
+                        assert (tokensPerTopic[delta.Modality][delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
 
-                        tokensPerTopic[delta.NewTopic]++;
+                        tokensPerTopic[delta.Modality][delta.NewTopic]++;
 
                         //update histograms
-                        topicDocCounts[delta.OldTopic][delta.DocOldTopicCnt + 1]--;
+                        topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt + 1]--;
                         if (delta.DocOldTopicCnt > 0) {
-                            topicDocCounts[delta.OldTopic][delta.DocOldTopicCnt]++;
+                            topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt]++;
                         }
                         if (delta.DocNewTopicCnt > 1) {
-                            topicDocCounts[delta.NewTopic][delta.DocNewTopicCnt - 1]--;
+                            topicDocCounts[delta.Modality][delta.NewTopic][delta.DocNewTopicCnt - 1]--;
                         }
-                        topicDocCounts[delta.NewTopic][delta.DocNewTopicCnt]++;
+                        topicDocCounts[delta.Modality][delta.NewTopic][delta.DocNewTopicCnt]++;
 
                         //Update tree
                         if (useCycleProposals) {
-                            trees[delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta[0]) / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
-                            trees[delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta[0]) / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
+                            trees[delta.Modality][delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                            trees[delta.Modality][delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
 
                             //betaSmoothingTree.update(delta.OldTopic, (beta[0] / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
                             //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
                         } else {
-                            trees[delta.Type].update(delta.OldTopic, (gamma[0] * alpha[delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[0]) / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
-                            trees[delta.Type].update(delta.NewTopic, (gamma[0] * alpha[delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[0]) / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
+                            trees[delta.Modality][delta.Type].update(delta.OldTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                            trees[delta.Modality][delta.Type].update(delta.NewTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
                         }
 
                     }
@@ -213,50 +225,52 @@ public class FastQMVUpdaterRunnable implements Runnable {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
         //  we would need to store a maxTypeCount + 1 count.
-        int[] countHistogram = new int[maxTypeCount + 1];
 
-        //  Now count the number of type/topic pairs that have
-        //  each number of tokens.
-        for (int type = 0; type < numTypes; type++) {
+        for (Byte m = 0; m < numModalities; m++) {
+            int[] countHistogram = new int[maxTypeCount[m] + 1];
 
-            int[] counts = typeTopicCounts[type];
+            //  Now count the number of type/topic pairs that have
+            //  each number of tokens.
+            for (int type = 0; type < numTypes[m]; type++) {
 
-            for (int topic = 0; topic < numTopics; topic++) {
-                int count = counts[topic];
-                if (count > 0) {
-                    countHistogram[count]++;
+                int[] counts = typeTopicCounts[m][type];
+
+                for (int topic = 0; topic < numTopics; topic++) {
+                    int count = counts[topic];
+                    if (count > 0) {
+                        countHistogram[count]++;
+                    }
                 }
             }
-        }
 
-        // Figure out how large we need to make the "observation lengths"
-        //  histogram.
-        int maxTopicSize = 0;
-        for (int topic = 0; topic < numTopics; topic++) {
-            if (tokensPerTopic[topic] > maxTopicSize) {
-                maxTopicSize = tokensPerTopic[topic];
+            // Figure out how large we need to make the "observation lengths"
+            //  histogram.
+            int maxTopicSize = 0;
+            for (int topic = 0; topic < numTopics; topic++) {
+                if (tokensPerTopic[m][topic] > maxTopicSize) {
+                    maxTopicSize = tokensPerTopic[m][topic];
+                }
             }
+
+            // Now allocate it and populate it.
+            int[] topicSizeHistogram = new int[maxTopicSize + 1];
+            for (int topic = 0; topic < numTopics; topic++) {
+                topicSizeHistogram[tokensPerTopic[m][topic]]++;
+            }
+
+            betaSum[m] = Dirichlet.learnSymmetricConcentration(countHistogram,
+                    topicSizeHistogram,
+                    numTypes[m],
+                    betaSum[m]);
+            beta[m] = betaSum[m] / numTypes[m];
+
+            //TODO: copy/update trees in threads
+            logger.info("[beta[" + m + "]: " + formatter.format(beta[m]) + "] ");
+            // Now publish the new value
+            // for (int thread = 0; thread < numThreads; thread++) {
+            //     runnables[thread].resetBeta(beta[0], betaSum[0]);
+            // }
         }
-
-        // Now allocate it and populate it.
-        int[] topicSizeHistogram = new int[maxTopicSize + 1];
-        for (int topic = 0; topic < numTopics; topic++) {
-            topicSizeHistogram[tokensPerTopic[topic]]++;
-        }
-
-        betaSum[0] = Dirichlet.learnSymmetricConcentration(countHistogram,
-                topicSizeHistogram,
-                numTypes,
-                betaSum[0]);
-        beta[0] = betaSum[0] / numTypes;
-
-        //TODO: copy/update trees in threads
-        logger.info("[beta[0]: " + formatter.format(beta[0]) + "] ");
-        // Now publish the new value
-        // for (int thread = 0; thread < numThreads; thread++) {
-        //     runnables[thread].resetBeta(beta[0], betaSum[0]);
-        // }
-
     }
 
     private void optimizeGamma() {
@@ -273,6 +287,11 @@ public class FastQMVUpdaterRunnable implements Runnable {
         // number of samples for parameter samplers
         int R = 10;
 
+        double totaltablesCnt = 0;
+        for (Byte m = 0; m < numModalities; m++) {
+            totaltablesCnt+=tablesCnt[m];
+            
+        }
 //        //int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
 //        //int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
 //        double[] tablesPerModality = new double[numModalities];
@@ -285,106 +304,111 @@ public class FastQMVUpdaterRunnable implements Runnable {
 //            }
 //            totalTables += tablesPerModality[mod];
 //        }
-        for (int r = 0; r < R; r++) {
-            // gamma[0]: root level (Escobar+West95) with n = T
-            // (14)
-            double eta = samp.randBeta(gammaRoot + 1, tablesCnt);
-            double bloge = bgamma - log(eta);
-            // (13')
-            double pie = 1. / (1. + (tablesCnt * bloge / (agamma + numTopics - 1)));
-            // (13)
-            int u = samp.randBernoulli(pie);
-            gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
+        for (Byte m = 0; m < numModalities; m++) {
+            for (int r = 0; r < R; r++) {
+                // gamma[0]: root level (Escobar+West95) with n = T
+                // (14)
+                double eta = samp.randBeta(gammaRoot + 1, totaltablesCnt);
+                double bloge = bgamma - log(eta);
+                // (13')
+                double pie = 1. / (1. + (totaltablesCnt * bloge / (agamma + numTopics - 1)));
+                // (13)
+                int u = samp.randBernoulli(pie);
+                gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
 
-            // for (byte m = 0; m < numModalities; m++) {
-            // alpha: document level (Teh+06)
-            double qs = 0;
-            double qw = 0;
-            for (int j = 0; j < docLengthCounts.length; j++) {
-                for (int i = 0; i < docLengthCounts[j]; i++) {
-                    // (49) (corrected)
-                    qs += samp.randBernoulli(j / (j + gamma[0]));
-                    // (48)
-                    qw += log(samp.randBeta(gamma[0] + 1, j));
+                // for (byte m = 0; m < numModalities; m++) {
+                // alpha: document level (Teh+06)
+                double qs = 0;
+                double qw = 0;
+                for (int j = 0; j < docLengthCounts[m].length; j++) {
+                    for (int i = 0; i < docLengthCounts[m][j]; i++) {
+                        // (49) (corrected)
+                        qs += samp.randBernoulli(j / (j + gamma[m]));
+                        // (48)
+                        qw += log(samp.randBeta(gamma[m] + 1, j));
+                    }
                 }
-            }
-            // (47)
-            gamma[0] = samp.randGamma(aalpha + tablesCnt - qs, 1. / (balpha - qw));
+                // (47)
+                gamma[m] = samp.randGamma(aalpha + tablesCnt[m] - qs, 1. / (balpha - qw));
 
-            //  }
+                //  }
+            }
+            logger.info("GammaRoot: " + gammaRoot);
+            //for (byte m = 0; m < numModalities; m++) {
+            logger.info("Gamma: " + gamma[0]);
+            //}
         }
-        logger.info("GammaRoot: " + gammaRoot);
-        //for (byte m = 0; m < numModalities; m++) {
-        logger.info("Gamma: " + gamma[0]);
-        //}
 
     }
 
     private void updateAlphaAndSmoothing() {
-        double[] mk = new double[numTopics + 1];
+        double[][] mk = new double[numModalities][numTopics + 1];
+
+        Arrays.fill(tablesCnt, 0);
 
         for (int t = 0; t < numTopics; t++) {
             inActiveTopicIndex.add(t); //inActive by default and activate if found 
         }
 
-        // for (byte m = 0; m < numModalities; m++) {
-        for (int t = 0; t < numTopics; t++) {
+        for (byte m = 0; m < numModalities; m++) {
+            for (int t = 0; t < numTopics; t++) {
 
-            //int k = kactive.get(kk);
-            for (int i = 0; i < topicDocCounts[t].length; i++) {
-                //for (int j = 0; j < numDocuments; j++) {
+                //int k = kactive.get(kk);
+                for (int i = 0; i < topicDocCounts[m][t].length; i++) {
+                    //for (int j = 0; j < numDocuments; j++) {
 
-                if (topicDocCounts[t][i] > 0 && i > 1) {
-                    inActiveTopicIndex.remove(t);
-                    //sample number of tables
-                    // number of tables a CRP(alpha tau) produces for nmk items
-                    //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
-                    //Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
-                    //Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
+                    if (topicDocCounts[m][t][i] > 0 && i > 1) {
+                        inActiveTopicIndex.remove(t);
+                        //sample number of tables
+                        // number of tables a CRP(alpha tau) produces for nmk items
+                        //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
+                        //Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
+                        //Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
 
-                    int curTbls = 0;
-                    try {
-                        curTbls = random.nextAntoniak(gamma[0] * alpha[t], i);
+                        int curTbls = 0;
+                        try {
+                            curTbls = random.nextAntoniak(gamma[m] * alpha[m][t], i);
 
-                    } catch (Exception e) {
-                        curTbls = 1;
+                        } catch (Exception e) {
+                            curTbls = 1;
+                        }
+
+                        mk[m][t] += (topicDocCounts[m][t][i] * curTbls);
+                        //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[0][m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                        // nmk[m].get(k));
+                    } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
+                    {
+                        inActiveTopicIndex.remove(t);
+                        mk[m][t] += topicDocCounts[m][t][i];
                     }
-
-                    mk[t] += (topicDocCounts[t][i] * curTbls);
-                    //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[0][m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
-                    // nmk[m].get(k));
-                } else if (topicDocCounts[t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
-                {
-                    inActiveTopicIndex.remove(t);
-                    mk[t] += topicDocCounts[t][i];
                 }
             }
-        }
-        // }// end outter for loop
+        // end outter for loop
 
         //for (byte m = 0; m < numModalities; m++) {
-        //alpha[m].fill(0, numTopics, 0);
-        alphaSum[0] = 0;
-        mk[numTopics] = gammaRoot;
-        tablesCnt = Vectors.sum(mk);
+            //alpha[m].fill(0, numTopics, 0);
+            alphaSum[0] = 0;
+            mk[m][numTopics] = gammaRoot;
+            tablesCnt[m] = Vectors.sum(mk[m]);
 
-        double[] tt = sampleDirichlet(mk);
-        // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
-        for (int kk = 0; kk < numTopics; kk++) {
-            //int k = kactive.get(kk);
-            alpha[kk] = tt[kk];
-            alphaSum[0] += gamma[0] * tt[kk];
-            //tau.set(k, tt[kk]);
+            double[] tt = sampleDirichlet(mk[m]);
+            // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
+            for (int kk = 0; kk < numTopics; kk++) {
+                //int k = kactive.get(kk);
+                alpha[m][kk] = tt[kk];
+                alphaSum[m] += gamma[m] * tt[kk];
+                //tau.set(k, tt[kk]);
+            }
+
+            logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);
+            //for (byte m = 0; m < numModalities; m++) {
+            String alphaStr = "";
+            for (int topic = 0; topic < numTopics; topic++) {
+                alphaStr += formatter.format(alpha[topic]) + " ";
+            }
+
+            logger.info("[Alpha[" + m + "]: [" + alphaStr + "] ");
         }
-
-        logger.info("AlphaSum: " + alphaSum[0]);
-        //for (byte m = 0; m < numModalities; m++) {
-        String alphaStr = "";
-        for (int topic = 0; topic < numTopics; topic++) {
-            alphaStr += formatter.format(alpha[topic]) + " ";
-        }
-
-        logger.info("[Alpha: [" + alphaStr + "] ");
 
 //            if (alpha[m].size() < numTopics + 1) {
 //                alpha[m].add(tt[numTopics]);
@@ -435,37 +459,40 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
     private void recalcTrees() {
         //recalc trees
+
         double[] temp = new double[numTopics];
-        for (int w = 0; w < numTypes; ++w) {
+        for (Byte m = 0; m < numModalities; m++) {
+            for (int w = 0; w < numTypes[m]; ++w) {
 
-            int[] currentTypeTopicCounts = typeTopicCounts[w];
-            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
+                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
 
-                // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
-                if (useCycleProposals) {
-                    temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
-                } else {
-                    temp[currentTopic] = gamma[0] * alpha[currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    if (useCycleProposals) {
+                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
+                    } else {
+                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
+                    }
+
                 }
+
+                //trees[w] = new FTree(temp);
+                trees[m][w].constructTree(temp);
+
+                //reset temp
+                Arrays.fill(temp, 0);
 
             }
 
-            //trees[w] = new FTree(temp);
-            trees[w].constructTree(temp);
-
-            //reset temp
-            Arrays.fill(temp, 0);
-
+            docSmoothingOnlyMass[m] = 0;
+            if (useCycleProposals) {
+                // cachedCoefficients cumulative array that will be used for binary search
+                for (int topic = 0; topic < numTopics; topic++) {
+                    docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
+                    docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
+                }
+            }
         }
 
-//         if (useCycleProposals) {
-//            //Arrays.fill(temp, 0);
-//
-//            for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-//                temp[currentTopic] = (beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]); //with cycle proposal
-//            }
-//            
-////            betaSmoothingTree.constructTree(temp);
-//        }
     }
 }

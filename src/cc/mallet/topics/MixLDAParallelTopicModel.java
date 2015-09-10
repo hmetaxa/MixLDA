@@ -370,7 +370,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             typeTopicCounts[i] = new int[tmpNumTypes][];
             tokensPerTopic[i] = new int[numTopics];
 
-            typeTotals[i] = new int[tmpNumTypes];
+            
             //typeSkewIndexes[i] = new double[tmpNumTypes];
 
             Randoms random = null;
@@ -2290,7 +2290,7 @@ public class MixLDAParallelTopicModel implements Serializable {
                         + "'>");
                 int word = 1;
                 Iterator<IDSorter> iterator = topicSortedWords.get(m).get(topic).iterator();
-                while (iterator.hasNext() && word < numWords) {
+                while (iterator.hasNext() && word <= numWords) {
                     IDSorter info = iterator.next();
                     out.println("	<word rank='" + word + "'>"
                             + alphabet[m].lookupObject(info.getID())

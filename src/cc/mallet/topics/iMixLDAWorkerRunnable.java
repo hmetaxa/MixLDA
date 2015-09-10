@@ -26,10 +26,11 @@ import org.knowceans.util.Vectors;
  * @author Omiros Metaxas extending MALLET Parallel topic model of David Mimno,
  * Andrew McCallum
  *
- * TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
-                        Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
-                        Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
-                        
+ * TODO: See if using the "minimal path" assumption to reduce bookkeeping gives
+ * the same results. Huge Memory consumption due to topicDocCounts (*
+ * NumThreads), and striling number of first kind allss double[][] Also 2x
+ * slower than the parametric version due to UpdateAlphaAndSmoothing
+ *
  */
 public class iMixLDAWorkerRunnable implements Runnable {
 //
@@ -1381,10 +1382,10 @@ public class iMixLDAWorkerRunnable implements Runnable {
                         //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
                         //Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
                         //Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
-                        
+
                         int curTbls = 0;
                         try {
-                            curTbls =  random.nextAntoniak(gamma[m] * alpha[m][t], i);
+                            curTbls = random.nextAntoniak(gamma[m] * alpha[m][t], i);
 
                         } catch (Exception e) {
                             curTbls = 1;
@@ -1572,5 +1573,4 @@ public class iMixLDAWorkerRunnable implements Runnable {
 //
 //        return random.nextDiscrete(p) + 1;
 //    }
-
 }

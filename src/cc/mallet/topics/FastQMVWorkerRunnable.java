@@ -30,7 +30,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class FastQMVWorkerRunnable implements Runnable {
 
     //boolean isFinished = true;
-    ArrayList<TopicAssignment> data;
+    protected ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
     protected int numTopics; // Number of topics to be fit
     // These values are used to encode type/topic counts as
@@ -38,22 +38,26 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected int topicMask;
     protected int topicBits;
     protected int numTypes;
-    protected double[] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    public byte numModalities; // Number of modalities
+    protected double[][] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
     protected double[] betaSum;
     protected double[] gamma;
     public static final double DEFAULT_BETA = 0.01;
-    protected double docSmoothingOnlyMass = 0.0;
-    protected double[] docSmoothingOnlyCumValues;
+    protected double[] docSmoothingOnlyMass;
+    protected double[][] docSmoothingOnlyCumValues;
 
-    protected int[][] typeTopicCounts; // indexed by <feature index, topic index>
-    protected int[] tokensPerTopic; // indexed by <topic index>
+    protected double[][] p_a; // a for beta prior for modalities correlation
+    protected double[][] p_b; // b for beta prir for modalities correlation
+
+    protected int[][][] typeTopicCounts; // indexed by <feature index, topic index>
+    protected int[][] tokensPerTopic; // indexed by <topic index>
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
     //protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
     boolean shouldSaveState = false;
-    protected FTree[] trees; //store 
+    protected FTree[][] trees; //store 
     protected Randoms random;
     protected int threadId = -1;
     protected Queue<FastQDelta> queue;
@@ -61,18 +65,27 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected int MHsteps = 1;
     boolean useCycleProposals = false;
 
-    public FastQMVWorkerRunnable(int numTopics,
-            double[] alpha, double[] alphaSum,
+    public FastQMVWorkerRunnable(
+            int numTopics,
+            byte numModalities,
+            double[][] alpha,
+            double[] alphaSum,
             double[] beta,
             double[] betaSum,
             double[] gamma,
+            double[] docSmoothingOnlyMass,
+            double[][] docSmoothingOnlyCumValues,
             Randoms random,
-            ArrayList<TopicAssignment> data,
-            int[][] typeTopicCounts,
-            int[] tokensPerTopic,
-            int startDoc, int numDocs, FTree[] trees, boolean useCycleProposals,
+            ArrayList<MixTopicModelTopicAssignment> data,
+            int[][][] typeTopicCounts,
+            int[][] tokensPerTopic,
+            int startDoc,
+            int numDocs, FTree[][] trees,
+            boolean useCycleProposals,
             int threadId,
-//            ConcurrentLinkedQueue<FastQDelta> queue, 
+            double[][] p_a, // a for beta prior for modalities correlation
+            double[][] p_b, // b for beta prir for modalities correlation
+            //            ConcurrentLinkedQueue<FastQDelta> queue, 
             CyclicBarrier cyclicBarrier
     //, FTree betaSmoothingTree
     ) {
@@ -83,18 +96,8 @@ public class FastQMVWorkerRunnable implements Runnable {
         this.cyclicBarrier = cyclicBarrier;
 
         this.numTopics = numTopics;
+        this.numModalities = numModalities;
         this.numTypes = typeTopicCounts.length;
-
-        //trees = new FTree[this.numTypes];
-        if (Integer.bitCount(numTopics) == 1) {
-            // exact power of 2
-            topicMask = numTopics - 1;
-            topicBits = Integer.bitCount(topicMask);
-        } else {
-            // otherwise add an extra bit
-            topicMask = Integer.highestOneBit(numTopics) * 2 - 1;
-            topicBits = Integer.bitCount(topicMask);
-        }
 
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
@@ -111,24 +114,26 @@ public class FastQMVWorkerRunnable implements Runnable {
         this.numDocs = numDocs;
         this.useCycleProposals = useCycleProposals;
 
-        docSmoothingOnlyCumValues = new double[numTopics];
+        this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
+        this.docSmoothingOnlyMass = docSmoothingOnlyMass;
+        this.p_a = p_a;
+        this.p_b = p_b;
 
         //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
     }
 
-     public void setQueue( Queue<FastQDelta> queue) {
+    public void setQueue(Queue<FastQDelta> queue) {
         this.queue = queue;
     }
-     
-    public int[] getTokensPerTopic() {
-        return tokensPerTopic;
-    }
 
-    public int[][] getTypeTopicCounts() {
-        return typeTopicCounts;
-    }
-
+//    public int[][] getTokensPerTopic() {
+//        return tokensPerTopic;
+//    }
+//
+//    public int[][][] getTypeTopicCounts() {
+//        return typeTopicCounts;
+//    }
 //    public int[] getDocLengthCounts() {
 //        return docLengthCounts;
 //    }
@@ -139,15 +144,13 @@ public class FastQMVWorkerRunnable implements Runnable {
 ////        docLengthCounts = new int[size];
 //     //   topicDocCounts = new int[numTopics][size];
 //    }
-    public void collectAlphaStatistics() {
-        shouldSaveState = true;
-    }
-
-    public void resetBeta(double[] beta, double[] betaSum) {
-        this.beta = beta;
-        this.betaSum = betaSum;
-    }
-
+//    public void collectAlphaStatistics() {
+//        shouldSaveState = true;
+//    }
+//    public void resetBeta(double[] beta, double[] betaSum) {
+//        this.beta = beta;
+//        this.betaSum = betaSum;
+//    }
     // p(w|t=z, all) = (alpha[topic] + topicPerDocCounts[d])       *   ( (typeTopicCounts[w][t]/(tokensPerTopic[topic] + betaSum)) + beta/(tokensPerTopic[topic] + betaSum)  )
     // masses:         alphasum     + select a random topics from doc       FTree for active only topics (leave 2-3 spare)                     common FTree f
     //              (binary search)                                               get index from typeTopicsCount
@@ -156,14 +159,6 @@ public class FastQMVWorkerRunnable implements Runnable {
         try {
 
             // Initialize the doc smoothing-only sampling bucket (Sum(a[i])
-            docSmoothingOnlyMass = 0;
-            if (useCycleProposals) {
-                // cachedCoefficients cumulative array that will be used for binary search
-                for (int topic = 0; topic < numTopics; topic++) {
-                    docSmoothingOnlyMass += gamma[0] * alpha[topic];
-                    docSmoothingOnlyCumValues[topic] = docSmoothingOnlyMass;
-                }
-            }
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
                     doc++) {
@@ -172,17 +167,14 @@ public class FastQMVWorkerRunnable implements Runnable {
 //				  System.out.println("processing doc " + doc);
 //				  }
 //				
-                FeatureSequence tokenSequence
-                        = (FeatureSequence) data.get(doc).instance.getData();
-                LabelSequence topicSequence
-                        = (LabelSequence) data.get(doc).topicSequence;
-
+//                FeatureSequence tokenSequence
+//                        = (FeatureSequence) data.get(doc).instance.getData();
+//                LabelSequence topicSequence
+//                        = (LabelSequence) data.get(doc).topicSequence;
                 if (useCycleProposals) {
-                    sampleTopicsForOneDocCyclingProposals(tokenSequence, topicSequence,
-                            true);
+                    sampleTopicsForOneDocCyclingProposals(doc);
                 } else {
-                    sampleTopicsForOneDoc(tokenSequence, topicSequence,
-                            true);
+                    sampleTopicsForOneDoc(doc);
                 }
 
             }
@@ -251,12 +243,15 @@ public class FastQMVWorkerRunnable implements Runnable {
         }
     }
 
-    protected void sampleTopicsForOneDoc(FeatureSequence tokenSequence,
-            FeatureSequence topicSequence,
-            boolean readjustTopicsAndStats /* currently ignored */) {
+    protected void sampleTopicsForOneDoc(int docCnt /* currently ignored */) {
 
         try {
-            int[] oneDocTopics = topicSequence.getFeatures();
+            MixTopicModelTopicAssignment doc = data.get(docCnt);
+
+        //double[][] totalMassPerModalityAndTopic = new double[numModalities][];
+            //cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+            int[][] oneDocTopics = new int[numModalities][]; //token topics sequence for document
+            FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
 
             int[] currentTypeTopicCounts;
             int[] localTopicIndex = new int[numTopics];
@@ -264,16 +259,31 @@ public class FastQMVWorkerRunnable implements Runnable {
             int type, oldTopic, newTopic;
             FTree currentTree;
 
-            int docLength = tokenSequence.getLength();
+            int[] docLength = new int[numModalities];
+            docLength[m] = tokenSequence.getLength();
 
             int[] localTopicCounts = new int[numTopics];
 
+            double[][] p = new double[numModalities][numModalities];
+
+            for (byte i = 0; i < numModalities; i++) {
+                // Arrays.fill( p[i], 1);
+                for (byte j = i; j < numModalities; j++) {
+                    double pRand = i == j ? 1.0 : p_a[i][j] == 0 ? 0 : ((double) Math.round(1000 * random.nextBeta(p_a[i][j], p_b[i][j])) / (double) 1000);
+
+                    p[i][j] = pRand;
+                    p[j][i] = pRand;
+                }
+            }
+
             //		populate topic counts
+            for (byte m = 0; i < numModalities; m++) {
             for (int position = 0; position < docLength; position++) {
                 if (oneDocTopics[position] == FastQParallelTopicModel.UNASSIGNED_TOPIC) {
                     continue;
                 }
                 localTopicCounts[oneDocTopics[position]]++;
+            }
             }
 
             // Build an array that densely lists the topics that
