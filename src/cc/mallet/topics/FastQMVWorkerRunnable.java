@@ -243,12 +243,12 @@ public class FastQMVWorkerRunnable implements Runnable {
         }
     }
 
-    protected void sampleTopicsForOneDoc(int docCnt /* currently ignored */) {
+    protected void sampleTopicsForOneDoc(int docCnt) {
 
         try {
             MixTopicModelTopicAssignment doc = data.get(docCnt);
 
-        //double[][] totalMassPerModalityAndTopic = new double[numModalities][];
+            //double[][] totalMassPerModalityAndTopic = new double[numModalities][];
             //cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
             int[][] oneDocTopics = new int[numModalities][]; //token topics sequence for document
             FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
@@ -260,99 +260,146 @@ public class FastQMVWorkerRunnable implements Runnable {
             FTree currentTree;
 
             int[] docLength = new int[numModalities];
-            docLength[m] = tokenSequence.getLength();
+            int[][] localTopicCounts = new int[numModalities][numTopics];
 
-            int[] localTopicCounts = new int[numTopics];
+            double[] totalMassOtherModalities = new double[numTopics];
 
             double[][] p = new double[numModalities][numModalities];
 
-            for (byte i = 0; i < numModalities; i++) {
-                // Arrays.fill( p[i], 1);
-                for (byte j = i; j < numModalities; j++) {
-                    double pRand = i == j ? 1.0 : p_a[i][j] == 0 ? 0 : ((double) Math.round(1000 * random.nextBeta(p_a[i][j], p_b[i][j])) / (double) 1000);
+            for (byte m = 0; m < numModalities; m++) {
 
-                    p[i][j] = pRand;
-                    p[j][i] = pRand;
-                }
-            }
+                for (byte j = m; j < numModalities; j++) {
+                    double pRand = m == j ? 1.0 : p_a[m][j] == 0 ? 0 : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
 
-            //		populate topic counts
-            for (byte m = 0; i < numModalities; m++) {
-            for (int position = 0; position < docLength; position++) {
-                if (oneDocTopics[position] == FastQParallelTopicModel.UNASSIGNED_TOPIC) {
-                    continue;
+                    p[m][j] = pRand;
+                    p[j][m] = pRand;
                 }
-                localTopicCounts[oneDocTopics[position]]++;
-            }
+
+                docLength[m] = 0;
+                Arrays.fill(totalMassOtherModalities, 0);
+
+                if (doc.Assignments[m] != null) {
+                    //TODO can I order by tokens/topics??
+                    oneDocTopics[m] = doc.Assignments[m].topicSequence.getFeatures();
+
+                    //System.arraycopy(oneDocTopics[m], 0, doc.Assignments[m].topicSequence.getFeatures(), 0, doc.Assignments[m].topicSequence.getFeatures().length-1);
+                    tokenSequence[m] = ((FeatureSequence) doc.Assignments[m].instance.getData());
+
+                    docLength[m] = tokenSequence[m].getLength(); //size is the same??
+
+                    //		populate topic counts
+                    for (int position = 0; position < docLength[m]; position++) {
+                        if (oneDocTopics[m][position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            System.err.println(" Init Sampling UNASSIGNED_TOPIC");
+                            continue;
+                        }
+                        localTopicCounts[m][oneDocTopics[m][position]]++; //, localTopicCounts[m][oneDocTopics[m][position]] + 1);
+
+                    }
+                }
             }
 
             // Build an array that densely lists the topics that
             //  have non-zero counts.
             int denseIndex = 0;
             for (int topic = 0; topic < numTopics; topic++) {
-                if (localTopicCounts[topic] != 0) {
-                    localTopicIndex[denseIndex] = topic;
-                    denseIndex++;
+                int i = 0;
+                boolean topicFound = false;
+                while (i < numModalities && !topicFound) {
+                    if (localTopicCounts[i][topic] != 0) {
+                        localTopicIndex[denseIndex] = topic;
+                        denseIndex++;
+                        topicFound = true;
+                    }
+                    i++;
                 }
             }
 
             // Record the total number of non-zero topics
             int nonZeroTopics = denseIndex;
 
-            //	Iterate over the positions (words) in the document 
-            for (int position = 0; position < docLength; position++) {
-                type = tokenSequence.getIndexAtPosition(position);
-                oldTopic = oneDocTopics[position];
+            for (byte m = 0; m < numModalities; m++) // byte m = 0;
+            {
+                //calc other modalities mass
+                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
-                currentTypeTopicCounts = typeTopicCounts[type];
-                currentTree = trees[type];
-
-                if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-
-                    // Decrement the local doc/topic counts
-                    localTopicCounts[oldTopic]--;
-
-                    // Maintain the dense index, if we are deleting
-                    //  the old topic
-                    if (localTopicCounts[oldTopic] == 0) {
-                        // First get to the dense location associated with  the old topic.
-                        denseIndex = 0;
-                        // We know it's in there somewhere, so we don't  need bounds checking.
-                        while (localTopicIndex[denseIndex] != oldTopic) {
-                            denseIndex++;
+                    int topic = localTopicIndex[denseIndex];
+                    for (byte i = 0; i < numModalities; i++) {
+                        if (i != m && docLength[i] != 0) {
+                            totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
                         }
-                        // shift all remaining dense indices to the left.
-                        while (denseIndex < nonZeroTopics) {
-                            if (denseIndex < localTopicIndex.length - 1) {
-                                localTopicIndex[denseIndex]
-                                        = localTopicIndex[denseIndex + 1];
-                            }
-                            denseIndex++;
-                        }
-                        nonZeroTopics--;
                     }
 
-                    // Decrement the global type topic counts  at the end (through delta / queue)
+                    totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
                 }
 
-                //		compute word / doc mass for binary search
-                double topicDocWordMass = 0.0;
+                FeatureSequence tokenSequenceCurMod = tokenSequence[m];
 
-                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                    int topic = localTopicIndex[denseIndex];
-                    int n = localTopicCounts[topic];
-                    topicDocWordMass += n * (currentTypeTopicCounts[topic] + beta[0]) / (tokensPerTopic[topic] + betaSum[0]);
-                    //topicDocWordMass +=  n * trees[type].getComponent(topic);
-                    topicDocWordMasses[denseIndex] = topicDocWordMass;
+                //	Iterate over the positions (words) in the document 
+                for (int position = 0; position < docLength[m]; position++) {
+                    type = tokenSequenceCurMod.getIndexAtPosition(position);
+                    oldTopic = oneDocTopics[m][position];
 
-                }
+                    currentTypeTopicCounts = typeTopicCounts[m][type];
+                    currentTree = trees[m][type];
 
-                double nextUniform = ThreadLocalRandom.current().nextDouble();
-                double sample = nextUniform * (topicDocWordMass + currentTree.tree[1]);
-                newTopic = -1;
+                    if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
 
-                //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
-                newTopic = sample < topicDocWordMass ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)] : currentTree.sample(nextUniform);
+                        // Decrement the local doc/topic counts
+                        localTopicCounts[m][oldTopic]--;
+
+                        // Maintain the dense index, if we are deleting
+                        //  the old topic
+                        boolean isDeletedTopic = localTopicCounts[m][oldTopic] == 0;
+                        byte jj = 0;
+                        while (isDeletedTopic && jj < numModalities) {
+                            // if (jj != m) { //do not check m twice
+                            isDeletedTopic = localTopicCounts[jj][oldTopic] == 0;
+                            // }
+                            jj++;
+                        }
+
+                        //isDeletedTopic = false;//todo omiros test
+                        if (isDeletedTopic) {
+
+                            // First get to the dense location associated with  the old topic.
+                            denseIndex = 0;
+                            // We know it's in there somewhere, so we don't  need bounds checking.
+                            while (localTopicIndex[denseIndex] != oldTopic) {
+                                denseIndex++;
+                            }
+                            // shift all remaining dense indices to the left.
+                            while (denseIndex < nonZeroTopics) {
+                                if (denseIndex < localTopicIndex.length - 1) {
+                                    localTopicIndex[denseIndex]
+                                            = localTopicIndex[denseIndex + 1];
+                                }
+                                denseIndex++;
+                            }
+                            nonZeroTopics--;
+                        }
+
+                        // Decrement the global type topic counts  at the end (through delta / queue)
+                    }
+
+                    //		compute word / doc mass for binary search
+                    double topicDocWordMass = 0.0;
+
+                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                        int topic = localTopicIndex[denseIndex];
+                        int n = localTopicCounts[m][topic];
+                        topicDocWordMass += (n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
+                        //topicDocWordMass +=  n * trees[type].getComponent(topic);
+                        topicDocWordMasses[denseIndex] = topicDocWordMass;
+
+                    }
+
+                    double nextUniform = ThreadLocalRandom.current().nextDouble();
+                    double sample = nextUniform * (topicDocWordMass + currentTree.tree[1]);
+                    newTopic = -1;
+
+                    //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
+                    newTopic = sample < topicDocWordMass ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)] : currentTree.sample(nextUniform);
 //            if (sample < topicDocWordMass) {
 //
 //                //int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
@@ -363,40 +410,50 @@ public class FastQMVWorkerRunnable implements Runnable {
 //                newTopic = currentTree.sample(nextUniform);
 //            }
 
-                if (newTopic == -1) {
-                    System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].tree[1]);
-                    newTopic = numTopics - 1; // TODO is this appropriate
-                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-                }
-
-                //assert(newTopic != -1);
-                //			Put that new topic into the counts
-                oneDocTopics[position] = newTopic;
-
-                //increment local counts
-                localTopicCounts[newTopic]++;
-
-                // If this is a new topic for this document, add the topic to the dense index.
-                if (localTopicCounts[newTopic] == 1) {
-                    // First find the point where we  should insert the new topic by going to
-                    //  the end  and working backwards
-                    denseIndex = nonZeroTopics;
-                    while (denseIndex > 0
-                            && localTopicIndex[denseIndex - 1] > newTopic) {
-                        localTopicIndex[denseIndex]
-                                = localTopicIndex[denseIndex - 1];
-                        denseIndex--;
+                    if (newTopic == -1) {
+                        System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[m][type].tree[1]);
+                        newTopic = numTopics - 1; // TODO is this appropriate
+                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
                     }
-                    localTopicIndex[denseIndex] = newTopic;
-                    nonZeroTopics++;
-                }
 
-                //add delta to the queue
-                if (newTopic != oldTopic) {
-                    //queue.add(new FastQDelta(oldTopic, newTopic, type, 0, 1, 1));
-                    queue.add(new FastQDelta(oldTopic, newTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[newTopic]));
-                }
+                    //assert(newTopic != -1);
+                    //			Put that new topic into the counts
+                    oneDocTopics[m][position] = newTopic;
 
+                    //increment local counts
+                    localTopicCounts[m][newTopic]++;
+
+                    // If this is a new topic for this document, add the topic to the dense index.
+                    boolean isNewTopic = (localTopicCounts[m][newTopic] == 0);
+                    byte jj = 0;
+                    while (isNewTopic && jj < numModalities) {
+                        //if (jj != m) { // every other topic should have zero counts
+                        isNewTopic = localTopicCounts[jj][newTopic] == 0;
+                        //}
+                        jj++;
+                    }
+
+                    if (isNewTopic) {
+                        // First find the point where we  should insert the new topic by going to
+                        //  the end  and working backwards
+                        denseIndex = nonZeroTopics;
+                        while (denseIndex > 0
+                                && localTopicIndex[denseIndex - 1] > newTopic) {
+                            localTopicIndex[denseIndex]
+                                    = localTopicIndex[denseIndex - 1];
+                            denseIndex--;
+                        }
+                        localTopicIndex[denseIndex] = newTopic;
+                        nonZeroTopics++;
+                    }
+
+                    //add delta to the queue
+                    if (newTopic != oldTopic) {
+                        //queue.add(new FastQDelta(oldTopic, newTopic, type, 0, 1, 1));
+                        queue.add(new FastQDelta(oldTopic, newTopic, type, m, localTopicCounts[m][oldTopic], localTopicCounts[m][newTopic]));
+                    }
+
+                }
             }
 
         } catch (Exception e) {
@@ -414,76 +471,126 @@ public class FastQMVWorkerRunnable implements Runnable {
 //        }
     }
 
-    protected void sampleTopicsForOneDocCyclingProposals(FeatureSequence tokenSequence,
-            FeatureSequence topicSequence,
-            boolean readjustTopicsAndStats /* currently ignored */) {
+    protected void sampleTopicsForOneDocCyclingProposals(int docCnt) {
 
-        int[] oneDocTopics = topicSequence.getFeatures();
+        MixTopicModelTopicAssignment doc = data.get(docCnt);
+
+            //double[][] totalMassPerModalityAndTopic = new double[numModalities][];
+        //cachedCoefficients = new double[numModalities][numTopics];// Conservative allocation... [nonZeroTopics + 10]; //we want to avoid dynamic memory allocation , thus we think that we will not have more than ten new  topics in each run
+        int[][] oneDocTopics = new int[numModalities][]; //token topics sequence for document
+        FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
 
         int[] currentTypeTopicCounts;
+        int[] localTopicIndex = new int[numTopics];
+        double[] topicDocWordMasses = new double[numTopics];
+        int type, oldTopic, newTopic;
         FTree currentTree;
-        int type, oldTopic, newTopic, currentTopic;
 
-        int docLength = tokenSequence.getLength();
+        int[] docLength = new int[numModalities];
+        int[][] localTopicCounts = new int[numModalities][numTopics];
 
-        int[] localTopicCounts = new int[numTopics];
+        double[] totalMassOtherModalities = new double[numTopics];
 
-        //		populate topic counts
-        for (int position = 0; position < docLength; position++) {
-            if (oneDocTopics[position] == ParallelTopicModel.UNASSIGNED_TOPIC) {
-                continue;
+        double[][] p = new double[numModalities][numModalities];
+
+        for (byte m = 0; m < numModalities; m++) {
+
+            for (byte j = m; j < numModalities; j++) {
+                double pRand = m == j ? 1.0 : p_a[m][j] == 0 ? 0 : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
+
+                p[m][j] = pRand;
+                p[j][m] = pRand;
             }
-            localTopicCounts[oneDocTopics[position]]++;
+
+            docLength[m] = 0;
+            Arrays.fill(totalMassOtherModalities, 0);
+
+            if (doc.Assignments[m] != null) {
+                //TODO can I order by tokens/topics??
+                oneDocTopics[m] = doc.Assignments[m].topicSequence.getFeatures();
+
+                //System.arraycopy(oneDocTopics[m], 0, doc.Assignments[m].topicSequence.getFeatures(), 0, doc.Assignments[m].topicSequence.getFeatures().length-1);
+                tokenSequence[m] = ((FeatureSequence) doc.Assignments[m].instance.getData());
+
+                docLength[m] = tokenSequence[m].getLength(); //size is the same??
+
+                //		populate topic counts
+                for (int position = 0; position < docLength[m]; position++) {
+                    if (oneDocTopics[m][position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                        System.err.println(" Init Sampling UNASSIGNED_TOPIC");
+                        continue;
+                    }
+                    localTopicCounts[m][oneDocTopics[m][position]]++; //, localTopicCounts[m][oneDocTopics[m][position]] + 1);
+
+                }
+            }
         }
 
-        //	Iterate over the positions (words) in the document 
-        for (int position = 0; position < docLength; position++) {
-            type = tokenSequence.getIndexAtPosition(position);
-            oldTopic = oneDocTopics[position];
+        
+        for (byte m = 0; m < numModalities; m++) // byte m = 0;
+        {
+            //calc other modalities mass
+            for (int topic = 0; topic < numTopics; topic++) {
 
-            currentTypeTopicCounts = typeTopicCounts[type];
-            currentTree = trees[type];
-
-            if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
-
-                // Decrement the local doc/topic counts
-                localTopicCounts[oldTopic]--;
-
-                // Multi core (queue based) approximation: All global counts will be updated at the end 
-            }
-
-            currentTopic = oldTopic;
-
-            for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
-                //in every Metropolis hasting step we are taking two samples cycling related doc & word proposals and we eventually keep the best one
-                // we can sample from doc topic mass immediately after word topic mass, as it doesn't get affected by current topic selection!! 
-                //--> thus we get & check both samples from cycle proposal in every step
-
-                //  if (!useDocProposal) {
-                //Sample Word topic mass
-                double sample = ThreadLocalRandom.current().nextDouble();//* (trees[type].tree[1]);
-
-                //	Make sure it actually gets set
-                newTopic = -1;
-
-                newTopic = currentTree.sample(sample);
-
-                if (newTopic == -1) {
-                    System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].tree[1]);
-                    newTopic = numTopics - 1; // TODO is this appropriate
-                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                for (byte i = 0; i < numModalities; i++) {
+                    if (i != m && docLength[i] != 0) {
+                        totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
+                    }
                 }
 
-                if (currentTopic != newTopic) {
+                totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
+            }
+
+            FeatureSequence tokenSequenceCurMod = tokenSequence[m];
+
+            //	Iterate over the positions (words) in the document 
+            for (int position = 0; position < docLength[m]; position++) {
+                    type = tokenSequenceCurMod.getIndexAtPosition(position);
+                    oldTopic = oneDocTopics[m][position];
+
+                    currentTypeTopicCounts = typeTopicCounts[m][type];
+                    currentTree = trees[m][type];
+
+                if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
+
+                    // Decrement the local doc/topic counts
+                    localTopicCounts[m][oldTopic]--;
+
+                    // Multi core (queue based) approximation: All global counts will be updated at the end 
+                }
+
+                int currentTopic = oldTopic;
+
+                for (int MHstep = 0; MHstep < MHsteps; MHstep++) {
+                //in every Metropolis hasting step we are taking two samples cycling related doc & word proposals and we eventually keep the best one
+                    // we can sample from doc topic mass immediately after word topic mass, as it doesn't get affected by current topic selection!! 
+                    //--> thus we get & check both samples from cycle proposal in every step
+
+                //  if (!useDocProposal) {
+                    //Sample Word topic mass
+                    double sample = ThreadLocalRandom.current().nextDouble();//* (trees[type].tree[1]);
+
+                    //	Make sure it actually gets set
+                    newTopic = -1;
+
+                    newTopic = currentTree.sample(sample);
+
+                    if (newTopic == -1) {
+                        System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[type].tree[1]);
+                        newTopic = numTopics - 1; // TODO is this appropriate
+                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                    }
+
+                    if (currentTopic != newTopic) {
                     // due to queue based multi core approximation we should decrement global counts whenever appropriate
-                    //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
-                    // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
-                    // BUT global cnts are changing due to QUeue based updates so there is no meaning in them
-                    double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
-                    double prop_old = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    double prop_new = (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
-                    double acceptance = (model_new * prop_old) / (model_old * prop_new);
+                        //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
+                        // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
+                        // BUT global cnts are changing due to QUeue based updates so there is no meaning in them
+                        double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                        double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                        double prop_old = (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                        double prop_new = (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                        double acceptance = (model_new * prop_old) / (model_old * prop_new);
 
 //                    double prop_old2 = (oldTopic == currentTopic)
 //                            ? (localTopicCounts[currentTopic] + 1 + alpha[currentTopic])
@@ -493,81 +600,81 @@ public class FastQMVWorkerRunnable implements Runnable {
 //                            : (localTopicCounts[newTopic] + alpha[newTopic]);
 //                    acceptance = (temp_new * prop_old * prop_new2) / (temp_old * prop_new * prop_old2);
 //                    
-                    //3. Compare against uniform[0,1]
-                    currentTopic = acceptance >= 1 ? newTopic : ThreadLocalRandom.current().nextDouble() < acceptance ? newTopic : currentTopic;
+                        //3. Compare against uniform[0,1]
+                        currentTopic = acceptance >= 1 ? newTopic : ThreadLocalRandom.current().nextDouble() < acceptance ? newTopic : currentTopic;
 //                    if (acceptance >= 1 || random.nextUniform() < acceptance) {
 //                        currentTopic = newTopic;
 //                    }
-                }
+                    }
 
-                // Sample Doc topic mass 
-                sample = ThreadLocalRandom.current().nextDouble() * (docSmoothingOnlyMass + docLength - 1);
-                double origSample = sample;
+                    // Sample Doc topic mass 
+                    sample = ThreadLocalRandom.current().nextDouble() * (docSmoothingOnlyMass + docLength - 1);
+                    double origSample = sample;
 
-                //	Make sure it actually gets set
-                newTopic = -1;
+                    //	Make sure it actually gets set
+                    newTopic = -1;
 
-                if (sample < docSmoothingOnlyMass) {
+                    if (sample < docSmoothingOnlyMass) {
 
-                    newTopic = lower_bound(docSmoothingOnlyCumValues, sample, numTopics);
+                        newTopic = lower_bound(docSmoothingOnlyCumValues, sample, numTopics);
 
-                } else { //just select one random topic from DocTopics excluding the current one
-                    sample -= docSmoothingOnlyMass;
-                    int tmpPos = (int) sample < position ? (int) sample : (int) sample + 1;
-                    newTopic = oneDocTopics[tmpPos];
+                    } else { //just select one random topic from DocTopics excluding the current one
+                        sample -= docSmoothingOnlyMass;
+                        int tmpPos = (int) sample < position ? (int) sample : (int) sample + 1;
+                        newTopic = oneDocTopics[tmpPos];
 
-                }
+                    }
 
-                if (newTopic == -1) {
-                    System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + docSmoothingOnlyMass);
-                    newTopic = numTopics - 1; // TODO is this appropriate
-                    //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
-                }
+                    if (newTopic == -1) {
+                        System.err.println("WorkerRunnable sampling error on doc topic mass: " + origSample + " " + sample + " " + docSmoothingOnlyMass);
+                        newTopic = numTopics - 1; // TODO is this appropriate
+                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                    }
 
-                if (currentTopic != newTopic) {
+                    if (currentTopic != newTopic) {
                     //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
-                    // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
+                        // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
 
-                    double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
-                    double prop_old = (oldTopic == currentTopic)
-                            ? (localTopicCounts[currentTopic] + 1 + gamma[0] * alpha[currentTopic])
-                            : (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]);
-                    double prop_new = (newTopic == oldTopic)
-                            ? (localTopicCounts[newTopic] + 1 + gamma[0] * alpha[newTopic])
-                            : (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]);
-                    double acceptance = (model_new * prop_old) / (model_old * prop_new);
+                        double model_old = (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]) * (currentTypeTopicCounts[currentTopic] + beta[0]) / (tokensPerTopic[currentTopic] + betaSum[0]);
+                        double model_new = (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]) * (currentTypeTopicCounts[newTopic] + beta[0]) / (tokensPerTopic[newTopic] + betaSum[0]);
+                        double prop_old = (oldTopic == currentTopic)
+                                ? (localTopicCounts[currentTopic] + 1 + gamma[0] * alpha[currentTopic])
+                                : (localTopicCounts[currentTopic] + gamma[0] * alpha[currentTopic]);
+                        double prop_new = (newTopic == oldTopic)
+                                ? (localTopicCounts[newTopic] + 1 + gamma[0] * alpha[newTopic])
+                                : (localTopicCounts[newTopic] + gamma[0] * alpha[newTopic]);
+                        double acceptance = (model_new * prop_old) / (model_old * prop_new);
                     //acceptance = (temp_new * prop_old * trees[type].getComponent(newTopic)) / (temp_old * prop_new * trees[type].getComponent(oldTopic));
 
 //                    double prop_old2 = (currentTypeTopicCounts[currentTopic] + beta) / (tokensPerTopic[currentTopic] + betaSum);
 //                    double prop_new2 = (currentTypeTopicCounts[newTopic] + beta) / (tokensPerTopic[newTopic] + betaSum);
 //                    acceptance = (model_new * prop_old * prop_new2) / (model_old * prop_new * prop_old2);
 //                    
-                    //3. Compare against uniform[0,1]
-                    //currentTopic = acceptance >= 1 ? newTopic : random.nextUniform() < acceptance ? newTopic : currentTopic;
-                    currentTopic = acceptance >= 1 ? newTopic : ThreadLocalRandom.current().nextDouble() < acceptance ? newTopic : currentTopic;
+                        //3. Compare against uniform[0,1]
+                        //currentTopic = acceptance >= 1 ? newTopic : random.nextUniform() < acceptance ? newTopic : currentTopic;
+                        currentTopic = acceptance >= 1 ? newTopic : ThreadLocalRandom.current().nextDouble() < acceptance ? newTopic : currentTopic;
 
 //                    if (acceptance >= 1 || random.nextUniform() < acceptance) {
 //                        currentTopic = newTopic;
 //                    }
+                    }
+
+                    // }
                 }
 
-                // }
-            }
-
             //assert(newTopic != -1);
-            //			Put that new topic into the counts
-            oneDocTopics[position] = currentTopic;
+                //			Put that new topic into the counts
+                oneDocTopics[position] = currentTopic;
 
-            localTopicCounts[currentTopic]++;
+                localTopicCounts[currentTopic]++;
 
-            if (currentTopic != oldTopic) {
+                if (currentTopic != oldTopic) {
 
-                queue.add(new FastQDelta(oldTopic, currentTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[currentTopic]));
+                    queue.add(new FastQDelta(oldTopic, currentTopic, type, 0, localTopicCounts[oldTopic], localTopicCounts[currentTopic]));
+
+                }
 
             }
-
-        }
 
 //        if (shouldSaveState) {
 //            // Update the document-topic count histogram,
@@ -578,6 +685,6 @@ public class FastQMVWorkerRunnable implements Runnable {
 //                topicDocCounts[topic][localTopicCounts[topic]]++;
 //            }
 //        }
-    }
+        }
 
-}
+    }
