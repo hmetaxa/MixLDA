@@ -52,7 +52,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 1;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -822,7 +822,7 @@ public class iMixTopicModelExample {
 
                 }
 
-                boolean runFastParallelModel = true;
+                boolean runFastParallelModel = false;
                 if (runFastParallelModel) {
                     boolean useCycleProposals = false;
                     FastQParallelTopicModel modelOrig = new FastQParallelTopicModel(numTopics, 0.01, 0.01, useCycleProposals);
@@ -843,7 +843,7 @@ public class iMixTopicModelExample {
                     modelOrig.estimate();
                 }
 
-                boolean runOrigParallelModel = true;
+                boolean runOrigParallelModel = false;
                 if (runOrigParallelModel) {
                     ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics*0.01, 0.01);
 
@@ -863,9 +863,12 @@ public class iMixTopicModelExample {
                     modelOrig.estimate();
                 }
 
-                double[] beta = new double[numModalities];
-                Arrays.fill(beta, 0.01);
-
+                double beta = 0.01;
+                //double[] betaMod = new double[numModalities];
+                //Arrays.fill(betaMod, 0.01);
+                boolean useCycleProposals = false;
+                double alpha = 0.1;
+                
                 double[] alphaSum = new double[numModalities];
                 Arrays.fill(alphaSum, 1);
 
@@ -873,15 +876,19 @@ public class iMixTopicModelExample {
                 Arrays.fill(gamma, 1);
 
                 double gammaRoot = 4;
+                
 
                 //Non parametric model
                 //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
                 //parametric model
-                MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+                //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+                
+                FastQMVParallelTopicModel model = new FastQMVParallelTopicModel( numTopics,  numModalities,  alpha,  beta, useCycleProposals);
 
+                
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
-                //model.setNumIterations(numIterations);
-                model.setIndependentIterations(independentIterations);
+                model.setNumIterations(numIterations);
+               // model.setIndependentIterations(independentIterations);
                 model.optimizeInterval = optimizeInterval;
                 model.burninPeriod = burnIn;
 
@@ -891,7 +898,7 @@ public class iMixTopicModelExample {
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                model.setNumThreads(4);
+                model.setNumThreads(1);
             // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
 
@@ -949,7 +956,8 @@ public class iMixTopicModelExample {
                         //  System.out.println("perplexity for the test set=" + perplexity);
                         logger.info("perplexity calculation finished");
                         //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                        MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                        //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                        FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
                         diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                         logger.info("full diagnostics calculation finished");
 

@@ -335,7 +335,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
             }
             logger.info("GammaRoot: " + gammaRoot);
             //for (byte m = 0; m < numModalities; m++) {
-            logger.info("Gamma: " + gamma[0]);
+            logger.info("Gamma["+m+"]: " + gamma[m]);
             //}
         }
 
@@ -387,7 +387,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
         //for (byte m = 0; m < numModalities; m++) {
             //alpha[m].fill(0, numTopics, 0);
-            alphaSum[0] = 0;
+            alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
             tablesCnt[m] = Vectors.sum(mk[m]);
 
@@ -404,7 +404,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
             //for (byte m = 0; m < numModalities; m++) {
             String alphaStr = "";
             for (int topic = 0; topic < numTopics; topic++) {
-                alphaStr += formatter.format(alpha[topic]) + " ";
+                alphaStr += formatter.format(alpha[m][topic]) + " ";
             }
 
             logger.info("[Alpha[" + m + "]: [" + alphaStr + "] ");

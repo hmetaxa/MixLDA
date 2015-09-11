@@ -6,6 +6,7 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -176,6 +177,9 @@ public class FastQMVParallelTopicModel implements Serializable {
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
         pMean = new double[numModalities][numModalities];
+        this.numTypes = new int[numModalities];
+
+        perplexities = new double[numModalities][200];
     }
 
     public StringBuilder getExpMetadata() {
@@ -292,11 +296,11 @@ public class FastQMVParallelTopicModel implements Serializable {
                 long iterationStart = System.currentTimeMillis();
 
                 FeatureSequence tokens = (FeatureSequence) instance.getData();
-                docLengthCounts[m][tokens.getLength()]++;
+                //docLengthCounts[m][tokens.getLength()]++;
                 LabelSequence topicSequence
                         = new LabelSequence(topicAlphabet, new int[tokens.size()]);
-
-                int[] topics = topicSequence.getFeatures();
+                int size = tokens.size();
+                int[] topics = new int[size]; //topicSequence.getFeatures();
                 for (int position = 0; position < topics.length; position++) {
                     int type = tokens.getIndexAtPosition(position);
                     int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
@@ -305,8 +309,9 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                 }
 
-                TopicAssignment t = new TopicAssignment(instance, topicSequence);
-                //t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
+                //TopicAssignment t = new TopicAssignment(instance, topicSequence);
+                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
+                
                 //data.add(t);
                 MixTopicModelTopicAssignment mt;
                 String entityId = (String) instance.getName();
@@ -426,6 +431,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 if (document != null) {
                     totalDocsPerModality[m]++;
                     FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+                    docLengthCounts[m][tokens.getLength()]++;
                     FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
                     int[] localTopicCounts = new int[numTopics];
                     int[] topics = topicSequence.getFeatures();
@@ -664,8 +670,18 @@ public class FastQMVParallelTopicModel implements Serializable {
             for (int t = 0; t < numTopics; t++) {
                 Arrays.fill(topicDocCounts[m][t], 0);
             }
+
         }
 
+//        for (MixTopicModelTopicAssignment entity : data) {
+//            for (Byte i = 0; i < numModalities; i++) {
+//                TopicAssignment document = entity.Assignments[i];
+//                if (document != null) {
+//                    FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+//                    docLengthCounts[i][tokens.getLength()]++;
+//                }
+//            }
+//        }
     }
 
 //    public void optimizeAlpha(FastQWorkerRunnable[] runnables) {
@@ -815,12 +831,18 @@ public class FastQMVParallelTopicModel implements Serializable {
                 random = new Randoms(randomSeed);
             }
 
-            runnables[thread] = new FastQMVWorkerRunnable(numTopics,
+            runnables[thread] = new FastQMVWorkerRunnable(
+                    numTopics,
+                    numModalities,
                     alpha, alphaSum, beta, betaSum, gamma,
+                    docSmoothingOnlyMass,
+                    docSmoothingOnlyCumValues,
                     random, data,
                     typeTopicCounts, tokensPerTopic,
                     offset, docsPerThread, trees, useCycleProposals,
                     thread,
+                    p_a,
+                    p_b,
                     //queues.get(thread), 
                     barrier
             //,betaSmoothingTree
@@ -839,14 +861,18 @@ public class FastQMVParallelTopicModel implements Serializable {
             randomUpd = new Randoms(randomSeed);
         }
 
-        FastQMVUpdaterRunnable updater = new FastQMVUpdaterRunnable(typeTopicCounts,
+        FastQMVUpdaterRunnable updater = new FastQMVUpdaterRunnable(
+                typeTopicCounts,
                 tokensPerTopic,
                 trees,
                 //queues,
                 alpha, alphaSum,
                 beta, betaSum, gamma,
+                docSmoothingOnlyMass,
+                docSmoothingOnlyCumValues,
                 useCycleProposals, barrier,
                 numTopics,
+                numModalities,
                 docLengthCounts,
                 topicDocCounts,
                 numTypes,
@@ -875,7 +901,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             long iterationStart = System.currentTimeMillis();
 
             if (showTopicsInterval != 0 && iteration != 0 && iteration % showTopicsInterval == 0) {
-                logger.info("\n" + displayTopWords(wordsPerTopic, false));
+                logger.info("\n" + displayTopWords(wordsPerTopic, 5, false));
             }
 
             if (saveStateInterval != 0 && iteration % saveStateInterval == 0) {
@@ -1016,9 +1042,9 @@ public class FastQMVParallelTopicModel implements Serializable {
         logger.info(timeReport.toString());
     }
 
-    public void printTopWords(File file, int numWords, boolean useNewLines) throws IOException {
+    public void printTopWords(File file, int numWords, int numLabels, boolean useNewLines) throws IOException {
         PrintStream out = new PrintStream(file);
-        printTopWords(out, numWords, useNewLines);
+        printTopWords(out, numWords, numLabels, useNewLines);
         out.close();
     }
 
@@ -1727,6 +1753,46 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
+      public void optimizeP() {
+
+//          for (int thread = 0; thread < numThreads; thread++) {
+//              runnables[thread].getPDistr_Mean();
+//          }
+//we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
+        // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
+        for (Byte m = 0; m < numModalities; m++) {
+            pMean[m][m] = 1;
+
+            for (Byte i = (byte) (m + 1); i < numModalities; i++) {
+                //optimize based on mean & variance
+                double sum = 0;
+                for (int j = 0; j < pDistr_Mean[m][i].length; j++) {
+                    sum += pDistr_Mean[m][i][j];
+                }
+
+                pMean[m][i] = sum / totalDocsPerModality[m];
+                pMean[i][m] = pMean[m][i];
+
+                //double var = 2 * (1 - mean);
+                double a = -1.0 / Math.log(pMean[m][i]);
+                double b = 1;
+
+                logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
+                p_a[m][i] = Math.min(a, 3);//a;
+                p_a[i][m] = Math.min(a, 3);;
+                p_b[m][i] = b;
+                p_b[i][m] = b;
+
+            }
+        }
+
+        // Now publish the new value
+//        for (int thread = 0; thread < numThreads; thread++) {
+//            runnables[thread].resetP_a(p_a);
+//            runnables[thread].resetP_a(p_b);
+//        }
+    }
+      
     public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, double lblWeight) {
         if (out != null) {
             out.print("#doc name topic proportion ...\n");
@@ -2166,7 +2232,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                     int type = tokenSequence.getIndexAtPosition(pi);
                     int topic = topicSequence.getIndexAtPosition(pi);
 
-                    output.format("%d %s %d %d %s %d\n", doc, source, pi, type, alphabet.lookupObject(type), topic);
+                    output.format("%d %s %d %d %s %d\n", doc, source, pi, type, alphabet[m].lookupObject(type), topic);
 
                     /*
                      out.print(doc); out.print(' ');
@@ -2204,7 +2270,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         int[] docTopics;
         for (Byte m = 0; m < numModalities; m++) {
             for (int topic = 0; topic < numTopics; topic++) {
-                topicLogGammas[topic] = Dirichlet.logGammaStirling(gamma[0] * alpha[m][topic]);
+                topicLogGammas[topic] = Dirichlet.logGammaStirling(gamma[m] * alpha[m][topic]);
             }
 
             int modalityCnt = 0;
@@ -2220,7 +2286,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                         for (int topic = 0; topic < numTopics; topic++) {
                             if (topicCounts[topic] > 0) {
-                                logLikelihood[m] += (Dirichlet.logGammaStirling(gamma[0] * alpha[m][topic] + topicCounts[topic])
+                                logLikelihood[m] += (Dirichlet.logGammaStirling(gamma[m] * alpha[m][topic] + topicCounts[topic])
                                         - topicLogGammas[topic]);
                             }
                         }
@@ -2308,7 +2374,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (Double.isNaN(logLikelihood[m])) {
                 logger.info("at the end");
             } else if (Double.isInfinite(logLikelihood[m])) {
-                logger.info("Infinite value beta[0] " + beta[m] + " * " + numTypes[m]);
+                logger.info("Infinite value beta"+m+": " + beta[m] + " * " + numTypes[m]);
                 logLikelihood[m] = 0;
             }
 
@@ -2329,10 +2395,10 @@ public class FastQMVParallelTopicModel implements Serializable {
 //     * Return a tool for evaluating the marginal probability of new documents
 //     * under this model
 //     */
-//    public MarginalProbEstimator getProbEstimator() {
-//        return new MarginalProbEstimator(numTopics, alpha, alphaSum[0], beta[0],
-//                typeTopicCounts, tokensPerTopic);
-//    }
+    public MarginalProbEstimator getProbEstimator() {
+        return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
+                typeTopicCounts[0], tokensPerTopic[0]);
+    }
     // Serialization
     private static final long serialVersionUID = 1;
     private static final int CURRENT_SERIAL_VERSION = 0;
@@ -2347,7 +2413,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         out.writeInt(numTopics);
 
-        out.writeInt(numTypes);
+        out.writeObject(numTypes);
 
         out.writeObject(alpha);
         out.writeObject(alphaSum);
