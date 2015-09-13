@@ -6,7 +6,6 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -311,7 +310,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                 //TopicAssignment t = new TopicAssignment(instance, topicSequence);
                 TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
-                
+
                 //data.add(t);
                 MixTopicModelTopicAssignment mt;
                 String entityId = (String) instance.getName();
@@ -816,6 +815,13 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
+
+        pDistr_Mean = new double[numModalities][numModalities][data.size()];
+        pDistr_Var = new double[numModalities][numModalities][data.size()];
+        for (byte i = 0; i < numModalities; i++) {
+            Arrays.fill(this.p_a[i], 3d);
+            Arrays.fill(this.p_b[i], 1d);
+        }
 
         for (int thread = 0; thread < numThreads; thread++) {
 
@@ -1753,13 +1759,73 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
-      public void optimizeP() {
+    public void optimizeP() {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
 //              runnables[thread].getPDistr_Mean();
 //          }
 //we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
         // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
+        //statistics for p optimization
+        for (int docCnt = 0;
+                docCnt < data.size();
+                docCnt++) {
+            MixTopicModelTopicAssignment doc = data.get(docCnt);
+            int[][] localTopicCounts = new int[numModalities][numTopics];
+            int[] oneDocTopics;
+            FeatureSequence tokenSequence;
+            int[] docLength = new int[numModalities];
+
+            for (byte m = 0; m < numModalities; m++) {
+
+                if (doc.Assignments[m] != null) {
+                    //TODO can I order by tokens/topics??
+                    oneDocTopics = doc.Assignments[m].topicSequence.getFeatures();
+
+                    //System.arraycopy(oneDocTopics[m], 0, doc.Assignments[m].topicSequence.getFeatures(), 0, doc.Assignments[m].topicSequence.getFeatures().length-1);
+                    tokenSequence = ((FeatureSequence) doc.Assignments[m].instance.getData());
+                    docLength[m] = tokenSequence.getLength(); //size is the same??
+
+                    //		populate topic counts
+                    for (int position = 0; position < docLength[m]; position++) {
+                        if (oneDocTopics[position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            System.err.println(" Init Sampling UNASSIGNED_TOPIC");
+                            continue;
+                        }
+                        localTopicCounts[m][oneDocTopics[position]]++; //, localTopicCounts[m][oneDocTopics[m][position]] + 1);
+
+                    }
+                }
+            }
+
+            for (byte m = 0; m < numModalities; m++) {
+
+                if (doc.Assignments[m] != null) {
+                    //TODO can I order by tokens/topics??
+                    oneDocTopics = doc.Assignments[m].topicSequence.getFeatures();
+
+                    //System.arraycopy(oneDocTopics[m], 0, doc.Assignments[m].topicSequence.getFeatures(), 0, doc.Assignments[m].topicSequence.getFeatures().length-1);
+                    tokenSequence = ((FeatureSequence) doc.Assignments[m].instance.getData());
+
+                    //		populate topic counts
+                    for (int position = 0; position < tokenSequence.getLength(); position++) {
+                        if (oneDocTopics[position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            System.err.println(" Init Sampling UNASSIGNED_TOPIC");
+                            continue;
+                        }
+
+                        for (byte i = (byte) (m - 1); i >= 0; i--) {
+                            pDistr_Mean[m][i][docCnt] += (localTopicCounts[i][oneDocTopics[position]] > 0 ? 1.0 : 0d) / (double) docLength[m];
+                            pDistr_Mean[i][m][docCnt] = pDistr_Mean[m][i][docCnt];
+                            //pDistr_Var[m][i][docCnt]+= localTopicCounts[i][newTopic]/docLength[m];
+                        }
+
+                    }
+                }
+            }
+
+        }
+
         for (Byte m = 0; m < numModalities; m++) {
             pMean[m][m] = 1;
 
@@ -1792,7 +1858,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 //            runnables[thread].resetP_a(p_b);
 //        }
     }
-      
+
     public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, double lblWeight) {
         if (out != null) {
             out.print("#doc name topic proportion ...\n");
@@ -2374,7 +2440,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (Double.isNaN(logLikelihood[m])) {
                 logger.info("at the end");
             } else if (Double.isInfinite(logLikelihood[m])) {
-                logger.info("Infinite value beta"+m+": " + beta[m] + " * " + numTypes[m]);
+                logger.info("Infinite value beta" + m + ": " + beta[m] + " * " + numTypes[m]);
                 logLikelihood[m] = 0;
             }
 

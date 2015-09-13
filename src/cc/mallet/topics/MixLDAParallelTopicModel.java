@@ -370,7 +370,7 @@ public class MixLDAParallelTopicModel implements Serializable {
             typeTopicCounts[i] = new int[tmpNumTypes][];
             tokensPerTopic[i] = new int[numTopics];
 
-            
+            typeTotals[i] = new int[tmpNumTypes];
             //typeSkewIndexes[i] = new double[tmpNumTypes];
 
             Randoms random = null;

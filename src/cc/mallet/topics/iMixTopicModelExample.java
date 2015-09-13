@@ -66,8 +66,8 @@ public class iMixTopicModelExample {
         int maxNumTopics = 100;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
-        int burnIn = 20;
-        int optimizeInterval = 10;
+        int burnIn = 100;
+        int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.Authors;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
@@ -864,8 +864,8 @@ public class iMixTopicModelExample {
                 }
 
                 double beta = 0.01;
-                //double[] betaMod = new double[numModalities];
-                //Arrays.fill(betaMod, 0.01);
+                double[] betaMod = new double[numModalities];
+                Arrays.fill(betaMod, 0.01);
                 boolean useCycleProposals = false;
                 double alpha = 0.1;
                 
@@ -881,7 +881,7 @@ public class iMixTopicModelExample {
                 //Non parametric model
                 //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
                 //parametric model
-                //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
+                //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, betaMod, numIterations);
                 
                 FastQMVParallelTopicModel model = new FastQMVParallelTopicModel( numTopics,  numModalities,  alpha,  beta, useCycleProposals);
 
@@ -898,7 +898,7 @@ public class iMixTopicModelExample {
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                model.setNumThreads(1);
+                model.setNumThreads(2);
             // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
 
@@ -957,6 +957,7 @@ public class iMixTopicModelExample {
                         logger.info("perplexity calculation finished");
                         //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
                         //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                        
                         FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
                         diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
                         logger.info("full diagnostics calculation finished");
