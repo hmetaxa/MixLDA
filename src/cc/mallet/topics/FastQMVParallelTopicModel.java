@@ -2394,12 +2394,12 @@ public class FastQMVParallelTopicModel implements Serializable {
             for (int type = 0; type < numTypes[m]; type++) {
                 // reuse this array as a pointer
 
-                topicCounts = typeTopicCounts[m][type];
+                //topicCounts = typeTopicCounts[m][type];
 
                 int index = 0;
-                while (index < topicCounts.length) {
+                while (index < typeTopicCounts[m][type].length) {
 
-                    int count = topicCounts[index];
+                    int count = typeTopicCounts[m][type][index];
                     if (count > 0) {
                         nonZeroTypeTopics++;
                         //logLikelihood[m] += Dirichlet.logGammaStirling(beta[m] + count);
