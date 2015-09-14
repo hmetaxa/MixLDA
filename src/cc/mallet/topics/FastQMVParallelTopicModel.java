@@ -35,6 +35,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.Queue;
 
 /**
@@ -72,8 +74,10 @@ public class FastQMVParallelTopicModel implements Serializable {
     public double[] betaSum;
     public double[] gamma;
 
-    protected double[] docSmoothingOnlyMass;
-    protected double[][] docSmoothingOnlyCumValues;
+    public double[] docSmoothingOnlyMass;
+    public double[][] docSmoothingOnlyCumValues;
+    
+    public List<Integer> inActiveTopicIndex = new LinkedList<Integer>(); //inactive topic index for all modalities
 
     public boolean usingSymmetricAlpha = false;
 
@@ -96,10 +100,10 @@ public class FastQMVParallelTopicModel implements Serializable {
     public int burninPeriod = 200;
     public int saveSampleInterval = 10;
     public int optimizeInterval = 50;
-    public int temperingInterval = 0;
+    //public int temperingInterval = 0;
 
     public int showTopicsInterval = 50;
-    public int wordsPerTopic = 20;
+    public int wordsPerTopic = 15;
 
     public int saveStateInterval = 0;
     public String stateFilename = null;
@@ -113,14 +117,14 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public double[][] p_a; // a for beta prior for modalities correlation
     public double[][] p_b; // b for beta prir for modalities correlation
-    public double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
-    public double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    //public double[][][] pDistr_Mean; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+    //public double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     public double[][] pMean; // modalities correlation
 
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     public StringBuilder expMetadata = new StringBuilder(1000);
 
-    boolean useCycleProposals = true;
+    public boolean useCycleProposals = true;
 
     // The number of times each type appears in the corpus
     int[][] typeTotals;
@@ -146,7 +150,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.numTopics = numberOfTopics;
 
         this.alphaSum = new double[numModalities];
-        this.alpha = new double[numModalities][numTopics];
+        this.alpha = new double[numModalities][numTopics+1]; //in order to include new topic probability
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
         this.beta = new double[numModalities];
@@ -175,7 +179,8 @@ public class FastQMVParallelTopicModel implements Serializable {
         appendMetadata("Initial NumTopics: " + numTopics + ", Modalities: " + this.numModalities + ", Iterations: " + this.numIterations);
         p_a = new double[numModalities][numModalities];
         p_b = new double[numModalities][numModalities];
-        pMean = new double[numModalities][numModalities];
+        pMean = new double[numModalities][numModalities];; // modalities correlation
+
         this.numTypes = new int[numModalities];
 
         perplexities = new double[numModalities][200];
@@ -239,10 +244,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         usingSymmetricAlpha = b;
     }
 
-    public void setTemperingInterval(int interval) {
-        temperingInterval = interval;
-    }
-
+    
     public void setNumThreads(int threads) {
         this.numThreads = threads;
     }
@@ -585,6 +587,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 }
                 if (similarity > mergeSimilarity) {
                     mergedTopics.put(t, t_text);
+                    logger.info("Merge topics: " + t+" and "+t_text);
                     for (Byte m = 0; m < numModalities; m++) {
                         alpha[m][t] = 0;
                     }
@@ -816,8 +819,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         int docsPerThread = data.size() / numThreads;
         int offset = 0;
 
-        pDistr_Mean = new double[numModalities][numModalities][data.size()];
-        pDistr_Var = new double[numModalities][numModalities][data.size()];
+        //pDistr_Var = new double[numModalities][numModalities][data.size()];
         for (byte i = 0; i < numModalities; i++) {
             Arrays.fill(this.p_a[i], 3d);
             Arrays.fill(this.p_b[i], 1d);
@@ -850,7 +852,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                     p_a,
                     p_b,
                     //queues.get(thread), 
-                    barrier
+                    barrier,
+                    inActiveTopicIndex
             //,betaSmoothingTree
             );
 
@@ -883,7 +886,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                 topicDocCounts,
                 numTypes,
                 maxTypeCount,
-                randomUpd
+                randomUpd,
+                inActiveTopicIndex
         //        , betaSmoothingTree
         );
 
@@ -922,6 +926,11 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % saveSampleInterval == 0) {
                 updater.setOptimizeParams(true);
+                //optimizeP();
+                //merge similar topics
+                //TByteArrayList modalities = new TByteArrayList();
+               // modalities.add((byte) 0);
+               // mergeSimilarTopics(30, modalities, 0.7);
             }
 
             updater.setQueues(queues);
@@ -1766,7 +1775,9 @@ public class FastQMVParallelTopicModel implements Serializable {
 //          }
 //we consider beta known = 1 --> a=(inverse digamma) [lnGx-lnG(1-x)+y(b)]
         // --> a = - 1 / (1/N (Sum(lnXi))), i=1..N , where Xi = mean (pDistr_Mean)
-        //statistics for p optimization
+//statistics for p optimization
+        double[][][] pDistr_Mean = new double[numModalities][numModalities][data.size()];; // modalities correlation distribution accross documents (used in a, b beta params optimization)
+
         for (int docCnt = 0;
                 docCnt < data.size();
                 docCnt++) {
@@ -1798,16 +1809,14 @@ public class FastQMVParallelTopicModel implements Serializable {
                 }
             }
 
-            for (byte m = 0; m < numModalities; m++) {
+            for (byte m = 1; m < numModalities; m++) {
 
                 if (doc.Assignments[m] != null) {
-                    //TODO can I order by tokens/topics??
+
                     oneDocTopics = doc.Assignments[m].topicSequence.getFeatures();
 
-                    //System.arraycopy(oneDocTopics[m], 0, doc.Assignments[m].topicSequence.getFeatures(), 0, doc.Assignments[m].topicSequence.getFeatures().length-1);
                     tokenSequence = ((FeatureSequence) doc.Assignments[m].instance.getData());
 
-                    //		populate topic counts
                     for (int position = 0; position < tokenSequence.getLength(); position++) {
                         if (oneDocTopics[position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
                             System.err.println(" Init Sampling UNASSIGNED_TOPIC");
@@ -1844,8 +1853,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
-                p_a[m][i] = Math.min(a, 3);//a;
-                p_a[i][m] = Math.min(a, 3);;
+                p_a[m][i] = a;//Math.max(a, 3);//a;
+                p_a[i][m] = a;//Math.max(a, 3);;
                 p_b[m][i] = b;
                 p_b[i][m] = b;
 

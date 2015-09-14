@@ -64,7 +64,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
     // Optimize gamma[0] hyper params
     RandomSamplers samp;
-    HashSet<Integer> inActiveTopicIndex = new HashSet<Integer>(); //inactive topic index for all modalities
+    protected List<Integer> inActiveTopicIndex; //inactive topic index for all modalities
     private NumberFormat formatter;
 
     public FastQMVUpdaterRunnable(
@@ -87,7 +87,8 @@ public class FastQMVUpdaterRunnable implements Runnable {
             int[][][] topicDocCounts,
             int[] numTypes,
             int[] maxTypeCount,
-            Randoms random
+            Randoms random,
+            List<Integer> inActiveTopicIndex
     //        , FTree betaSmoothingTree
     ) {
 
@@ -115,6 +116,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
+        this.inActiveTopicIndex = inActiveTopicIndex;
 
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
@@ -143,7 +145,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
         }
         isFinished = false;
         if (optimizeParams) {
-            updateAlphaAndSmoothing();
+            optimizeDP();
             optimizeGamma();
             optimizeBeta();
             recalcTrees();
@@ -162,14 +164,24 @@ public class FastQMVUpdaterRunnable implements Runnable {
                             isFinished = finishedSamplingTreads.size() == queues.size();
                             continue;
                         }
+
                         currentTypeTopicCounts = typeTopicCounts[delta.Modality][delta.Type];
 
                         // Decrement the global topic count totals
                         currentTypeTopicCounts[delta.OldTopic]--;
+                        if ( currentTypeTopicCounts[delta.OldTopic] < 0) {
+                            logger.info("TypeTopicCounts for old Topic " + delta.OldTopic + " below 0");
+                        }
+                        assert (currentTypeTopicCounts[delta.OldTopic] >= 0) : "TypeTopicCounts for old Topic " + delta.OldTopic + " below 0";
+
                         currentTypeTopicCounts[delta.NewTopic]++;
 
                         tokensPerTopic[delta.Modality][delta.OldTopic]--;
-                        assert (tokensPerTopic[delta.Modality][delta.OldTopic] >= 0) : "old Topic " + delta.OldTopic + " below 0";
+                        if (tokensPerTopic[delta.Modality][delta.OldTopic] < 0) {
+                            logger.info("tokensPerTopic for old Topic " + delta.OldTopic + " below 0");
+                        }
+
+                        assert (tokensPerTopic[delta.Modality][delta.OldTopic] >= 0) : "tokensPerTopic for old Topic " + delta.OldTopic + " below 0";
 
                         tokensPerTopic[delta.Modality][delta.NewTopic]++;
 
@@ -193,6 +205,12 @@ public class FastQMVUpdaterRunnable implements Runnable {
                         } else {
                             trees[delta.Modality][delta.Type].update(delta.OldTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
                             trees[delta.Modality][delta.Type].update(delta.NewTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
+                        }
+
+                        if (inActiveTopicIndex.contains(delta.NewTopic)) //new topic
+                        {
+                            logger.info("New Topic sampled: " + delta.NewTopic);
+                            optimizeDP();
                         }
 
                     }
@@ -227,6 +245,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
         //  we would need to store a maxTypeCount + 1 count.
 
         for (Byte m = 0; m < numModalities; m++) {
+            double prevBetaSum = betaSum[m];
             int[] countHistogram = new int[maxTypeCount[m] + 1];
 
             //  Now count the number of type/topic pairs that have
@@ -258,12 +277,22 @@ public class FastQMVUpdaterRunnable implements Runnable {
                 topicSizeHistogram[tokensPerTopic[m][topic]]++;
             }
 
-            betaSum[m] = Dirichlet.learnSymmetricConcentration(countHistogram,
-                    topicSizeHistogram,
-                    numTypes[m],
-                    betaSum[m]);
-            beta[m] = betaSum[m] / numTypes[m];
+            try {
+                betaSum[m] = Dirichlet.learnSymmetricConcentration(countHistogram,
+                        topicSizeHistogram,
+                        numTypes[m],
+                        betaSum[m]);
+                if (Double.isNaN(betaSum[m])) {
+                    betaSum[m] = prevBetaSum;
+                }
+                beta[m] = betaSum[m] / numTypes[m];
+            } catch (RuntimeException e) {
+                // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
+                logger.warning("Dirichlet optimization has become unstable:" + e.getMessage() + ". Resetting to previous Beta");
+                betaSum[m] = prevBetaSum;
+                beta[m] = betaSum[m] / numTypes[m];
 
+            }
             //TODO: copy/update trees in threads
             logger.info("[beta[" + m + "]: " + formatter.format(beta[m]) + "] ");
             // Now publish the new value
@@ -289,21 +318,10 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
         double totaltablesCnt = 0;
         for (Byte m = 0; m < numModalities; m++) {
-            totaltablesCnt+=tablesCnt[m];
-            
+            totaltablesCnt += tablesCnt[m];
+
         }
-//        //int[][] docLengthCounts = new int[numModalities][histogramSize]; // histogram of document sizes taking into consideration (summing up) all modalities
-//        //int[][][] topicDocCounts = new int[numModalities][numTopics][histogramSize]; // histogram of document/topic counts, indexed by <topic index, sequence position index> considering all modalities
-//        double[] tablesPerModality = new double[numModalities];
-//        Arrays.fill(tablesPerModality, 0);
-//        double totalTables = 0;
-//
-//        for (Byte mod = 0; mod < numModalities; mod++) {
-//            for (int thread = 0; thread < numThreads; thread++) {
-//                tablesPerModality[mod] += Math.ceil(runnables[thread].getTablesPerModality()[mod] / (double) numThreads);
-//            }
-//            totalTables += tablesPerModality[mod];
-//        }
+
         for (Byte m = 0; m < numModalities; m++) {
             for (int r = 0; r < R; r++) {
                 // gamma[0]: root level (Escobar+West95) with n = T
@@ -335,13 +353,13 @@ public class FastQMVUpdaterRunnable implements Runnable {
             }
             logger.info("GammaRoot: " + gammaRoot);
             //for (byte m = 0; m < numModalities; m++) {
-            logger.info("Gamma["+m+"]: " + gamma[m]);
+            logger.info("Gamma[" + m + "]: " + gamma[m]);
             //}
         }
 
     }
 
-    private void updateAlphaAndSmoothing() {
+    private void optimizeDP() {
         double[][] mk = new double[numModalities][numTopics + 1];
 
         Arrays.fill(tablesCnt, 0);
@@ -385,7 +403,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
             }
         // end outter for loop
 
-        //for (byte m = 0; m < numModalities; m++) {
+            //for (byte m = 0; m < numModalities; m++) {
             //alpha[m].fill(0, numTopics, 0);
             alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
@@ -393,7 +411,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
             double[] tt = sampleDirichlet(mk[m]);
             // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
-            for (int kk = 0; kk < numTopics; kk++) {
+            for (int kk = 0; kk <= numTopics; kk++) {
                 //int k = kactive.get(kk);
                 alpha[m][kk] = tt[kk];
                 alphaSum[m] += gamma[m] * tt[kk];

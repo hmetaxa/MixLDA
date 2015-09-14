@@ -16,6 +16,8 @@ import java.text.NumberFormat;
 
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -37,7 +39,7 @@ public class FastQMVWorkerRunnable implements Runnable {
     //  count/topic pairs in a single int.
     protected int topicMask;
     protected int topicBits;
-    protected int numTypes;
+    //protected int numTypes;
     public byte numModalities; // Number of modalities
     protected double[][] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
     protected double[] alphaSum;
@@ -63,7 +65,8 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected Queue<FastQDelta> queue;
     private final CyclicBarrier cyclicBarrier;
     protected int MHsteps = 1;
-    boolean useCycleProposals = false;
+    protected boolean useCycleProposals = false;
+    protected List<Integer> inActiveTopicIndex;
 
     public FastQMVWorkerRunnable(
             int numTopics,
@@ -86,7 +89,8 @@ public class FastQMVWorkerRunnable implements Runnable {
             double[][] p_a, // a for beta prior for modalities correlation
             double[][] p_b, // b for beta prir for modalities correlation
             //            ConcurrentLinkedQueue<FastQDelta> queue, 
-            CyclicBarrier cyclicBarrier
+            CyclicBarrier cyclicBarrier,
+            List<Integer> inActiveTopicIndex
     //, FTree betaSmoothingTree
     ) {
 
@@ -97,7 +101,7 @@ public class FastQMVWorkerRunnable implements Runnable {
 
         this.numTopics = numTopics;
         this.numModalities = numModalities;
-        this.numTypes = typeTopicCounts.length;
+        //this.numTypes = typeTopicCounts.length;
 
         this.typeTopicCounts = typeTopicCounts;
         this.tokensPerTopic = tokensPerTopic;
@@ -118,6 +122,7 @@ public class FastQMVWorkerRunnable implements Runnable {
         this.docSmoothingOnlyMass = docSmoothingOnlyMass;
         this.p_a = p_a;
         this.p_b = p_b;
+        this.inActiveTopicIndex = inActiveTopicIndex;
 
         //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
@@ -277,7 +282,6 @@ public class FastQMVWorkerRunnable implements Runnable {
                 }
 
                 docLength[m] = 0;
-                Arrays.fill(totalMassOtherModalities, 0);
 
                 if (doc.Assignments[m] != null) {
                     //TODO can I order by tokens/topics??
@@ -321,6 +325,7 @@ public class FastQMVWorkerRunnable implements Runnable {
 
             for (byte m = 0; m < numModalities; m++) // byte m = 0;
             {
+                Arrays.fill(totalMassOtherModalities, 0);
                 //calc other modalities mass
                 for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
@@ -395,14 +400,22 @@ public class FastQMVWorkerRunnable implements Runnable {
 
                     }
 
+                    double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : gamma[m] * alpha[m][numTopics] / (currentTypeTopicCounts.length);//check this
+
                     double nextUniform = ThreadLocalRandom.current().nextDouble();
-                    double sample = nextUniform * (topicDocWordMass + currentTree.tree[1]);
+                    double sample = nextUniform * (newTopicMass + topicDocWordMass + currentTree.tree[1]);
                     newTopic = -1;
 
                     //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
-                    newTopic = sample < topicDocWordMass
-                            ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)]
-                            : currentTree.sample(nextUniform);
+                    if (sample < newTopicMass) {
+
+                        newTopic = inActiveTopicIndex.get(ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
+                    } else {
+                        sample -= newTopicMass;
+                        newTopic = sample < topicDocWordMass
+                                ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)]
+                                : currentTree.sample(nextUniform);
+                    }
 //            if (sample < topicDocWordMass) {
 //
 //                //int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
@@ -509,8 +522,7 @@ public class FastQMVWorkerRunnable implements Runnable {
             }
 
             docLength[m] = 0;
-            Arrays.fill(totalMassOtherModalities, 0);
-            Arrays.fill(totalMassOtherModalitiesCumValues, 0);
+
             totalNormMassOther = 0;
 
             if (doc.Assignments[m] != null) {
@@ -536,6 +548,10 @@ public class FastQMVWorkerRunnable implements Runnable {
 
         for (byte m = 0; m < numModalities; m++) // byte m = 0;
         {
+            Arrays.fill(totalMassOtherModalities, 0);
+            Arrays.fill(totalMassOtherModalitiesCumValues, 0);
+            totalNormMassOther = 0;
+
             //calc other modalities mass
             for (int topic = 0; topic < numTopics; topic++) {
 
@@ -596,9 +612,9 @@ public class FastQMVWorkerRunnable implements Runnable {
                         //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                         // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
                         // BUT global cnts are changing due to QUeue based updates so there is no meaning in them
-                        double model_old = (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic])
+                        double model_old = (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic] + totalMassOtherModalities[currentTopic] * (docLength[m] + alphaSum[m]))
                                 * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                        double model_new = (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic])
+                        double model_new = (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic] + totalMassOtherModalities[newTopic] * (docLength[m] + alphaSum[m]))
                                 * (currentTypeTopicCounts[newTopic] + beta[m]) / (tokensPerTopic[m][newTopic] + betaSum[m]);
                         double prop_old = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
                         double prop_new = (currentTypeTopicCounts[newTopic] + beta[m]) / (tokensPerTopic[m][newTopic] + betaSum[m]);
@@ -620,29 +636,35 @@ public class FastQMVWorkerRunnable implements Runnable {
                     }
 
                     // Sample Doc topic mass 
-                    sample = ThreadLocalRandom.current().nextDouble() * (docSmoothingOnlyMass[m] + totalNormMassOther + docLength[m] - 1);
+                    double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : gamma[m] * alpha[m][numTopics] / (typeTopicCounts[m].length);
+                    sample = ThreadLocalRandom.current().nextDouble() * (newTopicMass + docSmoothingOnlyMass[m] + totalNormMassOther + docLength[m] - 1);
                     double origSample = sample;
 
                     //	Make sure it actually gets set
                     newTopic = -1;
 
-                    if (sample < docSmoothingOnlyMass[m]) {
-
-                        newTopic = lower_bound(docSmoothingOnlyCumValues[m], sample, numTopics);
-
+                    if (sample < newTopicMass) {
+                        newTopic = inActiveTopicIndex.iterator().next();
                     } else {
-                        sample -= docSmoothingOnlyMass[m];
+                        sample -= newTopicMass;
+                        if (sample < docSmoothingOnlyMass[m]) {
 
-                        if (sample < totalNormMassOther) //Other modalities mass
-                        {
+                            newTopic = lower_bound(docSmoothingOnlyCumValues[m], sample, numTopics);
 
-                            sample = sample / (docLength[m] + alphaSum[m]);
-                            newTopic = lower_bound(totalMassOtherModalitiesCumValues, sample, numTopics);
-                        } else { //just select one random topic from DocTopics excluding the current one
-                            sample -= totalNormMassOther;
-                            int tmpPos = (int) sample < position ? (int) sample : (int) sample + 1;
-                            newTopic = oneDocTopics[m][tmpPos];
+                        } else {
+                            sample -= docSmoothingOnlyMass[m];
 
+                            if (sample < totalNormMassOther) //Other modalities mass
+                            {
+
+                                sample = sample / (docLength[m] + alphaSum[m]);
+                                newTopic = lower_bound(totalMassOtherModalitiesCumValues, sample, numTopics);
+                            } else { //just select one random topic from DocTopics excluding the current one
+                                sample -= totalNormMassOther;
+                                int tmpPos = (int) sample < position ? (int) sample : (int) sample + 1;
+                                newTopic = oneDocTopics[m][tmpPos];
+
+                            }
                         }
                     }
 
@@ -656,16 +678,16 @@ public class FastQMVWorkerRunnable implements Runnable {
                         //both decr/incr of global arrays and trees is happening at the end... So at this point they contain the current (not decreased values)
                         // model_old & model_new should be based on decreased values, whereas probabilities (prop_old & prop_new) on the current ones
 
-                        double model_old = (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic])
+                        double model_old = (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic] + totalMassOtherModalities[currentTopic] * (docLength[m] + alphaSum[m]))
                                 * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                        double model_new = (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic])
+                        double model_new = (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic] + totalMassOtherModalities[newTopic] * (docLength[m] + alphaSum[m]))
                                 * (currentTypeTopicCounts[newTopic] + beta[m]) / (tokensPerTopic[m][newTopic] + betaSum[m]);
                         double prop_old = (oldTopic == currentTopic)
-                                ? (localTopicCounts[m][currentTopic] + 1 + gamma[m] * alpha[m][currentTopic])
-                                : (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic]);
+                                ? (localTopicCounts[m][currentTopic] + 1 + gamma[m] * alpha[m][currentTopic] + totalMassOtherModalities[currentTopic] * (docLength[m] + alphaSum[m]))
+                                : (localTopicCounts[m][currentTopic] + gamma[m] * alpha[m][currentTopic] + totalMassOtherModalities[currentTopic] * (docLength[m] + alphaSum[m]));
                         double prop_new = (newTopic == oldTopic)
-                                ? (localTopicCounts[m][newTopic] + 1 + gamma[m] * alpha[m][newTopic])
-                                : (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic]);
+                                ? (localTopicCounts[m][newTopic] + 1 + gamma[m] * alpha[m][newTopic] + totalMassOtherModalities[newTopic] * (docLength[m] + alphaSum[m]))
+                                : (localTopicCounts[m][newTopic] + gamma[m] * alpha[m][newTopic] + totalMassOtherModalities[newTopic] * (docLength[m] + alphaSum[m]));
                         double acceptance = (model_new * prop_old) / (model_old * prop_new);
                         //acceptance = (temp_new * prop_old * trees[type].getComponent(newTopic)) / (temp_old * prop_new * trees[type].getComponent(oldTopic));
 

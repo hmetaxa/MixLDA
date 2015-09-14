@@ -956,7 +956,7 @@ public class iMixTopicModelExample {
                         //  System.out.println("perplexity for the test set=" + perplexity);
                         logger.info("perplexity calculation finished");
                         //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                        //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                       //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
                         
                         FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
                         diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
