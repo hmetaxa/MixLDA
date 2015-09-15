@@ -1,8 +1,8 @@
 package cc.mallet.examples;
 
-import cc.mallet.topics.MixTopicModelExample;
-import static cc.mallet.topics.MixTopicModelExample.LabelType.Authors;
-import static cc.mallet.topics.MixTopicModelExample.LabelType.Grants;
+//import cc.mallet.topics.iMixTopicModelExample;
+//import static cc.mallet.topics.iMixTopicModelExample.LabelType.Authors;
+//import static cc.mallet.topics.iMixTopicModelExample.LabelType.Grants;
 import cc.mallet.types.Instance;
 import java.io.*;
 import java.sql.Connection;

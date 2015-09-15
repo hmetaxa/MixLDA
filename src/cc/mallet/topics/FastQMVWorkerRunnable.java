@@ -409,7 +409,8 @@ public class FastQMVWorkerRunnable implements Runnable {
                     //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
                     if (sample < newTopicMass) {
 
-                        newTopic = inActiveTopicIndex.get(ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
+                        
+                        newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
                     } else {
                         sample -= newTopicMass;
                         newTopic = sample < topicDocWordMass

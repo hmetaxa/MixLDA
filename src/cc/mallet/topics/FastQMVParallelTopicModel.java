@@ -926,7 +926,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % saveSampleInterval == 0) {
                 updater.setOptimizeParams(true);
-                //optimizeP();
+                optimizeP();
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);

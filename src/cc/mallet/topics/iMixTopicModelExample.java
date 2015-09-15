@@ -52,7 +52,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -62,13 +62,13 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 1000;
-        int maxNumTopics = 1000;
+        int numTopics = 300;
+        int maxNumTopics = 300;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
-        int burnIn = 100;
-        int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.Authors;
+        int burnIn = 50;
+        int optimizeInterval = 10;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
