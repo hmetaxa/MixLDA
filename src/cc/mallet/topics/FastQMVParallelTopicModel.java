@@ -928,9 +928,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 updater.setOptimizeParams(true);
                 //optimizeP();
                 //merge similar topics
-                //TByteArrayList modalities = new TByteArrayList();
-               // modalities.add((byte) 0);
-               // mergeSimilarTopics(30, modalities, 0.7);
+                TByteArrayList modalities = new TByteArrayList();
+                modalities.add((byte) 0);
+                mergeSimilarTopics(25, modalities, 0.6);
             }
 
             updater.setQueues(queues);

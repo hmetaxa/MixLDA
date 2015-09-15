@@ -13,6 +13,7 @@ import static java.lang.Math.log;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
@@ -144,14 +145,14 @@ public class FastQMVUpdaterRunnable implements Runnable {
             return;
         }
         isFinished = false;
-        if (optimizeParams) {
-            optimizeDP();
-            optimizeGamma();
-            optimizeBeta();
-            recalcTrees();
-        }
-
         try {
+            if (optimizeParams) {
+                optimizeDP();
+                optimizeGamma();
+                optimizeBeta();
+                recalcTrees();
+            }
+
             while (!isFinished) {
 
                 FastQDelta delta;
@@ -169,7 +170,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
                         // Decrement the global topic count totals
                         currentTypeTopicCounts[delta.OldTopic]--;
-                        if ( currentTypeTopicCounts[delta.OldTopic] < 0) {
+                        if (currentTypeTopicCounts[delta.OldTopic] < 0) {
                             logger.info("TypeTopicCounts for old Topic " + delta.OldTopic + " below 0");
                         }
                         assert (currentTypeTopicCounts[delta.OldTopic] >= 0) : "TypeTopicCounts for old Topic " + delta.OldTopic + " below 0";
@@ -210,7 +211,12 @@ public class FastQMVUpdaterRunnable implements Runnable {
                         if (inActiveTopicIndex.contains(delta.NewTopic)) //new topic
                         {
                             logger.info("New Topic sampled: " + delta.NewTopic);
-                            optimizeDP();
+                            inActiveTopicIndex.remove(new Integer(delta.NewTopic));
+                            
+                            ArrayList   <Double> tmp = new ArrayList (Arrays.asList(alpha[delta.Modality]));
+                            Collections.min(tmp);
+                            alpha[delta.Modality][delta.NewTopic] = Collections.min(tmp);
+                            //optimizeDP(); in order not to optimize all the time
                         }
 
                     }
@@ -376,7 +382,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                     //for (int j = 0; j < numDocuments; j++) {
 
                     if (topicDocCounts[m][t][i] > 0 && i > 1) {
-                        inActiveTopicIndex.remove(t);
+                        inActiveTopicIndex.remove(new Integer(t));  //..remove(t);
                         //sample number of tables
                         // number of tables a CRP(alpha tau) produces for nmk items
                         //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
@@ -396,7 +402,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                         // nmk[m].get(k));
                     } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
                     {
-                        inActiveTopicIndex.remove(t);
+                        inActiveTopicIndex.remove(new Integer(t));
                         mk[m][t] += topicDocCounts[m][t][i];
                     }
                 }
