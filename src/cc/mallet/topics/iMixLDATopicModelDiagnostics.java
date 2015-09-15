@@ -1,6 +1,6 @@
 package cc.mallet.topics;
 
-import cc.mallet.topics.MixParallelTopicModel.SkewType;
+
 import java.io.*;
 import java.util.*;
 import java.text.*;
