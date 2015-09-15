@@ -28,7 +28,7 @@ public class iMixTopicModelExample {
 
     public enum ExperimentType {
 
-        Authors,
+        NIPS,
         Grants,
         DBLP,
         PM_pdb,
@@ -52,7 +52,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -62,13 +62,13 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
-        int maxNumTopics = 300;
+        int numTopics = 200;
+        int maxNumTopics = 200;
         int numIterations = 800; //Max 2000
         int independentIterations = 0;
         int burnIn = 50;
-        int optimizeInterval = 10;
-        ExperimentType experimentType = ExperimentType.ACM;
+        int optimizeInterval = 20;
+        ExperimentType experimentType = ExperimentType.NIPS;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -300,7 +300,7 @@ public class iMixTopicModelExample {
                             + "                            -- '' AS MESHqualifiers\n"
                             + "                             from FP7FinalReports\n"
                             + "                             inner join projectView on ProjectId=projectView.GrantId  and Category2='HEALTH'  ";
-                } else if (experimentType == ExperimentType.Authors) {
+                } else if (experimentType == ExperimentType.NIPS) {
                     experimentDescription = "Topic modeling based on:\n 1)Full text NIPS publications\n2)Authors per publication links ";
 
                     sql = " select Doc.DocId,Doc.text, GROUP_CONCAT(AuthorPerDoc.authorID,'\t') as AuthorIds \n"
@@ -482,7 +482,7 @@ public class iMixTopicModelExample {
 
                             ;
                             break;
-                        case Authors:
+                        case NIPS:
                             instanceBuffer.get(0).add(new Instance(rs.getString("text"), null, rs.getString("DocId"), "text"));
                             if (numModalities > 1) {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("AuthorIds"), null, rs.getString("DocId"), "author"));
@@ -866,7 +866,7 @@ public class iMixTopicModelExample {
                 double beta = 0.01;
                 double[] betaMod = new double[numModalities];
                 Arrays.fill(betaMod, 0.01);
-                boolean useCycleProposals = false;
+                boolean useCycleProposals = true;
                 double alpha = 0.1;
                 
                 double[] alphaSum = new double[numModalities];
@@ -1029,7 +1029,7 @@ public class iMixTopicModelExample {
                                 + "' group By links.projectId , TopicId order by  links.projectId, TopicId";
 
                         break;
-                    case Authors:
+                    case NIPS:
                         sql = "select    AuthorId, TopicId, AVG(weight) as Weight from PubTopic Inner Join AuthorPerDoc on PubTopic.PubId= AuthorPerDoc.DocId"
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
                         break;
@@ -1092,7 +1092,7 @@ public class iMixTopicModelExample {
                         case HEALTHTender:
                             newLabelId = rs.getString("projectId");
                             break;
-                        case Authors:
+                        case NIPS:
                             newLabelId = rs.getString("AuthorId");
                             break;
                         case ACM:

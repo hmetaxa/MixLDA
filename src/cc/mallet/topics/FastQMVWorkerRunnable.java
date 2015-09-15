@@ -41,7 +41,7 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected int topicBits;
     //protected int numTypes;
     public byte numModalities; // Number of modalities
-    protected double[][] alpha;	 // Dirichlet(alpha,alpha,...) is the distribution over topics
+    protected double[][] alpha;	 // low level DP<=>dirichlet(a1,a2,...a is the distribution over topics [epoch][modality][topic]
     protected double[] alphaSum;
     protected double[] beta;   // Prior on per-topic multinomial distribution over words
     protected double[] betaSum;
@@ -53,7 +53,7 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected double[][] p_a; // a for beta prior for modalities correlation
     protected double[][] p_b; // b for beta prir for modalities correlation
 
-    protected int[][][] typeTopicCounts; // indexed by <feature index, topic index>
+    protected int[][][] typeTopicCounts; // indexed by  [modality][tokentype][topic]
     protected int[][] tokensPerTopic; // indexed by <topic index>
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
@@ -498,8 +498,8 @@ public class FastQMVWorkerRunnable implements Runnable {
         FeatureSequence[] tokenSequence = new FeatureSequence[numModalities]; //tokens sequence
 
         int[] currentTypeTopicCounts;
-        int[] localTopicIndex = new int[numTopics];
-        double[] topicDocWordMasses = new double[numTopics];
+        //int[] localTopicIndex = new int[numTopics];
+        //double[] topicDocWordMasses = new double[numTopics];
         int type, oldTopic, newTopic;
         FTree currentTree;
 
@@ -645,7 +645,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     newTopic = -1;
 
                     if (sample < newTopicMass) {
-                        newTopic = inActiveTopicIndex.iterator().next();
+                        newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
                     } else {
                         sample -= newTopicMass;
                         if (sample < docSmoothingOnlyMass[m]) {

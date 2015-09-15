@@ -213,9 +213,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                             logger.info("New Topic sampled: " + delta.NewTopic);
                             inActiveTopicIndex.remove(new Integer(delta.NewTopic));
                             
-                            ArrayList   <Double> tmp = new ArrayList (Arrays.asList(alpha[delta.Modality]));
-                            Collections.min(tmp);
-                            alpha[delta.Modality][delta.NewTopic] = Collections.min(tmp);
+                            alpha[delta.Modality][delta.NewTopic] = alpha[delta.Modality][numTopics];
                             //optimizeDP(); in order not to optimize all the time
                         }
 
