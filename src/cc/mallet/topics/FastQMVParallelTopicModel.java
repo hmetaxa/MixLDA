@@ -1163,10 +1163,10 @@ public class FastQMVParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
                 String deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
-                String topicDetailInsertsql = "insert into TopicDetails values(?,?,?,?,? );";
+                String topicDetailInsertsql = "insert into TopicDetails values(?,?,?,?,?,? );";
                 PreparedStatement bulkTopicDetailInsert = null;
 
                 try {
@@ -1180,7 +1180,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                             bulkTopicDetailInsert.setInt(2, m);
                             bulkTopicDetailInsert.setDouble(3, alpha[m][topic]);
                             bulkTopicDetailInsert.setInt(4, tokensPerTopic[m][topic]);
-                            bulkTopicDetailInsert.setString(5, experimentId);
+                            bulkTopicDetailInsert.setString(5, "-1");
+                            bulkTopicDetailInsert.setString(6, experimentId);
 
                             bulkTopicDetailInsert.executeUpdate();
                         }

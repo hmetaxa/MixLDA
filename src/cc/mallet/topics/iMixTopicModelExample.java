@@ -52,7 +52,7 @@ public class iMixTopicModelExample {
         Logger logger = MalletLogger.getLogger(iMixTopicModelExample.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -62,13 +62,13 @@ public class iMixTopicModelExample {
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 200;
-        int maxNumTopics = 200;
-        int numIterations = 800; //Max 2000
+        int numTopics = 350;
+        int maxNumTopics = 350;
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
-        int burnIn = 50;
-        int optimizeInterval = 20;
-        ExperimentType experimentType = ExperimentType.NIPS;
+        int burnIn = 100;
+        int optimizeInterval = 50;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -346,13 +346,13 @@ public class iMixTopicModelExample {
                             + "\n Similarity on Authors & Categories";
                     //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                    sql = "  select    articleid as id, title||' '||abstract AS text, authors_id AS Authors, \n"
+                    sql = "  select    articleid as id, title||' '||abstract||' '||body AS text, authors_id AS Authors, \n"
                             + "                 ref_objid as citations                 \n"
                             + "                 ,GROUP_CONCAT(CatId,'\t')  AS categories\n"
                             + "                             from ACMData1 \n"
                             + "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n"
                             + "                             Group by articleid \n";
-                    //+ " LIMIT 100000";
+                  //  + " LIMIT 10000";
 
                 } else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
                     experimentDescription = "Topic modeling based on:\n1)FP7 HEALTH related publications& project reports grouped by GrantId:"
@@ -549,7 +549,12 @@ public class iMixTopicModelExample {
                             }
                             break;
                         case ACM:
-                            instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                            
+                               txt = rs.getString("text");
+
+                            instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("Id"), "text"));
+                            
+                            //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
                             if (numModalities > 1) {
                                 String tmpStr = rs.getString("Citations");//.replace("\t", ",");
@@ -866,7 +871,7 @@ public class iMixTopicModelExample {
                 double beta = 0.01;
                 double[] betaMod = new double[numModalities];
                 Arrays.fill(betaMod, 0.01);
-                boolean useCycleProposals = true;
+                boolean useCycleProposals = false;
                 double alpha = 0.1;
                 
                 double[] alphaSum = new double[numModalities];
@@ -898,7 +903,7 @@ public class iMixTopicModelExample {
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                model.setNumThreads(2);
+                model.setNumThreads(3);
             // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
 
