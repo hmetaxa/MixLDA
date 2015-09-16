@@ -83,7 +83,7 @@ public class iMixTopicModelExample {
             double[] temp = {0.3, 1.5, 0.4, 0.3};
             FTree tree = new FTree(temp);
 
-            int tmp = tree.sample(2.1/2.5);
+            int tmp = tree.sample(2.1 / 2.5);
             logger.info("FTree sample 2.1 (2):" + tmp);
 
             double tmp2 = tree.getComponent(0);
@@ -94,7 +94,7 @@ public class iMixTopicModelExample {
 
             tree.update(2, 1.4);
 
-            tmp = tree.sample(3.19/3.5);
+            tmp = tree.sample(3.19 / 3.5);
             logger.info("FTree sample 3.19 (2):" + tmp);
 
         } catch (Exception e) {
@@ -352,7 +352,7 @@ public class iMixTopicModelExample {
                             + "                             from ACMData1 \n"
                             + "                             INNER JOIN PubCategoryView on PubCategoryView.PubId = ArticleId\n"
                             + "                             Group by articleid \n";
-                  //  + " LIMIT 10000";
+                    //  + " LIMIT 10000";
 
                 } else if (experimentType == ExperimentType.HEALTHTenderGrantGroup) {
                     experimentDescription = "Topic modeling based on:\n1)FP7 HEALTH related publications& project reports grouped by GrantId:"
@@ -392,7 +392,7 @@ public class iMixTopicModelExample {
                 statement.setQueryTimeout(60);  // set timeout to 30 sec.
                 ResultSet rs = statement.executeQuery(sql);
                 logger.info("SQL Query executed");
-                
+
                 String txt = "";
                 while (rs.next()) {
                     // read the result set
@@ -549,13 +549,12 @@ public class iMixTopicModelExample {
                             }
                             break;
                         case ACM:
-                            
-                               txt = rs.getString("text");
+
+                            txt = rs.getString("text");
 
                             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("Id"), "text"));
-                            
-                            //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
 
+                            //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
                             if (numModalities > 1) {
                                 String tmpStr = rs.getString("Citations");//.replace("\t", ",");
                                 instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
@@ -850,7 +849,7 @@ public class iMixTopicModelExample {
 
                 boolean runOrigParallelModel = false;
                 if (runOrigParallelModel) {
-                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics*0.01, 0.01);
+                    ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics * 0.01, 0.01);
 
                     modelOrig.addInstances(instances[0]);
 
@@ -873,7 +872,7 @@ public class iMixTopicModelExample {
                 Arrays.fill(betaMod, 0.01);
                 boolean useCycleProposals = false;
                 double alpha = 0.1;
-                
+
                 double[] alphaSum = new double[numModalities];
                 Arrays.fill(alphaSum, 1);
 
@@ -881,23 +880,20 @@ public class iMixTopicModelExample {
                 Arrays.fill(gamma, 1);
 
                 double gammaRoot = 4;
-                
 
                 //Non parametric model
                 //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
                 //parametric model
                 //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, betaMod, numIterations);
-                
-                FastQMVParallelTopicModel model = new FastQMVParallelTopicModel( numTopics,  numModalities,  alpha,  beta, useCycleProposals);
+                FastQMVParallelTopicModel model = new FastQMVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals);
 
-                
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
                 model.setNumIterations(numIterations);
-               // model.setIndependentIterations(independentIterations);
+                // model.setIndependentIterations(independentIterations);
                 model.optimizeInterval = optimizeInterval;
                 model.burninPeriod = burnIn;
 
-                model.addInstances(instances);//trainingInstances);//instances);
+                model.addInstances(instances, "");//trainingInstances);//instances);
 
                 logger.info(" instances added");
 
@@ -913,7 +909,7 @@ public class iMixTopicModelExample {
                 model.estimate();
 
                 logger.info("Model estimated");
-                model.saveTopics(SQLLitedb, experimentId);
+                model.saveTopics(SQLLitedb, experimentId, "-1");
 
                 logger.info("Topics Saved");
 
@@ -930,8 +926,7 @@ public class iMixTopicModelExample {
                 // logger.info("printState finished");
                 PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
 
-                model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
-                        0.1);
+                model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId, "-1");
 
                 if (outState != null) {
                     outState.close();
@@ -961,10 +956,10 @@ public class iMixTopicModelExample {
                         //  System.out.println("perplexity for the test set=" + perplexity);
                         logger.info("perplexity calculation finished");
                         //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                       //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
-                        
+                        //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+
                         FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
-                        diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
+                        diagnostics.saveToDB(SQLLitedb, experimentId, perplexity, "-1");
                         logger.info("full diagnostics calculation finished");
 
                     } catch (Exception e) {

@@ -76,7 +76,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public double[] docSmoothingOnlyMass;
     public double[][] docSmoothingOnlyCumValues;
-    
+
     public List<Integer> inActiveTopicIndex = new LinkedList<Integer>(); //inactive topic index for all modalities
 
     public boolean usingSymmetricAlpha = false;
@@ -126,6 +126,8 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public boolean useCycleProposals = true;
 
+    public String batchId = "";
+
     // The number of times each type appears in the corpus
     int[][] typeTotals;
     // The max over typeTotals, used for beta[0] optimization
@@ -150,7 +152,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.numTopics = numberOfTopics;
 
         this.alphaSum = new double[numModalities];
-        this.alpha = new double[numModalities][numTopics+1]; //in order to include new topic probability
+        this.alpha = new double[numModalities][numTopics + 1]; //in order to include new topic probability
         this.totalTokens = new int[numModalities];
         this.betaSum = new double[numModalities];
         this.beta = new double[numModalities];
@@ -244,7 +246,6 @@ public class FastQMVParallelTopicModel implements Serializable {
         usingSymmetricAlpha = b;
     }
 
-    
     public void setNumThreads(int threads) {
         this.numThreads = threads;
     }
@@ -275,10 +276,12 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.modelFilename = filename;
     }
 
-    public void addInstances(InstanceList[] training) {
+    public void addInstances(InstanceList[] training, String batchId) {
 
         TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
         typeTotals = new int[numModalities][];
+
+        appendMetadata("Statistics for batch:" + batchId);
 
         for (Byte m = 0; m < numModalities; m++) {
             alphabet[m] = training[m].getDataAlphabet();
@@ -587,7 +590,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 }
                 if (similarity > mergeSimilarity) {
                     mergedTopics.put(t, t_text);
-                    logger.info("Merge topics: " + t+" and "+t_text);
+                    logger.info("Merge topics: " + t + " and " + t_text);
                     for (Byte m = 0; m < numModalities; m++) {
                         alpha[m][t] = 0;
                     }
@@ -1074,9 +1077,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
-                String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
-                statement.executeUpdate(deleteSQL);
+                //statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
+                //String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
+                //statement.executeUpdate(deleteSQL);
 //TODO topic analysis don't exist here
                 String boostSelect = String.format("select  \n"
                         + " a.experimentid, PhraseCnts, textcnts, textcnts/phrasecnts as boost\n"
@@ -1152,7 +1155,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
     }
 
-    public void saveTopics(String SQLLiteDB, String experimentId) {
+    public void saveTopics(String SQLLiteDB, String experimentId, String batchId) {
 
         Connection connection = null;
         Statement statement = null;
@@ -1163,9 +1166,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
-                String deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
-                statement.executeUpdate(deleteSQL);
+                //statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
+                //String deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
+                //statement.executeUpdate(deleteSQL);
                 String topicDetailInsertsql = "insert into TopicDetails values(?,?,?,?,?,? );";
                 PreparedStatement bulkTopicDetailInsert = null;
 
@@ -1180,7 +1183,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                             bulkTopicDetailInsert.setInt(2, m);
                             bulkTopicDetailInsert.setDouble(3, alpha[m][topic]);
                             bulkTopicDetailInsert.setInt(4, tokensPerTopic[m][topic]);
-                            bulkTopicDetailInsert.setString(5, "-1");
+                            bulkTopicDetailInsert.setString(5, batchId);
                             bulkTopicDetailInsert.setString(6, experimentId);
 
                             bulkTopicDetailInsert.executeUpdate();
@@ -1208,10 +1211,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 }
 
                 //statement.executeUpdate("drop table if exists TopicAnalysis");
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double,  BatchId TEXT, ExperimentId nvarchar(50)) ");
-                deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
-                statement.executeUpdate(deleteSQL);
-
+                //statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double,  BatchId TEXT, ExperimentId nvarchar(50)) ");
+                //deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
+                //statement.executeUpdate(deleteSQL);
                 PreparedStatement bulkInsert = null;
                 String sql = "insert into TopicAnalysis values(?,?,?,?,?,?);";
 
@@ -1239,7 +1241,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                                 bulkInsert.setInt(2, m);
                                 bulkInsert.setString(3, alphabet[m].lookupObject(info.getID()).toString());
                                 bulkInsert.setDouble(4, info.getWeight());
-                                bulkInsert.setString(5, "-1");
+                                bulkInsert.setString(5, batchId);
                                 bulkInsert.setString(6, experimentId);
                                 //bulkInsert.setDouble(6, 1);
                                 bulkInsert.executeUpdate();
@@ -1277,7 +1279,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                             bulkInsert.setInt(2, -1);
                             bulkInsert.setString(3, phraseStr);
                             bulkInsert.setDouble(4, count);
-                            bulkInsert.setString(5, experimentId);
+                            bulkInsert.setString(5, batchId);
+                            bulkInsert.setString(6, experimentId);
                             //bulkInsert.setDouble(6, 1);
                             bulkInsert.executeUpdate();
                         }
@@ -1869,7 +1872,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        }
     }
 
-    public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, double lblWeight) {
+    public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId,  String batchId) {
         if (out != null) {
             out.print("#doc name topic proportion ...\n");
         }
@@ -1898,11 +1901,11 @@ public class FastQMVParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 // statement.executeUpdate("drop table if exists PubTopic");
-                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , ExperimentId nvarchar(50)) ");
-                statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
+                //statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                //statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
             }
             PreparedStatement bulkInsert = null;
-            String sql = "insert into PubTopic values(?,?,?,? );";
+            String sql = "insert into PubTopic values(?,?,?,?,? );";
 
             try {
                 connection.setAutoCommit(false);
@@ -1971,7 +1974,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                             bulkInsert.setString(1, docId);
                             bulkInsert.setInt(2, sortedTopics[i].getID());
                             bulkInsert.setDouble(3, (double) Math.round(sortedTopics[i].getWeight() * 10000) / 10000);
-                            bulkInsert.setString(4, experimentId);
+                            bulkInsert.setString(4, batchId);
+                            bulkInsert.setString(5, experimentId);
                             bulkInsert.executeUpdate();
 
                         }
@@ -2009,6 +2013,55 @@ public class FastQMVParallelTopicModel implements Serializable {
                 connection.setAutoCommit(true);
             }
 
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+
+        }
+    }
+
+    public void CreateTables(String SQLLiteDB, String experimentId) {
+        Connection connection = null;
+        Statement statement = null;
+        try {
+            // create a database connection
+            if (!SQLLiteDB.isEmpty()) {
+                connection = DriverManager.getConnection(SQLLiteDB);
+                statement = connection.createStatement();
+                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+                // statement.executeUpdate("drop table if exists PubTopic");
+                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
+
+                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
+                String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
+                deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double,  BatchId TEXT, ExperimentId nvarchar(50)) ");
+                deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
+
+                statement.executeUpdate("create table if not exists ExpDiagnostics (ExperimentId text, BatchId text, EntityId text, EntityType int, ScoreName text, Score double )");
+                deleteSQL = String.format("Delete from ExpDiagnostics where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+            }
         } catch (SQLException e) {
             // if the error message is "out of memory", 
             // it probably means no database file is found
@@ -2396,7 +2449,6 @@ public class FastQMVParallelTopicModel implements Serializable {
                 // reuse this array as a pointer
 
                 //topicCounts = typeTopicCounts[m][type];
-
                 int index = 0;
                 while (index < typeTopicCounts[m][type].length) {
 
@@ -2604,7 +2656,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             FastQMVParallelTopicModel lda = new FastQMVParallelTopicModel(numTopics, mod, 0.1, 0.01, true);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
-            lda.addInstances(training);
+            lda.addInstances(training, "");
 
             lda.setNumThreads(Integer.parseInt(args[2]));
             lda.estimate();

@@ -552,7 +552,7 @@ public class FastQMVTopicModelDiagnostics {
     }
 
   
-    public void saveToDB(String SQLLitedb, String experimentId, double perplexity) {
+    public void saveToDB(String SQLLitedb, String experimentId, double perplexity, String BatchId) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         Connection connection = null;
@@ -563,9 +563,7 @@ public class FastQMVTopicModelDiagnostics {
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-            statement.executeUpdate("create table if not exists diagnostics (ExperimentId text, EntityId text, EntityType int, ScoreName text, Score double )");
-            String deleteSQL = String.format("Delete from diagnostics where  ExperimentId = '%s'", experimentId);
-            statement.executeUpdate(deleteSQL);
+            
 
             PreparedStatement bulkInsert = null;
             String sql = "insert into diagnostics values(?,?,?,?,?);";
@@ -577,10 +575,11 @@ public class FastQMVTopicModelDiagnostics {
             for (byte m = 0; m < model.numModalities; m++) {
 
                 bulkInsert.setString(1, experimentId);
-                bulkInsert.setString(2, "TestCorpus");
-                bulkInsert.setInt(3, 0); //corpus
-                bulkInsert.setString(4, "perplexity");
-                bulkInsert.setDouble(5, perplexity);
+                bulkInsert.setString(2, BatchId);
+                bulkInsert.setString(3, "TestCorpus");
+                bulkInsert.setInt(4, 0); //corpus
+                bulkInsert.setString(5, "perplexity");
+                bulkInsert.setDouble(6, perplexity);
                 bulkInsert.executeUpdate();
 
                 int p = 1;
@@ -790,7 +789,7 @@ public class FastQMVTopicModelDiagnostics {
         int numTopics = Integer.parseInt(args[1]);
         byte mod = 1;
         FastQMVParallelTopicModel model = new FastQMVParallelTopicModel(numTopics, mod, 0.1, 0.01, true);
-        model.addInstances(training);
+        model.addInstances(training,"");
         model.setNumIterations(1000);
 
         model.estimate();

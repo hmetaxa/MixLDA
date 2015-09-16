@@ -412,14 +412,17 @@ public class FastQMVUpdaterRunnable implements Runnable {
             alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
             tablesCnt[m] = Vectors.sum(mk[m]);
-
+            
+            byte numSamples = 10;
+            for (int i = 0; i < numSamples; i++) {
             double[] tt = sampleDirichlet(mk[m]);
             // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
             for (int kk = 0; kk <= numTopics; kk++) {
                 //int k = kactive.get(kk);
-                alpha[m][kk] = tt[kk];
-                alphaSum[m] += gamma[m] * tt[kk];
+                alpha[m][kk] =  tt[kk] / (double) numSamples;
+                alphaSum[m] +=  gamma[m] * alpha[m][kk];
                 //tau.set(k, tt[kk]);
+            }
             }
 
             logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);

@@ -5,11 +5,12 @@ import cc.mallet.util.*;
 
 import cc.mallet.types.*;
 import cc.mallet.pipe.*;
+import static cc.mallet.topics.FastQMVParallelTopicModel.logger;
 //import cc.mallet.pipe.iterator.*;
 //import cc.mallet.topics.*;
 //import cc.mallet.util.Maths;
 //import gnu.trove.map.TIntObjectMap;
-import gnu.trove.map.TObjectIntMap;
+//import gnu.trove.map.TObjectIntMap;
 //import gnu.trove.map.hash.TIntObjectHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
 
@@ -59,7 +60,7 @@ public class PTMExperiment {
         //boolean ignoreLabels = true;
         boolean runOnLine = true;
         boolean calcSimilarities = false;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
@@ -87,8 +88,19 @@ public class PTMExperiment {
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
+        String dictDir = "C:\\projects\\Datasets\\OUT\\" + experimentId;
+        File dictPath = null;
+
         if (experimentType == ExperimentType.ACM) {
-            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/acmdata1.db";
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
+            dictDir = "C:\\projects\\Datasets\\ACM\\";
+            //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
+        }
+
+        if (dictDir != "") {
+            dictPath = new File(dictDir);
+            dictPath.mkdir();
+
         }
 
         Connection connection = null;
@@ -98,45 +110,39 @@ public class PTMExperiment {
         //Reader fileReader = new InputStreamReader(new FileInputStream(new File(args[0])), "UTF-8");
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
         //3, 2, 1)); // data, label, name fields
-        if (runTopicModelling || calcTokensPerEntity) {
+        if (runTopicModelling) {
 
-            // Begin by importing documents from text to feature sequences
-            ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+            //Create vocabularies for the whole corpus
+            //search for file first
+            String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
+            Alphabet[] alphabets = new Alphabet[numModalities];
 
-            // Pipes: lowercase, tokenize, remove stopwords, map to features
-            pipeListText.add(new Input2CharSequence(false)); //homer
-            pipeListText.add(new CharSequenceLowercase());
+            if (!new File(txtAlphabetFile).exists()) {
 
-            SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
-            pipeListText.add(tokenizer);
+                GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc);
 
-            Alphabet alphabet = new Alphabet();
-            pipeListText.add(new StringList2FeatureSequence(alphabet));
+            }
+//read alphabets
+            for (byte m = 0; m < numModalities; m++) {
+                String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
+                if (new File(modAlphabetFile).exists()) {
 
-            ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
-            InstanceList[] instances = new InstanceList[numModalities];
-            instances[0] = new InstanceList(new SerialPipes(pipeListText));
-
-            // Other Modalities
-            for (byte m = 1; m < numModalities; m++) {
-                Alphabet alphabetM = new Alphabet();
-                ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-                if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
-                    pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
+                    try {
+                        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(new File(modAlphabetFile)));
+                        alphabets[m] = (Alphabet) ois.readObject();
+                        ois.close();
+                    } catch (Exception e) {
+                        // if the error message is "out of memory", 
+                        // it probably means no database file is found
+                        System.err.println(e.getMessage());
+                        alphabets[m] = new Alphabet();
+                    }
                 } else {
-                    pipeListCSV.add(new CSV2FeatureSequence(alphabetM));
+                    alphabets[m] = new Alphabet();
                 }
-                instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
             }
 
             ArrayList<String> batchIds = new ArrayList<String>();
-
-            //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
-            for (byte m = 0; m < numModalities; m++) {
-                instanceBuffer.add(new ArrayList<Instance>());
-
-            }
-
             // Select BatchIds
             try {
 
@@ -170,6 +176,84 @@ public class PTMExperiment {
                 }
             }
 
+            //
+//            if (calcTokensPerEntity) {
+//                TfIdfWeighting(instances[0], SQLLitedb, experimentId, 1);
+//            }
+            // Begin by importing documents from text to feature sequences
+            ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+
+            // Pipes: lowercase, tokenize, remove stopwords, map to features
+            pipeListText.add(new Input2CharSequence(false)); //homer
+            pipeListText.add(new CharSequenceLowercase());
+
+            SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+            pipeListText.add(tokenizer);
+
+            pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
+
+            ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
+            InstanceList[] instances = new InstanceList[numModalities];
+            instances[0] = new InstanceList(new SerialPipes(pipeListText));
+
+            // Other Modalities
+            for (byte m = 1; m < numModalities; m++) {
+
+                ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
+                if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+                    pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
+                } else {
+                    pipeListCSV.add(new CSV2FeatureSequence(alphabets[m]));
+                }
+                instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+            }
+
+            //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
+            for (byte m = 0; m < numModalities; m++) {
+                instanceBuffer.add(new ArrayList<Instance>());
+
+            }
+
+            String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
+            File outPath = new File(outputDir);
+
+            outPath.mkdir();
+            //String stateFile = outputDir + File.separator + "output_state";
+            //String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
+            //String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
+            //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
+            //String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
+            //String stateFileZip = outputDir + File.separator + "output_state.gz";
+            String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
+            //String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
+
+            double beta = 0.01;
+            double[] betaMod = new double[numModalities];
+            Arrays.fill(betaMod, 0.01);
+            boolean useCycleProposals = false;
+            double alpha = 0.1;
+
+            double[] alphaSum = new double[numModalities];
+            Arrays.fill(alphaSum, 1);
+
+            double[] gamma = new double[numModalities];
+            Arrays.fill(gamma, 1);
+
+            double gammaRoot = 4;
+            //Non parametric model
+            //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
+            //parametric model
+            //MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, betaMod, numIterations);
+            FastQMVParallelTopicModel model = new FastQMVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals);
+            model.CreateTables(SQLLitedb, experimentId);
+
+            // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
+            model.setNumIterations(numIterations);
+            // model.setIndependentIterations(independentIterations);
+            model.optimizeInterval = optimizeInterval;
+            model.burninPeriod = burnIn;
+            model.setNumThreads(numOfThreads);
+
             // Loop for every batch
             for (String batchId : batchIds) {
                 try {
@@ -182,21 +266,8 @@ public class PTMExperiment {
                     connection = DriverManager.getConnection(SQLLitedb);
                     String sql = "";
 
-                    if (runOnLine) {
-                        sql = "select distinct batchId from Publication";
-                        Statement statement = connection.createStatement();
-                        statement.setQueryTimeout(60);  // set timeout to 30 sec.
-                        ResultSet rs = statement.executeQuery(sql);
-                        while (rs.next()) {
-                            batchIds.add(rs.getString("batchId"));
-                        }
-
-                    } else {
-                        batchIds.add("-1"); // noBatches
-                    }
-
                     if (experimentType == ExperimentType.ACM) {
-                        experimentDescription = "Topic modeling based on:\n1)Abstracts from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
+                        experimentDescription = "Topic modeling based on:\n1)Full text from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
                                 + similarityType.toString()
                                 + "\n Similarity on Authors & Categories";
                         //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
@@ -260,226 +331,81 @@ public class PTMExperiment {
 
                 logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
 
-                GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, pruneMinPerc, false);
-
-                //numModalities = 2;
                 instances[0].clear();
                 instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
+                for (byte m = 1; m < numModalities; m++) {
+                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+                    instances[m].clear();
+                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+                }
+
                 //
-                Alphabet[] existedAlphabets = new Alphabet[numModalities];
+                //Alphabet[] existedAlphabets = new Alphabet[numModalities];
                 for (byte m = 1; m < numModalities; m++) {
                     logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
                     instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
-                    existedAlphabets[m] = instances[m].getDataAlphabet();
+                    //existedAlphabets[m] = instances[m].getDataAlphabet();
                     instances[m].addThruPipe(instanceBuffer.get(m).iterator());
                 }
 
                 logger.info(" instances added through pipe");
 
-                if (calcTokensPerEntity) {
-                    TfIdfWeighting(instances[0], SQLLitedb, experimentId, 1);
+                model.addInstances(instances, batchId);//trainingInstances);//instances);
+                logger.info(" instances added");
+
+                model.estimate();
+                logger.info("Model estimated");
+
+                model.saveTopics(SQLLitedb, experimentId, batchId);
+                logger.info("Topics Saved");
+
+                PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
+
+                model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId, batchId);
+
+                if (outState != null) {
+                    outState.close();
                 }
 
-                if (runTopicModelling) {
+                logger.info("printDocumentTopics finished");
 
-                    // pruning for all other modalities no text
-                    for (byte m = 1; m < numModalities; m++) {
-                        if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
+                logger.info("Model Metadata: \n" + model.getExpMetadata());
 
-                            // Check which type of data element the instances contain
-                            Instance firstInstance = instances[m].get(0);
-                            if (firstInstance.getData() instanceof FeatureSequence) {
-                                // Version for feature sequences
+                if (modelEvaluationFile != null) {
+                    try {
 
-                                Alphabet oldAlphabet = instances[m].getDataAlphabet();
-                                Alphabet newAlphabet = new Alphabet();
+//                ObjectOutputStream oos =
+//                        new ObjectOutputStream(new FileOutputStream(modelEvaluationFile));
+//                oos.writeObject(model.getProbEstimator());
+//                oos.close();
+//                
+                        PrintStream docProbabilityStream = null;
+                        docProbabilityStream = new PrintStream(modelEvaluationFile);
+//TODO...
+                        double perplexity = 0;
+//                        if (splitCorpus) {
+//                            perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
+//                        }
+                        //  System.out.println("perplexity for the test set=" + perplexity);
+                        logger.info("perplexity calculation finished");
+                        //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                        //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
 
-                                // It's necessary to create a new instance list in
-                                //  order to make sure that the data alphabet is correct.
-                                Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
-                                InstanceList newInstanceList = new InstanceList(newPipe);
+                        FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
+                        diagnostics.saveToDB(SQLLitedb, experimentId, perplexity, batchId);
+                        logger.info("full diagnostics calculation finished");
 
-                                // Iterate over the instances in the old list, adding
-                                //  up occurrences of features.
-                                int numFeatures = oldAlphabet.size();
-                                double[] counts = new double[numFeatures];
-                                for (int ii = 0; ii < instances[m].size(); ii++) {
-                                    Instance instance = instances[m].get(ii);
-                                    FeatureSequence fs = (FeatureSequence) instance.getData();
-
-                                    fs.addFeatureWeightsTo(counts);
-                                }
-
-                                Instance instance;
-
-                                // Next, iterate over the same list again, adding 
-                                //  each instance to the new list after pruning.
-                                while (instances[m].size() > 0) {
-                                    instance = instances[m].get(0);
-                                    FeatureSequence fs = (FeatureSequence) instance.getData();
-
-                                    fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt, existedAlphabets[m]);
-
-                                    newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
-                                            instance.getName(),
-                                            instance.getSource())));
-                                    instances[m].remove(0);
-                                }
-
-//                logger.info("features: " + oldAlphabet.size()
-                                //                       + " -> " + newAlphabet.size());
-                                // Make the new list the official list.
-                                instances[m] = newInstanceList;
-
-                            } else {
-                                throw new UnsupportedOperationException("Pruning features from "
-                                        + firstInstance.getClass().getName()
-                                        + " is not currently supported");
-                            }
-
-                        }
+                    } catch (Exception e) {
+                        System.err.println(e.getMessage());
                     }
 
-                    logger.info(" instances pruned");
-                    boolean splitCorpus = false;
-                    InstanceList[] testInstances = null;
-                    InstanceList[] trainingInstances = instances;
-                    if (splitCorpus) {
-                        //instances.addThruPipe(new FileIterator(inputDir));
-                        //instances.addThruPipe (new FileIterator ("C:\\UoA\\OpenAire\\Datasets\\YIpapersTXT\\YIpapersTXT"));
-                        //
-                        //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
-                        // Create a model with 100 topics, alpha_t = 0.01, beta_w = 0.01
-                        //  Note that the first parameter is passed as the sum over topics, while
-                        //  the second is 
-                        testInstances = new InstanceList[numModalities];
-
-                        trainingInstances = new InstanceList[numModalities];
-
-                        TObjectIntMap<String> entityPosition = new TObjectIntHashMap<String>();
-                        int index = 0;
-                        for (byte m = 0; m < numModalities; m++) {
-                            Noop newPipe = new Noop(instances[m].getDataAlphabet(), instances[m].getTargetAlphabet());
-                            InstanceList newInstanceList = new InstanceList(newPipe);
-                            testInstances[m] = newInstanceList;
-                            InstanceList newInstanceList2 = new InstanceList(newPipe);
-                            trainingInstances[m] = newInstanceList2;
-                            for (int i = 0; i < instances[m].size(); i++) {
-                                Instance instance = instances[m].get(i);
-                                String entityId = (String) instance.getName();
-                                if (i < instances[m].size() * 0.8 && m == 0) {
-                                    entityPosition.put(entityId, index);
-                                    trainingInstances[m].add(instance);
-                                    index++;
-                                } else if (m != 0 && entityPosition.containsKey(entityId)) {
-                                    trainingInstances[m].add(instance);
-                                } else {
-                                    testInstances[m].add(instance);
-                                }
-                            }
-                        }
-                    }
-
-                    String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
-                    File outPath = new File(outputDir);
-
-                    outPath.mkdir();
-                    String stateFile = outputDir + File.separator + "output_state";
-                    String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
-                    String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
-                    String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
-                    String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
-                    String stateFileZip = outputDir + File.separator + "output_state.gz";
-                    String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
-                    String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
-
-                    double[] beta = new double[numModalities];
-                    Arrays.fill(beta, 0.01);
-
-                    double[] alphaSum = new double[numModalities];
-                    Arrays.fill(alphaSum, 1);
-
-                    double[] gamma = new double[numModalities];
-                    Arrays.fill(gamma, 1);
-
-                    double gammaRoot = 4;
-
-                    //Non parametric model
-                    //iMixLDAParallelTopicModel model = new iMixLDAParallelTopicModel(maxNumTopics, numTopics, numModalities, gamma, gammaRoot, beta, numIterations);
-                    //parametric model
-                    MixLDAParallelTopicModel model = new MixLDAParallelTopicModel(numTopics, numModalities, alphaSum, beta, numIterations);
-
-                    // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
-                    //model.setNumIterations(numIterations);
-                    model.setIndependentIterations(independentIterations);
-                    model.optimizeInterval = optimizeInterval;
-                    model.burninPeriod = burnIn;
-
-                    model.addInstances(instances);//trainingInstances);//instances);
-
-                    logger.info(" instances added");
-
-                    // Use two parallel samplers, which each look at one half the corpus and combine
-                    //  statistics after every iteration.
-                    model.setNumThreads(numOfThreads);
-
-                    model.estimate();
-
-                    logger.info("Model estimated");
-                    model.saveTopics(SQLLitedb, experimentId);
-
-                    logger.info("Topics Saved");
-
-                    model.printTopWords(
-                            new File(topicKeysFile), topWords, topLabels, false);
-                    logger.info("Top words printed");
-
-                    PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
-
-                    model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId,
-                            0.1);
-
-                    if (outState != null) {
-                        outState.close();
-                    }
-
-                    logger.info("printDocumentTopics finished");
-
-                    logger.info("Model Metadata: \n" + model.getExpMetadata());
-
-                    model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
-
-                    PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
-
-                    model.topicPhraseXMLReport(outXMLPhrase, topWords);
-
-                    //outState.close();
-                    logger.info("topicPhraseXML report finished");
-
-                    if (modelEvaluationFile != null) {
-                        try {
-                            PrintStream docProbabilityStream = null;
-                            docProbabilityStream = new PrintStream(modelEvaluationFile);
-                            double perplexity = 0;
-                            if (splitCorpus) {
-                                perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
-                                System.out.println("perplexity for the test set=" + perplexity);
-                            }
-
-                            logger.info("perplexity calculation finished");
-                            //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                            MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
-                            diagnostics.saveToDB(SQLLitedb, experimentId, perplexity);
-                            logger.info("full diagnostics calculation finished");
-
-                        } catch (Exception e) {
-                            System.err.println(e.getMessage());
-                        }
-
-                    }
                 }
+                //eee
+
             }
+
+            model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
         }
 
         if (calcSimilarities) {
@@ -982,6 +908,7 @@ public class PTMExperiment {
         if (docProportionMaxCutoff < 1.0 || docProportionMinCutoff > 0) {
             docCounter.addPrunedWordsToStoplist(prunedTokenizer, docProportionMaxCutoff, docProportionMinCutoff);
         }
+
     }
 
     private void outputCsvFiles(String outputDir, Boolean htmlOutputFlag, String inputDir, int numTopics, String stateFile, String outputDocTopicsFile, String topicKeysFile) {
@@ -1056,6 +983,196 @@ public class PTMExperiment {
             } catch (SQLException e) {
                 // connection close failed.
                 System.err.println(e);
+            }
+        }
+
+    }
+
+    public void GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc) {
+
+        String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
+        // Begin by importing documents from text to feature sequences
+        ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+
+        // Pipes: lowercase, tokenize, remove stopwords, map to features
+        pipeListText.add(new Input2CharSequence(false)); //homer
+        pipeListText.add(new CharSequenceLowercase());
+
+        SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+        pipeListText.add(tokenizer);
+
+        Alphabet alphabet = new Alphabet();
+        pipeListText.add(new StringList2FeatureSequence(alphabet));
+
+        ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
+        InstanceList[] instances = new InstanceList[numModalities];
+        instances[0] = new InstanceList(new SerialPipes(pipeListText));
+
+        // Other Modalities
+        for (byte m = 1; m < numModalities; m++) {
+            Alphabet alphabetM = new Alphabet();
+            ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
+            if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
+            } else {
+                pipeListCSV.add(new CSV2FeatureSequence(alphabetM));
+            }
+            instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+        }
+
+        //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
+        for (byte m = 0; m < numModalities; m++) {
+            instanceBuffer.add(new ArrayList<Instance>());
+
+        }
+
+        Connection connection = null;
+        try {
+            connection = DriverManager.getConnection(SQLLitedb);
+            String sql = "";
+
+            if (experimentType == ExperimentType.ACM) {
+
+                sql = " select  pubId, text, authors, citations, categories from ACMPubView"
+                        + " LIMIT 10000";
+
+            }
+
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(60);  // set timeout to 30 sec.
+            ResultSet rs = statement.executeQuery(sql);
+
+            while (rs.next()) {
+                // read the result set
+                //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
+                //String str = "[" + rs.getString("GrantIds") + "]" + rs.getString("text");
+                //System.out.println("name = " + rs.getString("file"));
+                //System.out.println("name = " + rs.getString("fundings"));
+                //int cnt = rs.getInt("grantsCnt");
+                switch (experimentType) {
+
+                    case ACM:
+                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+
+                        if (numModalities > 1) {
+                            String tmpStr = rs.getString("Citations");//.replace("\t", ",");
+                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
+                        }
+                        if (numModalities > 2) {
+                            String tmpStr = rs.getString("Categories");//.replace("\t", ",");
+                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                        }
+                        if (numModalities > 3) {
+                            String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
+                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
+                        }
+
+                        break;
+
+                    default:
+                }
+
+            }
+
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
+        logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
+
+        try {
+            GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, pruneMinPerc, false);
+
+            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(txtAlphabetFile)));
+            oos.writeObject(tokenizer.getAlphabet());
+            oos.close();
+        } catch (IOException e) {
+            System.err.println("Problem serializing text alphabet to file "
+                    + txtAlphabetFile + ": " + e);
+        }
+
+        for (byte m = 1; m < numModalities; m++) {
+            logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+            //instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+            instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+        }
+
+        logger.info(" instances added through pipe");
+
+        // pruning for all other modalities no text
+        for (byte m = 1; m < numModalities; m++) {
+            if ((m == 0 && pruneCnt > 0) || (m > 0 && pruneLblCnt > 0)) {
+
+                // Check which type of data element the instances contain
+                Instance firstInstance = instances[m].get(0);
+                if (firstInstance.getData() instanceof FeatureSequence) {
+                    // Version for feature sequences
+
+                    Alphabet oldAlphabet = instances[m].getDataAlphabet();
+                    Alphabet newAlphabet = new Alphabet();
+
+                    // It's necessary to create a new instance list in
+                    //  order to make sure that the data alphabet is correct.
+                    //Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
+                    //InstanceList newInstanceList = new InstanceList(newPipe);
+                    // Iterate over the instances in the old list, adding
+                    //  up occurrences of features.
+                    int numFeatures = oldAlphabet.size();
+                    double[] counts = new double[numFeatures];
+                    for (int ii = 0; ii < instances[m].size(); ii++) {
+                        Instance instance = instances[m].get(ii);
+                        FeatureSequence fs = (FeatureSequence) instance.getData();
+
+                        fs.addFeatureWeightsTo(counts);
+                    }
+
+                    Instance instance;
+
+                    // Next, iterate over the same list again, adding 
+                    //  each instance to the new list after pruning.
+                    for (int ii = 0; ii < instances[m].size(); ii++) {
+                        instance = instances[m].get(0);
+                        FeatureSequence fs = (FeatureSequence) instance.getData();
+
+                        fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
+
+                        String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
+                        try {
+                            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(modAlphabetFile)));
+                            oos.writeObject(newAlphabet);
+                            oos.close();
+                        } catch (IOException e) {
+                            System.err.println("Problem serializing modality " + m + " alphabet to file "
+                                    + txtAlphabetFile + ": " + e);
+                        }
+
+//                        newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
+//                                instance.getName(),
+//                                instance.getSource())));
+//                        instances[m].remove(0);
+                    }
+
+//                logger.info("features: " + oldAlphabet.size()
+                    //                       + " -> " + newAlphabet.size());
+                    // Make the new list the official list.
+                    // instances[m] = newInstanceList;
+                } else {
+                    throw new UnsupportedOperationException("Pruning features from "
+                            + firstInstance.getClass().getName()
+                            + " is not currently supported");
+                }
+
             }
         }
 
