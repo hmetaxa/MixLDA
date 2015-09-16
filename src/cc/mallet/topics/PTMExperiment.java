@@ -53,12 +53,12 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
-        boolean runOnLine = true;
+        boolean runOnLine = false;
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
@@ -73,7 +73,7 @@ public class PTMExperiment {
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 7;
+        int pruneLblCnt = 2;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -180,35 +180,8 @@ public class PTMExperiment {
 //            if (calcTokensPerEntity) {
 //                TfIdfWeighting(instances[0], SQLLitedb, experimentId, 1);
 //            }
-            // Begin by importing documents from text to feature sequences
-            ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
-
-            // Pipes: lowercase, tokenize, remove stopwords, map to features
-            pipeListText.add(new Input2CharSequence(false)); //homer
-            pipeListText.add(new CharSequenceLowercase());
-
-            SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
-            pipeListText.add(tokenizer);
-
-            pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
-
-            ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
-            InstanceList[] instances = new InstanceList[numModalities];
-            instances[0] = new InstanceList(new SerialPipes(pipeListText));
-
-            // Other Modalities
-            for (byte m = 1; m < numModalities; m++) {
-
-                ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-                if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
-                    pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
-                } else {
-                    pipeListCSV.add(new CSV2FeatureSequence(alphabets[m]));
-                }
-                instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
-            }
-
             //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
+            ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
             for (byte m = 0; m < numModalities; m++) {
                 instanceBuffer.add(new ArrayList<Instance>());
 
@@ -260,7 +233,7 @@ public class PTMExperiment {
 
                     // clear previous lists
                     for (byte m = 0; m < numModalities; m++) {
-                        instanceBuffer.clear();
+                        instanceBuffer.get(m).clear();
                     }
 
                     connection = DriverManager.getConnection(SQLLitedb);
@@ -272,8 +245,11 @@ public class PTMExperiment {
                                 + "\n Similarity on Authors & Categories";
                         //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                        sql = batchId == "-1" ? " select  pubId, text, authors, citations, categories from ACMPubView" : "select  pubId, text, authors, citations, categories from ACMPubView where batchId = '" + batchId + "'";
-                        //+ " LIMIT 100000";
+                        sql = batchId == "-1"
+                                ? " select  pubId, text, authors, citations, categories from ACMPubView"
+                                : "select  pubId, text, authors, citations, categories from ACMPubView where batchId = '" + batchId + "'";
+
+                        sql += " LIMIT 10000";
 
                     }
 
@@ -292,19 +268,19 @@ public class PTMExperiment {
                         switch (experimentType) {
 
                             case ACM:
-                                instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                                instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
 
                                 if (numModalities > 1) {
                                     String tmpStr = rs.getString("Citations");//.replace("\t", ",");
-                                    instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
+                                    instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
                                 }
                                 if (numModalities > 2) {
                                     String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                                    instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                                    instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
                                 }
                                 if (numModalities > 3) {
                                     String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                                    instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
+                                    instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
                                 }
 
                                 break;
@@ -331,23 +307,49 @@ public class PTMExperiment {
 
                 logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
 
-                instances[0].clear();
+                // Begin by importing documents from text to feature sequences
+                ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+
+                // Pipes: lowercase, tokenize, remove stopwords, map to features
+                pipeListText.add(new Input2CharSequence(false)); //homer
+                pipeListText.add(new CharSequenceLowercase());
+
+                SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+                pipeListText.add(tokenizer);
+
+                pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
+
+                InstanceList[] instances = new InstanceList[numModalities];
+                instances[0] = new InstanceList(new SerialPipes(pipeListText));
+
+                // Other Modalities
+                for (byte m = 1; m < numModalities; m++) {
+
+                    ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
+                    if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+                        pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
+                    } else {
+                        pipeListCSV.add(new CSV2FeatureSequence(alphabets[m]));
+                    }
+                    instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+                }
+
                 instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
                 for (byte m = 1; m < numModalities; m++) {
                     logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-                    instances[m].clear();
+                    //instances[m].clear();
                     instances[m].addThruPipe(instanceBuffer.get(m).iterator());
                 }
 
                 //
                 //Alphabet[] existedAlphabets = new Alphabet[numModalities];
-                for (byte m = 1; m < numModalities; m++) {
-                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
-                    //existedAlphabets[m] = instances[m].getDataAlphabet();
-                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
-                }
+//                for (byte m = 1; m < numModalities; m++) {
+//                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+//                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
+//                    //existedAlphabets[m] = instances[m].getDataAlphabet();
+//                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+//                }
 
                 logger.info(" instances added through pipe");
 
@@ -848,8 +850,7 @@ public class PTMExperiment {
     private void GenerateStoplist(SimpleTokenizer prunedTokenizer, ArrayList<Instance> instanceBuffer, int pruneCount, double docProportionMinCutoff, double docProportionMaxCutoff, boolean preserveCase)
             throws IOException {
 
-        SimpleTokenizer st = new SimpleTokenizer(new File("stoplists/en.txt"));
-
+        //SimpleTokenizer st = new SimpleTokenizer(new File("stoplists/en.txt"));
         ArrayList<Instance> input = new ArrayList<Instance>();
         for (Instance instance : instanceBuffer) {
             input.add((Instance) instance.clone());
@@ -859,8 +860,8 @@ public class PTMExperiment {
         Alphabet alphabet = new Alphabet();
 
         CharSequenceLowercase csl = new CharSequenceLowercase();
-        prunedTokenizer = st.deepClone();
-        //SimpleTokenizer st = prunedTokenizer.deepClone();
+        //prunedTokenizer = st.deepClone();
+        SimpleTokenizer st = prunedTokenizer.deepClone();
         StringList2FeatureSequence sl2fs = new StringList2FeatureSequence(alphabet);
         FeatureCountPipe featureCounter = new FeatureCountPipe(alphabet, null);
         FeatureDocFreqPipe docCounter = new FeatureDocFreqPipe(alphabet, null);
@@ -875,7 +876,8 @@ public class PTMExperiment {
         if (pruneCount > 0) {
             pipes.add(featureCounter);
         }
-        if (docProportionMaxCutoff < 1.0 || docProportionMinCutoff > 0) {
+        if (docProportionMaxCutoff < 1.0) {
+            //if (docProportionMaxCutoff < 1.0 || docProportionMinCutoff > 0) {
             pipes.add(docCounter);
         }
 
@@ -905,10 +907,16 @@ public class PTMExperiment {
         if (pruneCount > 0) {
             featureCounter.addPrunedWordsToStoplist(prunedTokenizer, pruneCount);
         }
-        if (docProportionMaxCutoff < 1.0 || docProportionMinCutoff > 0) {
-            docCounter.addPrunedWordsToStoplist(prunedTokenizer, docProportionMaxCutoff, docProportionMinCutoff);
+        if (docProportionMaxCutoff < 1.0) {
+            docCounter.addPrunedWordsToStoplist(prunedTokenizer, docProportionMaxCutoff);
         }
 
+//        if (pruneCount > 0) {
+//            featureCounter.addPrunedWordsToStoplist(prunedTokenizer, pruneCount);
+//        }
+//        if (docProportionMaxCutoff < 1.0 || docProportionMinCutoff > 0) {
+//            docCounter.addPrunedWordsToStoplist(prunedTokenizer, docProportionMaxCutoff, docProportionMinCutoff);
+//        }
     }
 
     private void outputCsvFiles(String outputDir, Boolean htmlOutputFlag, String inputDir, int numTopics, String stateFile, String outputDocTopicsFile, String topicKeysFile) {
@@ -998,7 +1006,7 @@ public class PTMExperiment {
         pipeListText.add(new Input2CharSequence(false)); //homer
         pipeListText.add(new CharSequenceLowercase());
 
-        SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+        SimpleTokenizer tokenizer = new SimpleTokenizer(new File("stoplists/en.txt"));
         pipeListText.add(tokenizer);
 
         Alphabet alphabet = new Alphabet();
@@ -1052,19 +1060,19 @@ public class PTMExperiment {
                 switch (experimentType) {
 
                     case ACM:
-                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("Id"), "text"));
+                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
-                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("Id"), "citation"));
+                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
                         }
                         if (numModalities > 2) {
                             String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("Id"), "category"));
+                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
                         }
                         if (numModalities > 3) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("Id"), "author"));
+                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
                         }
 
                         break;
@@ -1093,9 +1101,10 @@ public class PTMExperiment {
 
         try {
             GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, pruneMinPerc, false);
-
+            instances[0].addThruPipe(instanceBuffer.get(0).iterator());
+            Alphabet tmpAlp = instances[0].getDataAlphabet();
             ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(txtAlphabetFile)));
-            oos.writeObject(tokenizer.getAlphabet());
+            oos.writeObject(tmpAlp);
             oos.close();
         } catch (IOException e) {
             System.err.println("Problem serializing text alphabet to file "
@@ -1124,8 +1133,9 @@ public class PTMExperiment {
 
                     // It's necessary to create a new instance list in
                     //  order to make sure that the data alphabet is correct.
-                    //Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
-                    //InstanceList newInstanceList = new InstanceList(newPipe);
+                    Noop newPipe = new Noop(newAlphabet, instances[m].getTargetAlphabet());
+                    InstanceList newInstanceList = new InstanceList(newPipe);
+
                     // Iterate over the instances in the old list, adding
                     //  up occurrences of features.
                     int numFeatures = oldAlphabet.size();
@@ -1141,32 +1151,34 @@ public class PTMExperiment {
 
                     // Next, iterate over the same list again, adding 
                     //  each instance to the new list after pruning.
-                    for (int ii = 0; ii < instances[m].size(); ii++) {
+                    while (instances[m].size() > 0) {
                         instance = instances[m].get(0);
                         FeatureSequence fs = (FeatureSequence) instance.getData();
 
                         fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
 
-                        String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
-                        try {
-                            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(modAlphabetFile)));
-                            oos.writeObject(newAlphabet);
-                            oos.close();
-                        } catch (IOException e) {
-                            System.err.println("Problem serializing modality " + m + " alphabet to file "
-                                    + txtAlphabetFile + ": " + e);
-                        }
+                        newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
+                                instance.getName(),
+                                instance.getSource())));
 
-//                        newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
-//                                instance.getName(),
-//                                instance.getSource())));
-//                        instances[m].remove(0);
+                        instances[m].remove(0);
                     }
 
 //                logger.info("features: " + oldAlphabet.size()
                     //                       + " -> " + newAlphabet.size());
                     // Make the new list the official list.
-                    // instances[m] = newInstanceList;
+                    instances[m] = newInstanceList;
+                    Alphabet tmp = newInstanceList.getDataAlphabet();
+                    String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
+                    try {
+                        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(modAlphabetFile)));
+                        oos.writeObject(tmp);
+                        oos.close();
+                    } catch (IOException e) {
+                        System.err.println("Problem serializing modality " + m + " alphabet to file "
+                                + txtAlphabetFile + ": " + e);
+                    }
+
                 } else {
                     throw new UnsupportedOperationException("Pruning features from "
                             + firstInstance.getClass().getName()
