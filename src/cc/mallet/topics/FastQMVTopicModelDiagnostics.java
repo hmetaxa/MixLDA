@@ -566,7 +566,7 @@ public class FastQMVTopicModelDiagnostics {
             
 
             PreparedStatement bulkInsert = null;
-            String sql = "insert into diagnostics values(?,?,?,?,?);";
+            String sql = "insert into diagnostics values(?,?,?,?,?,?);";
 
             connection.setAutoCommit(false);
             bulkInsert = connection.prepareStatement(sql);
@@ -586,10 +586,11 @@ public class FastQMVTopicModelDiagnostics {
                 while (p < model.perplexities[m].length && model.perplexities[m][p] != 0) //for (int p = 0; p < model.perplexities[m].length; p++) 
                 {
                     bulkInsert.setString(1, experimentId);
-                    bulkInsert.setString(2, String.format("%d", 10 * p));
-                    bulkInsert.setInt(3, 0); //corpus
-                    bulkInsert.setString(4, "LogLikehood");
-                    bulkInsert.setDouble(5, model.perplexities[m][p]);
+                    bulkInsert.setString(2, BatchId);
+                    bulkInsert.setString(3, String.format("%d", 10 * p));
+                    bulkInsert.setInt(4, 0); //corpus
+                    bulkInsert.setString(5, "LogLikehood");
+                    bulkInsert.setDouble(6, model.perplexities[m][p]);
                     bulkInsert.executeUpdate();
                     p++;
                 }
@@ -612,10 +613,11 @@ public class FastQMVTopicModelDiagnostics {
 
                 for (TopicScores scores : diagnostics) {
                     bulkInsert.setString(1, experimentId);
-                    bulkInsert.setString(2, String.format("Topic %d", topic));
-                    bulkInsert.setInt(3, 1); //Topic
-                    bulkInsert.setString(4, scores.name);
-                    bulkInsert.setDouble(5, scores.scores[topic]);
+                    bulkInsert.setString(2, BatchId);
+                    bulkInsert.setString(3, String.format("Topic %d", topic));
+                    bulkInsert.setInt(4, 1); //Topic
+                    bulkInsert.setString(5, scores.name);
+                    bulkInsert.setDouble(6, scores.scores[topic]);
                     bulkInsert.executeUpdate();
                 }
 
