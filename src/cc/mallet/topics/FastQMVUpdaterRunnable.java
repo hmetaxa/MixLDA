@@ -45,6 +45,8 @@ public class FastQMVUpdaterRunnable implements Runnable {
     protected double[] tablesCnt; // tables count per modality 
     protected double[] gamma; //gamma per modality 
     protected double gammaRoot = 10; // gammaRoot for all modalities (sumTables cnt)
+    protected RandomSamplers samp;
+       
     protected int numTopics;
     public byte numModalities; // Number of modalities
     protected int numTypes[];
@@ -64,7 +66,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
     boolean optimizeParams = false;
 
     // Optimize gamma[0] hyper params
-    RandomSamplers samp;
+ 
     protected List<Integer> inActiveTopicIndex; //inactive topic index for all modalities
     private NumberFormat formatter;
 
@@ -122,6 +124,8 @@ public class FastQMVUpdaterRunnable implements Runnable {
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
         tablesCnt = new double[numModalities];
+        
+        
         //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
     }
@@ -147,10 +151,10 @@ public class FastQMVUpdaterRunnable implements Runnable {
         isFinished = false;
         try {
             if (optimizeParams) {
-                optimizeDP();
-                optimizeGamma();
-                optimizeBeta();
-                recalcTrees();
+//                optimizeDP();
+//                optimizeGamma();
+//                optimizeBeta();
+//                recalcTrees();
             }
 
             while (!isFinished) {
@@ -212,7 +216,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                         {
                             logger.info("New Topic sampled: " + delta.NewTopic);
                             inActiveTopicIndex.remove(new Integer(delta.NewTopic));
-                            
+
                             alpha[delta.Modality][delta.NewTopic] = alpha[delta.Modality][numTopics];
                             //optimizeDP(); in order not to optimize all the time
                         }
@@ -405,31 +409,39 @@ public class FastQMVUpdaterRunnable implements Runnable {
                     }
                 }
             }
-        // end outter for loop
+            // end outter for loop
 
+            if (!inActiveTopicIndex.isEmpty()) {
+                String empty = "";
+
+                for (int i = 0; i < inActiveTopicIndex.size(); i++) {
+                    empty += formatter.format(inActiveTopicIndex.get(i)) + " ";
+                }
+                logger.info("Inactive Topics: " + empty);
+            }
             //for (byte m = 0; m < numModalities; m++) {
             //alpha[m].fill(0, numTopics, 0);
             alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
             tablesCnt[m] = Vectors.sum(mk[m]);
-            
+
             byte numSamples = 10;
             for (int i = 0; i < numSamples; i++) {
-            double[] tt = sampleDirichlet(mk[m]);
-            // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
-            for (int kk = 0; kk <= numTopics; kk++) {
-                //int k = kactive.get(kk);
-                alpha[m][kk] =  tt[kk] / (double) numSamples;
-                alphaSum[m] +=  gamma[m] * alpha[m][kk];
-                //tau.set(k, tt[kk]);
-            }
+                double[] tt = sampleDirichlet(mk[m]);
+                // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
+                for (int kk = 0; kk <= numTopics; kk++) {
+                    //int k = kactive.get(kk);
+                    alpha[m][kk] = tt[kk] / (double) numSamples;
+                    alphaSum[m] += gamma[m] * alpha[m][kk];
+                    //tau.set(k, tt[kk]);
+                }
             }
 
             logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);
             //for (byte m = 0; m < numModalities; m++) {
             String alphaStr = "";
             for (int topic = 0; topic < numTopics; topic++) {
-                alphaStr += formatter.format(alpha[m][topic]) + " ";
+                alphaStr += topic+":"+formatter.format(alpha[m][topic]) + " ";
             }
 
             logger.info("[Alpha[" + m + "]: [" + alphaStr + "] ");

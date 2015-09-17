@@ -6,6 +6,7 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
+import static cc.mallet.topics.FastQMVUpdaterRunnable.logger;
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import cc.mallet.util.MalletLogger;
 import gnu.trove.TByteArrayList;
 import gnu.trove.map.hash.TIntIntHashMap;
 import gnu.trove.map.hash.TObjectIntHashMap;
+import static java.lang.Math.log;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -38,6 +40,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Queue;
+import org.knowceans.util.RandomSamplers;
+import org.knowceans.util.Vectors;
 
 /**
  * Simple parallel threaded implementation of LDA, following Newman, Asuncion,
@@ -121,6 +125,11 @@ public class FastQMVParallelTopicModel implements Serializable {
     //public double[][][] pDistr_Var; // modalities correlation distribution accross documents (used in a, b beta params optimization)
     public double[][] pMean; // modalities correlation
 
+    protected double[] tablesCnt; // tables count per modality 
+    protected double gammaRoot = 10; // gammaRoot for all modalities (sumTables cnt)
+    protected RandomSamplers samp;
+    protected Randoms random;
+
     public double[][] perplexities;//= new TObjectIntHashMap<Double>(); 
     public StringBuilder expMetadata = new StringBuilder(1000);
 
@@ -186,6 +195,17 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.numTypes = new int[numModalities];
 
         perplexities = new double[numModalities][200];
+
+        this.samp = new RandomSamplers(ThreadLocalRandom.current());
+
+        tablesCnt = new double[numModalities];
+
+        random = null;
+        if (randomSeed == -1) {
+            random = new Randoms();
+        } else {
+            random = new Randoms(randomSeed);
+        }
     }
 
     public StringBuilder getExpMetadata() {
@@ -426,6 +446,11 @@ public class FastQMVParallelTopicModel implements Serializable {
                 Arrays.fill(typeTopicCounts[i][type], 0);
 
             }
+
+            Arrays.fill(docLengthCounts[i], 0);
+            for (int t = 0; t < numTopics; t++) {
+                Arrays.fill(topicDocCounts[i][t], 0);
+            }
         }
 
         Arrays.fill(totalDocsPerModality, 0);
@@ -494,33 +519,6 @@ public class FastQMVParallelTopicModel implements Serializable {
                     docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
                     docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
                 }
-            }
-        }
-
-    }
-
-    private void recalcTrees() {
-        //recalc trees
-        double[] temp = new double[numTopics];
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int w = 0; w < numTypes[m]; ++w) {
-
-                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
-                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-//                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
-                    if (useCycleProposals) {
-                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
-                    } else {
-                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                    }
-
-                }
-
-                trees[m][w].constructTree(temp);
-
-                //reset temp
-                Arrays.fill(temp, 0);
             }
         }
 
@@ -824,7 +822,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         //pDistr_Var = new double[numModalities][numModalities][data.size()];
         for (byte i = 0; i < numModalities; i++) {
-            Arrays.fill(this.p_a[i], 3d);
+            Arrays.fill(this.p_a[i], 1d);
             Arrays.fill(this.p_b[i], 1d);
         }
 
@@ -928,12 +926,17 @@ public class FastQMVParallelTopicModel implements Serializable {
             updater.setOptimizeParams(false);
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % saveSampleInterval == 0) {
-                updater.setOptimizeParams(true);
+                //updater.setOptimizeParams(true);
                 optimizeP();
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
                 mergeSimilarTopics(25, modalities, 0.6);
+
+                optimizeDP();
+                optimizeGamma();
+                optimizeBeta();
+                recalcTrees();
             }
 
             updater.setQueues(queues);
@@ -1772,6 +1775,317 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
+    public void optimizeBeta() {
+        // The histogram starts at count 0, so if all of the
+        //  tokens of the most frequent type were assigned to one topic,
+        //  we would need to store a maxTypeCount + 1 count.
+
+        for (Byte m = 0; m < numModalities; m++) {
+            double prevBetaSum = betaSum[m];
+            int[] countHistogram = new int[maxTypeCount[m] + 1];
+
+            //  Now count the number of type/topic pairs that have
+            //  each number of tokens.
+            for (int type = 0; type < numTypes[m]; type++) {
+
+                int[] counts = typeTopicCounts[m][type];
+
+                for (int topic = 0; topic < numTopics; topic++) {
+                    int count = counts[topic];
+                    if (count > 0) {
+                        countHistogram[count]++;
+                    }
+                }
+            }
+
+            // Figure out how large we need to make the "observation lengths"
+            //  histogram.
+            int maxTopicSize = 0;
+            for (int topic = 0; topic < numTopics; topic++) {
+                if (tokensPerTopic[m][topic] > maxTopicSize) {
+                    maxTopicSize = tokensPerTopic[m][topic];
+                }
+            }
+
+            // Now allocate it and populate it.
+            int[] topicSizeHistogram = new int[maxTopicSize + 1];
+            for (int topic = 0; topic < numTopics; topic++) {
+                topicSizeHistogram[tokensPerTopic[m][topic]]++;
+            }
+
+            try {
+                betaSum[m] = Dirichlet.learnSymmetricConcentration(countHistogram,
+                        topicSizeHistogram,
+                        numTypes[m],
+                        betaSum[m]);
+                if (Double.isNaN(betaSum[m])) {
+                    betaSum[m] = prevBetaSum;
+                }
+                beta[m] = betaSum[m] / numTypes[m];
+            } catch (RuntimeException e) {
+                // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
+                logger.warning("Dirichlet optimization has become unstable:" + e.getMessage() + ". Resetting to previous Beta");
+                betaSum[m] = prevBetaSum;
+                beta[m] = betaSum[m] / numTypes[m];
+
+            }
+            //TODO: copy/update trees in threads
+            logger.info("[beta[" + m + "]: " + formatter.format(beta[m]) + "] ");
+            // Now publish the new value
+            // for (int thread = 0; thread < numThreads; thread++) {
+            //     runnables[thread].resetBeta(beta[0], betaSum[0]);
+            // }
+        }
+    }
+
+    private void optimizeGamma() {
+
+        // hyperparameters for DP and Dirichlet samplers
+        // Teh+06: Docs: (1, 1), M1-3: (0.1, 0.1); HMM: (1, 1)
+        double aalpha = 5;
+        double balpha = 0.1;
+        //double abeta = 0.1;
+        //double bbeta = 0.1;
+        // Teh+06: Docs: (1, 0.1), M1-3: (5, 0.1), HMM: (1, 1)
+        double agamma = 5;
+        double bgamma = 0.1;
+        // number of samples for parameter samplers
+        int R = 10;
+
+        double totaltablesCnt = 0;
+        for (Byte m = 0; m < numModalities; m++) {
+            totaltablesCnt += tablesCnt[m];
+
+        }
+
+        for (Byte m = 0; m < numModalities; m++) {
+            for (int r = 0; r < R; r++) {
+                // gamma[0]: root level (Escobar+West95) with n = T
+                // (14)
+                double eta = samp.randBeta(gammaRoot + 1, totaltablesCnt);
+                double bloge = bgamma - log(eta);
+                // (13')
+                double pie = 1. / (1. + (totaltablesCnt * bloge / (agamma + numTopics - 1)));
+                // (13)
+                int u = samp.randBernoulli(pie);
+                gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
+
+                // for (byte m = 0; m < numModalities; m++) {
+                // alpha: document level (Teh+06)
+                double qs = 0;
+                double qw = 0;
+                for (int j = 0; j < docLengthCounts[m].length; j++) {
+                    for (int i = 0; i < docLengthCounts[m][j]; i++) {
+                        // (49) (corrected)
+                        qs += samp.randBernoulli(j / (j + gamma[m]));
+                        // (48)
+                        qw += log(samp.randBeta(gamma[m] + 1, j));
+                    }
+                }
+                // (47)
+                gamma[m] = samp.randGamma(aalpha + tablesCnt[m] - qs, 1. / (balpha - qw));
+
+                //  }
+            }
+            logger.info("GammaRoot: " + gammaRoot);
+            //for (byte m = 0; m < numModalities; m++) {
+            logger.info("Gamma[" + m + "]: " + gamma[m]);
+            //}
+        }
+
+    }
+
+    private void optimizeDP() {
+        double[][] mk = new double[numModalities][numTopics + 1];
+
+        Arrays.fill(tablesCnt, 0);
+
+        for (int t = 0; t < numTopics; t++) {
+            inActiveTopicIndex.add(t); //inActive by default and activate if found 
+        }
+
+        for (byte m = 0; m < numModalities; m++) {
+            for (int t = 0; t < numTopics; t++) {
+
+                //int k = kactive.get(kk);
+                for (int i = 0; i < topicDocCounts[m][t].length; i++) {
+                    //for (int j = 0; j < numDocuments; j++) {
+
+                    if (topicDocCounts[m][t][i] > 0 && i > 1) {
+                        inActiveTopicIndex.remove(new Integer(t));  //..remove(t);
+                        //sample number of tables
+                        // number of tables a CRP(alpha tau) produces for nmk items
+                        //TODO: See if  using the "minimal path" assumption  to reduce bookkeeping gives the same results. 
+                        //Huge Memory consumption due to  topicDocCounts (* NumThreads), and striling number of first kind allss double[][] 
+                        //Also 2x slower than the parametric version due to UpdateAlphaAndSmoothing
+
+                        int curTbls = 0;
+                        try {
+                            curTbls = random.nextAntoniak(gamma[m] * alpha[m][t], i);
+
+                        } catch (Exception e) {
+                            curTbls = 1;
+                        }
+
+                        mk[m][t] += (topicDocCounts[m][t][i] * curTbls);
+                        //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[0][m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                        // nmk[m].get(k));
+                    } else if (topicDocCounts[m][t][i] > 0 && i == 1) //nmk[m].get(k) = 0 or 1
+                    {
+                        inActiveTopicIndex.remove(new Integer(t));
+                        mk[m][t] += topicDocCounts[m][t][i];
+                    }
+                }
+            }
+            // end outter for loop
+
+            if (!inActiveTopicIndex.isEmpty()) {
+                String empty = "";
+
+                for (int i = 0; i < inActiveTopicIndex.size(); i++) {
+                    empty += formatter.format(inActiveTopicIndex.get(i)) + " ";
+                }
+                logger.info("Inactive Topics: " + empty);
+            }
+            //for (byte m = 0; m < numModalities; m++) {
+            //alpha[m].fill(0, numTopics, 0);
+            alphaSum[m] = 0;
+            mk[m][numTopics] = gammaRoot;
+            tablesCnt[m] = Vectors.sum(mk[m]);
+
+            byte numSamples = 10;
+            for (int i = 0; i < numSamples; i++) {
+                double[] tt = sampleDirichlet(mk[m]);
+                // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
+                for (int kk = 0; kk <= numTopics; kk++) {
+                    //int k = kactive.get(kk);
+                    alpha[m][kk] = tt[kk] / (double) numSamples;
+                    alphaSum[m] += gamma[m] * alpha[m][kk];
+                    //tau.set(k, tt[kk]);
+                }
+            }
+
+            logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);
+            //for (byte m = 0; m < numModalities; m++) {
+            String alphaStr = "";
+            for (int topic = 0; topic < numTopics; topic++) {
+                alphaStr += topic + ":" + formatter.format(alpha[m][topic]) + " ";
+            }
+
+            logger.info("[Alpha[" + m + "]: [" + alphaStr + "] ");
+        }
+
+//            if (alpha[m].size() < numTopics + 1) {
+//                alpha[m].add(tt[numTopics]);
+//            } else {
+//                alpha[m].set(numTopics, tt[numTopics]);
+//            }
+        //tau.set(K, tt[K]);
+        //}
+        //Recalc trees
+    }
+
+    private double[] sampleDirichlet(double[] p) {
+        double magnitude = 1;
+        double[] partition;
+
+        magnitude = 0;
+        partition = new double[p.length];
+
+        // Add up the total
+        for (int i = 0; i < p.length; i++) {
+            magnitude += p[i];
+        }
+
+        for (int i = 0; i < p.length; i++) {
+            partition[i] = p[i] / magnitude;
+        }
+
+        double distribution[] = new double[partition.length];
+
+//		For each dimension, draw a sample from Gamma(mp_i, 1)
+        double sum = 0;
+        for (int i = 0; i < distribution.length; i++) {
+
+            distribution[i] = random.nextGamma(partition[i] * magnitude, 1);
+            if (distribution[i] <= 0) {
+                distribution[i] = 0.0001;
+            }
+            sum += distribution[i];
+        }
+
+//		Normalize
+        for (int i = 0; i < distribution.length; i++) {
+            distribution[i] /= sum;
+        }
+
+        return distribution;
+    }
+
+//    private void recalcTrees() {
+//        //recalc trees
+//        double[] temp = new double[numTopics];
+//        for (Byte m = 0; m < numModalities; m++) {
+//            for (int w = 0; w < numTypes[m]; ++w) {
+//
+//                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
+//                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+//
+////                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
+//                    if (useCycleProposals) {
+//                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
+//                    } else {
+//                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
+//                    }
+//
+//                }
+//
+//                trees[m][w].constructTree(temp);
+//
+//                //reset temp
+//                Arrays.fill(temp, 0);
+//            }
+//        }
+//
+//    }
+    private void recalcTrees() {
+        //recalc trees
+        double[] temp = new double[numTopics];
+        for (Byte m = 0; m < numModalities; m++) {
+            for (int w = 0; w < numTypes[m]; ++w) {
+
+                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
+                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+
+                    // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
+                    if (useCycleProposals) {
+                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
+                    } else {
+                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
+                    }
+
+                }
+
+                //trees[w] = new FTree(temp);
+                trees[m][w].constructTree(temp);
+
+                //reset temp
+                Arrays.fill(temp, 0);
+
+            }
+
+            docSmoothingOnlyMass[m] = 0;
+            if (useCycleProposals) {
+                // cachedCoefficients cumulative array that will be used for binary search
+                for (int topic = 0; topic < numTopics; topic++) {
+                    docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
+                    docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
+                }
+            }
+        }
+
+    }
+
     public void optimizeP() {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
@@ -1857,8 +2171,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
-                p_a[m][i] = a;//Math.max(a, 3);//a;
-                p_a[i][m] = a;//Math.max(a, 3);;
+                p_a[m][i] = Math.min(a, 100);//a=100--> almost p=99%
+                p_a[i][m] = Math.min(a, 100);;
                 p_b[m][i] = b;
                 p_b[i][m] = b;
 
@@ -1872,7 +2186,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        }
     }
 
-    public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId,  String batchId) {
+    public void printDocumentTopics(PrintWriter out, double threshold, int max, String SQLLiteDB, String experimentId, String batchId) {
         if (out != null) {
             out.print("#doc name topic proportion ...\n");
         }
@@ -2040,25 +2354,28 @@ public class FastQMVParallelTopicModel implements Serializable {
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
                 // statement.executeUpdate("drop table if exists PubTopic");
-                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                //statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
                 statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
 
-                statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
+                //statement.executeUpdate("create table if not exists Experiment (ExperimentId nvarchar(50), Description nvarchar(200), Metadata nvarchar(500), InitialSimilarity Double, PhraseBoost Integer) ");
                 String deleteSQL = String.format("Delete from Experiment where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
-                statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
+                //statement.executeUpdate("create table if not exists TopicDetails (TopicId integer, ItemType integer,  Weight double, TotalTokens int, BatchId TEXT,ExperimentId nvarchar(50)) ");
                 deleteSQL = String.format("Delete from TopicDetails where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
-                statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double,  BatchId TEXT, ExperimentId nvarchar(50)) ");
+                deleteSQL = String.format("Delete from TopicDescription where  ExperimentId = '%s'", experimentId);
+                statement.executeUpdate(deleteSQL);
+
+                //statement.executeUpdate("create table if not exists TopicAnalysis (TopicId integer, ItemType integer, Item nvarchar(100), Counts double,  BatchId TEXT, ExperimentId nvarchar(50)) ");
                 deleteSQL = String.format("Delete from TopicAnalysis where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
 
-                statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                //statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
                 statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
 
-                statement.executeUpdate("create table if not exists ExpDiagnostics (ExperimentId text, BatchId text, EntityId text, EntityType int, ScoreName text, Score double )");
+                //statement.executeUpdate("create table if not exists ExpDiagnostics (ExperimentId text, BatchId text, EntityId text, EntityType int, ScoreName text, Score double )");
                 deleteSQL = String.format("Delete from ExpDiagnostics where  ExperimentId = '%s'", experimentId);
                 statement.executeUpdate(deleteSQL);
             }

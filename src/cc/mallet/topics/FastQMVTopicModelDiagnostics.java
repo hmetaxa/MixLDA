@@ -566,7 +566,7 @@ public class FastQMVTopicModelDiagnostics {
             
 
             PreparedStatement bulkInsert = null;
-            String sql = "insert into diagnostics values(?,?,?,?,?,?);";
+            String sql = "insert into expDiagnostics values(?,?,?,?,?,?);";
 
             connection.setAutoCommit(false);
             bulkInsert = connection.prepareStatement(sql);

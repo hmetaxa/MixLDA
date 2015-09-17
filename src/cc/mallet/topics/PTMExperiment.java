@@ -53,36 +53,36 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 10;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 5;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
-        boolean calcSimilarities = false;
+        boolean calcSimilarities = true;
         boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
-        int numOfThreads = 4;
+        int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 250;
-        int maxNumTopics = 250;
-        int numIterations = 500; //Max 2000
+        int numTopics = 300;
+        //int maxNumTopics = 500;
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 20; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 2;
+        int pruneCnt = 100; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = false;
+        boolean ACMAuthorSimilarity = true;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
-        String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
+        String experimentId = experimentType.toString() + "_" + numTopics + "T_"
                 + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
 
@@ -116,77 +116,78 @@ public class PTMExperiment {
             //search for file first
             String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
             Alphabet[] alphabets = new Alphabet[numModalities];
+            /*
+             if (!new File(txtAlphabetFile).exists()) {
 
-            if (!new File(txtAlphabetFile).exists()) {
+             GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc);
 
-                GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc);
+             }
+             //read alphabets
 
-            }
-//read alphabets
-            for (byte m = 0; m < numModalities; m++) {
-                String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
-                if (new File(modAlphabetFile).exists()) {
+             for (byte m = 0; m < numModalities; m++) {
+             String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
+             if (new File(modAlphabetFile).exists()) {
 
-                    try {
-                        ObjectInputStream ois = new ObjectInputStream(new FileInputStream(new File(modAlphabetFile)));
-                        alphabets[m] = (Alphabet) ois.readObject();
-                        ois.close();
-                    } catch (Exception e) {
-                        // if the error message is "out of memory", 
-                        // it probably means no database file is found
-                        System.err.println(e.getMessage());
-                        alphabets[m] = new Alphabet();
-                    }
-                } else {
-                    alphabets[m] = new Alphabet();
-                }
-            }
+             try {
+             ObjectInputStream ois = new ObjectInputStream(new FileInputStream(new File(modAlphabetFile)));
+             alphabets[m] = (Alphabet) ois.readObject();
+             ois.close();
+             } catch (Exception e) {
+             // if the error message is "out of memory", 
+             // it probably means no database file is found
+             System.err.println(e.getMessage());
+             alphabets[m] = new Alphabet();
+             }
+             } else {
+             alphabets[m] = new Alphabet();
+             }
+             }
 
-            ArrayList<String> batchIds = new ArrayList<String>();
-            // Select BatchIds
-            try {
+             ArrayList<String> batchIds = new ArrayList<String>();
+             // Select BatchIds
+             try {
 
-                connection = DriverManager.getConnection(SQLLitedb);
-                String sql = "";
+             connection = DriverManager.getConnection(SQLLitedb);
+             String sql = "";
 
-                if (runOnLine) {
-                    sql = "select distinct batchId from Publication";
-                    Statement statement = connection.createStatement();
-                    statement.setQueryTimeout(60);  // set timeout to 30 sec.
-                    ResultSet rs = statement.executeQuery(sql);
-                    while (rs.next()) {
-                        batchIds.add(rs.getString("batchId"));
-                    }
+             if (runOnLine) {
+             sql = "select distinct batchId from Publication";
+             Statement statement = connection.createStatement();
+             statement.setQueryTimeout(60);  // set timeout to 30 sec.
+             ResultSet rs = statement.executeQuery(sql);
+             while (rs.next()) {
+             batchIds.add(rs.getString("batchId"));
+             }
 
-                } else {
-                    batchIds.add("-1"); // noBatches
-                }
-            } catch (SQLException e) {
-                // if the error message is "out of memory", 
-                // it probably means no database file is found
-                System.err.println(e.getMessage());
-            } finally {
-                try {
-                    if (connection != null) {
-                        connection.close();
-                    }
-                } catch (SQLException e) {
-                    // connection close failed.
-                    System.err.println(e);
-                }
-            }
+             } else {
+             batchIds.add("-1"); // noBatches
+             }
+             } catch (SQLException e) {
+             // if the error message is "out of memory", 
+             // it probably means no database file is found
+             System.err.println(e.getMessage());
+             } finally {
+             try {
+             if (connection != null) {
+             connection.close();
+             }
+             } catch (SQLException e) {
+             // connection close failed.
+             System.err.println(e);
+             }
+             }
 
-            //
-//            if (calcTokensPerEntity) {
-//                TfIdfWeighting(instances[0], SQLLitedb, experimentId, 1);
-//            }
-            //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
-            ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
-            for (byte m = 0; m < numModalities; m++) {
-                instanceBuffer.add(new ArrayList<Instance>());
+             //
+             //            if (calcTokensPerEntity) {
+             //                TfIdfWeighting(instances[0], SQLLitedb, experimentId, 1);
+             //            }
+             //createCitationGraphFile("C:\\projects\\Datasets\\DBLPManage\\acm_output_NET.csv", "jdbc:sqlite:C:/projects/Datasets/DBLPManage/acm_output.db");
+             ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
+             for (byte m = 0; m < numModalities; m++) {
+             instanceBuffer.add(new ArrayList<Instance>());
 
-            }
-
+             }
+             */
             String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
             File outPath = new File(outputDir);
 
@@ -228,185 +229,192 @@ public class PTMExperiment {
             model.setNumThreads(numOfThreads);
 
             // Loop for every batch
-            for (String batchId : batchIds) {
+            // for (String batchId : batchIds) {
+   /*             try {
+
+             // clear previous lists
+             for (byte m = 0; m < numModalities; m++) {
+             instanceBuffer.get(m).clear();
+             }
+
+             connection = DriverManager.getConnection(SQLLitedb);
+             String sql = "";
+
+             if (experimentType == ExperimentType.ACM) {
+             experimentDescription = "Topic modeling based on:\n1)Full text from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
+             + similarityType.toString()
+             + "\n Similarity on Authors & Categories";
+             //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
+
+             sql = batchId == "-1"
+             ? " select  pubId, fulltext, authors, citations, categories, period from ACMPubView"
+             : "select  pubId, fulltext, authors, citations, categories, period from ACMPubView where batchId = '" + batchId + "'";
+
+             sql += " LIMIT 10000";
+
+             }
+
+             // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
+             Statement statement = connection.createStatement();
+             statement.setQueryTimeout(60);  // set timeout to 30 sec.
+             ResultSet rs = statement.executeQuery(sql);
+             String txt = "";
+             while (rs.next()) {
+             // read the result set
+             //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
+             //String str = "[" + rs.getString("GrantIds") + "]" + rs.getString("text");
+             //System.out.println("name = " + rs.getString("file"));
+             //System.out.println("name = " + rs.getString("fundings"));
+             //int cnt = rs.getInt("grantsCnt");
+             switch (experimentType) {
+
+             case ACM:
+             txt = rs.getString("fulltext");
+             instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
+
+             //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
+             if (numModalities > 1) {
+             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
+             instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
+             }
+             if (numModalities > 2) {
+             String tmpStr = rs.getString("Categories");//.replace("\t", ",");
+             instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
+             }
+             if (numModalities > 3) {
+             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
+             instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+             }
+
+             if (numModalities > 4) {
+             String tmpPeriodStr = rs.getString("Period");//.replace("\t", ",");
+             instanceBuffer.get(4).add(new Instance(tmpPeriodStr, null, rs.getString("pubId"), "period"));
+             }
+             break;
+
+             default:
+             }
+
+             }
+
+             } catch (SQLException e) {
+             // if the error message is "out of memory", 
+             // it probably means no database file is found
+             System.err.println(e.getMessage());
+             } finally {
+             try {
+             if (connection != null) {
+             connection.close();
+             }
+             } catch (SQLException e) {
+             // connection close failed.
+             System.err.println(e);
+             }
+             }
+
+             logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
+
+             // Begin by importing documents from text to feature sequences
+             ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+
+             // Pipes: lowercase, tokenize, remove stopwords, map to features
+             pipeListText.add(new Input2CharSequence(false)); //homer
+             pipeListText.add(new CharSequenceLowercase());
+
+             SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+             pipeListText.add(tokenizer);
+
+             pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
+
+             InstanceList[] instances = new InstanceList[numModalities];
+             instances[0] = new InstanceList(new SerialPipes(pipeListText));
+
+             // Other Modalities
+             for (byte m = 1; m < numModalities; m++) {
+
+             ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
+             if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+             pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
+             } else {
+             pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ";"));
+             }
+             instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+             }
+
+             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
+
+             for (byte m = 1; m < numModalities; m++) {
+             logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+             //instances[m].clear();
+             instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+             }
+
+             //
+             //Alphabet[] existedAlphabets = new Alphabet[numModalities];
+             //                for (byte m = 1; m < numModalities; m++) {
+             //                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+             //                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
+             //                    //existedAlphabets[m] = instances[m].getDataAlphabet();
+             //                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+             //                }
+             */
+            String batchId = "-1";
+            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc);
+            logger.info(" instances added through pipe");
+
+            model.addInstances(instances, batchId);//trainingInstances);//instances);
+            logger.info(" instances added");
+
+            model.estimate();
+            logger.info("Model estimated");
+
+            model.saveTopics(SQLLitedb, experimentId, batchId);
+            logger.info("Topics Saved");
+
+            PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
+
+            model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId, batchId);
+
+            if (outState != null) {
+                outState.close();
+            }
+
+            logger.info("printDocumentTopics finished");
+
+            logger.info("Model Metadata: \n" + model.getExpMetadata());
+
+            if (modelEvaluationFile != null) {
                 try {
-
-                    // clear previous lists
-                    for (byte m = 0; m < numModalities; m++) {
-                        instanceBuffer.get(m).clear();
-                    }
-
-                    connection = DriverManager.getConnection(SQLLitedb);
-                    String sql = "";
-
-                    if (experimentType == ExperimentType.ACM) {
-                        experimentDescription = "Topic modeling based on:\n1)Full text from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
-                                + similarityType.toString()
-                                + "\n Similarity on Authors & Categories";
-                        //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
-
-                        sql = batchId == "-1"
-                                ? " select  pubId, text, authors, citations, categories from ACMPubView"
-                                : "select  pubId, text, authors, citations, categories from ACMPubView where batchId = '" + batchId + "'";
-
-                        sql += " LIMIT 10000";
-
-                    }
-
-                    // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
-                    Statement statement = connection.createStatement();
-                    statement.setQueryTimeout(60);  // set timeout to 30 sec.
-                    ResultSet rs = statement.executeQuery(sql);
-                    String txt = "";
-                    while (rs.next()) {
-                        // read the result set
-                        //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
-                        //String str = "[" + rs.getString("GrantIds") + "]" + rs.getString("text");
-                        //System.out.println("name = " + rs.getString("file"));
-                        //System.out.println("name = " + rs.getString("fundings"));
-                        //int cnt = rs.getInt("grantsCnt");
-                        switch (experimentType) {
-
-                            case ACM:
-                                instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-
-                                if (numModalities > 1) {
-                                    String tmpStr = rs.getString("Citations");//.replace("\t", ",");
-                                    instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
-                                }
-                                if (numModalities > 2) {
-                                    String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                                    instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
-                                }
-                                if (numModalities > 3) {
-                                    String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                                    instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
-                                }
-
-                                break;
-
-                            default:
-                        }
-
-                    }
-
-                } catch (SQLException e) {
-                    // if the error message is "out of memory", 
-                    // it probably means no database file is found
-                    System.err.println(e.getMessage());
-                } finally {
-                    try {
-                        if (connection != null) {
-                            connection.close();
-                        }
-                    } catch (SQLException e) {
-                        // connection close failed.
-                        System.err.println(e);
-                    }
-                }
-
-                logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
-
-                // Begin by importing documents from text to feature sequences
-                ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
-
-                // Pipes: lowercase, tokenize, remove stopwords, map to features
-                pipeListText.add(new Input2CharSequence(false)); //homer
-                pipeListText.add(new CharSequenceLowercase());
-
-                SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
-                pipeListText.add(tokenizer);
-
-                pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
-
-                InstanceList[] instances = new InstanceList[numModalities];
-                instances[0] = new InstanceList(new SerialPipes(pipeListText));
-
-                // Other Modalities
-                for (byte m = 1; m < numModalities; m++) {
-
-                    ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-                    if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
-                        pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
-                    } else {
-                        pipeListCSV.add(new CSV2FeatureSequence(alphabets[m]));
-                    }
-                    instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
-                }
-
-                instances[0].addThruPipe(instanceBuffer.get(0).iterator());
-
-                for (byte m = 1; m < numModalities; m++) {
-                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-                    //instances[m].clear();
-                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
-                }
-
-                //
-                //Alphabet[] existedAlphabets = new Alphabet[numModalities];
-//                for (byte m = 1; m < numModalities; m++) {
-//                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-//                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
-//                    //existedAlphabets[m] = instances[m].getDataAlphabet();
-//                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
-//                }
-
-                logger.info(" instances added through pipe");
-
-                model.addInstances(instances, batchId);//trainingInstances);//instances);
-                logger.info(" instances added");
-
-                model.estimate();
-                logger.info("Model estimated");
-
-                model.saveTopics(SQLLitedb, experimentId, batchId);
-                logger.info("Topics Saved");
-
-                PrintWriter outState = null;// new PrintWriter(new FileWriter((new File(outputDocTopicsFile))));
-
-                model.printDocumentTopics(outState, docTopicsThreshold, docTopicsMax, SQLLitedb, experimentId, batchId);
-
-                if (outState != null) {
-                    outState.close();
-                }
-
-                logger.info("printDocumentTopics finished");
-
-                logger.info("Model Metadata: \n" + model.getExpMetadata());
-
-                if (modelEvaluationFile != null) {
-                    try {
 
 //                ObjectOutputStream oos =
 //                        new ObjectOutputStream(new FileOutputStream(modelEvaluationFile));
 //                oos.writeObject(model.getProbEstimator());
 //                oos.close();
 //                
-                        PrintStream docProbabilityStream = null;
-                        docProbabilityStream = new PrintStream(modelEvaluationFile);
+                    //PrintStream docProbabilityStream = null;
+                    //docProbabilityStream = new PrintStream(modelEvaluationFile);
 //TODO...
-                        double perplexity = 0;
+                    double perplexity = 0;
 //                        if (splitCorpus) {
 //                            perplexity = model.getProbEstimator().evaluateLeftToRight(testInstances[0], 10, false, docProbabilityStream);
 //                        }
-                        //  System.out.println("perplexity for the test set=" + perplexity);
-                        logger.info("perplexity calculation finished");
-                        //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
-                        //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
+                    //  System.out.println("perplexity for the test set=" + perplexity);
+                    //logger.info("perplexity calculation finished");
+                    //iMixLDATopicModelDiagnostics diagnostics = new iMixLDATopicModelDiagnostics(model, topWords);
+                    //MixLDATopicModelDiagnostics diagnostics = new MixLDATopicModelDiagnostics(model, topWords);
 
-                        FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
-                        diagnostics.saveToDB(SQLLitedb, experimentId, perplexity, batchId);
-                        logger.info("full diagnostics calculation finished");
+                    FastQMVTopicModelDiagnostics diagnostics = new FastQMVTopicModelDiagnostics(model, topWords);
+                    diagnostics.saveToDB(SQLLitedb, experimentId, perplexity, batchId);
+                    logger.info("full diagnostics calculation finished");
 
-                    } catch (Exception e) {
-                        System.err.println(e.getMessage());
-                    }
-
+                } catch (Exception e) {
+                    System.err.println(e.getMessage());
                 }
-                //eee
 
             }
+                //eee
 
+            //    }
             model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
         }
 
@@ -464,11 +472,11 @@ public class PTMExperiment {
                                     + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
                                     + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
                         } else {
-                            sql = "select    PubCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
-                                    + "Inner Join PubCategory on PubTopic.PubId= PubCategory.PubId  \n"
-                                    + "INNER JOIN (Select CatId FROM PubCategory \n"
-                                    + "GROUP BY CatId HAVING Count(*)>10) catCnts1 ON catCnts1.CatId = PubCategory.catId\n"
-                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubCategory.CatId , TopicId order by  PubCategory.CatId, Weight desc, TopicId";
+                            sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
+                                    + "Inner Join PubACMCategory on PubTopic.PubId= PubACMCategory.PubId  \n"
+                                    + "INNER JOIN (Select CatId FROM PubACMCategory \n"
+                                    + "GROUP BY CatId HAVING Count(*)>10) catCnts1 ON catCnts1.CatId = PubACMCategory.catId\n"
+                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubACMCategory.CatId , TopicId order by  PubACMCategory.CatId, Weight desc, TopicId";
                         }
 
                         break;
@@ -497,8 +505,8 @@ public class PTMExperiment {
                 }
 
                 String labelId = "";
-                int[] topics = new int[maxNumTopics];
-                double[] weights = new double[maxNumTopics];
+                int[] topics = new int[numTopics];
+                double[] weights = new double[numTopics];
                 int cnt = 0;
                 double a;
                 while (rs.next()) {
@@ -540,8 +548,8 @@ public class PTMExperiment {
                         } else {
                             similarityVectors.put(labelId, weights);
                         }
-                        topics = new int[maxNumTopics];
-                        weights = new double[maxNumTopics];
+                        topics = new int[numTopics];
+                        weights = new double[numTopics];
                         cnt = 0;
                     }
                     labelId = newLabelId;
@@ -996,7 +1004,7 @@ public class PTMExperiment {
 
     }
 
-    public void GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc) {
+    public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc) {
 
         String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
         // Begin by importing documents from text to feature sequences
@@ -1020,10 +1028,10 @@ public class PTMExperiment {
         for (byte m = 1; m < numModalities; m++) {
             Alphabet alphabetM = new Alphabet();
             ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-            if (experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+            if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
                 pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
             } else {
-                pipeListCSV.add(new CSV2FeatureSequence(alphabetM));
+                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ";"));
             }
             instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
         }
@@ -1041,7 +1049,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories from ACMPubView"
+                sql = " select  pubId, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView"
                         + " LIMIT 10000";
 
             }
@@ -1060,7 +1068,9 @@ public class PTMExperiment {
                 switch (experimentType) {
 
                     case ACM:
-                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
+//                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
+                        String txt = rs.getString("fulltext");
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
@@ -1070,9 +1080,20 @@ public class PTMExperiment {
                             String tmpStr = rs.getString("Categories");//.replace("\t", ",");
                             instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
                         }
+                        
                         if (numModalities > 3) {
+                            String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
+                            instanceBuffer.get(3).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
+                        }
+                        
+                        if (numModalities > 4) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                            instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                            instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                        }
+                        
+                        if (numModalities > 5) {
+                            String tmpJournalStr = rs.getString("JournalISSN");//.replace("\t", ",");
+                            instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "journal"));
                         }
 
                         break;
@@ -1187,6 +1208,7 @@ public class PTMExperiment {
 
             }
         }
+        return instances;
 
     }
 
