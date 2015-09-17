@@ -51,7 +51,7 @@ public class PTMExperiment {
     public PTMExperiment() throws IOException {
 
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
-        int topWords = 10;
+        int topWords = 15;
         int topLabels = 10;
         byte numModalities = 5;
         //int numIndependentTopics = 0;
@@ -67,7 +67,7 @@ public class PTMExperiment {
         //boolean ignoreSkewness = true;
         int numTopics = 300;
         //int maxNumTopics = 500;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 1200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -77,7 +77,7 @@ public class PTMExperiment {
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = true;
+        boolean ACMAuthorSimilarity = false;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
@@ -1050,7 +1050,7 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 sql = " select  pubId, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView"
-                        + " LIMIT 10000";
+                       ;// + " LIMIT 10000";
 
             }
 
