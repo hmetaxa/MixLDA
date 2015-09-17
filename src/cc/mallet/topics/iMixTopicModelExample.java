@@ -57,14 +57,14 @@ public class iMixTopicModelExample {
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
-        boolean calcSimilarities = false;
+        boolean calcSimilarities = true;
         boolean runTopicModelling = true;
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 350;
-        int maxNumTopics = 350;
-        int numIterations = 1000; //Max 2000
+        int numTopics = 100;
+        int maxNumTopics = 100;
+        int numIterations = 200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -889,6 +889,7 @@ public class iMixTopicModelExample {
 
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
                 model.setNumIterations(numIterations);
+                model.CreateTables(SQLLitedb, experimentId);
                 // model.setIndependentIterations(independentIterations);
                 model.optimizeInterval = optimizeInterval;
                 model.burninPeriod = burnIn;
