@@ -60,24 +60,24 @@ public class PTMExperiment {
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
+        int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 1200; //Max 2000
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 100; //Reduce features to those that occur more than N times
+        int pruneCnt = 50; //Reduce features to those that occur more than N times
         int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = false;
+        boolean ACMAuthorSimilarity = true;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
@@ -1049,8 +1049,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView"
-                       ;// + " LIMIT 10000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
 
             }
 
@@ -1069,31 +1068,44 @@ public class PTMExperiment {
 
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                        String txt = rs.getString("fulltext");
+                        String txt = rs.getString("text");
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
-                            instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
+                            if (tmpStr != null && !tmpStr.equals("")) {
+                                instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
+                            }
                         }
                         if (numModalities > 2) {
                             String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                            instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
+                            if (tmpStr != null && !tmpStr.equals("")) {
+
+                                instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
+                            }
                         }
-                        
+
                         if (numModalities > 3) {
                             String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
-                            instanceBuffer.get(3).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
+                            if (tmpPeriod != null && !tmpPeriod.equals("")) {
+
+                                instanceBuffer.get(3).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
+                            }
                         }
-                        
+
                         if (numModalities > 4) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                            instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                            if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
+
+                                instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                            }
                         }
-                        
+
                         if (numModalities > 5) {
                             String tmpJournalStr = rs.getString("JournalISSN");//.replace("\t", ",");
-                            instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "journal"));
+                            if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
+                                instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "journal"));
+                            }
                         }
 
                         break;
