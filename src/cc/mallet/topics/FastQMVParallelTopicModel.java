@@ -822,7 +822,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         //pDistr_Var = new double[numModalities][numModalities][data.size()];
         for (byte i = 0; i < numModalities; i++) {
-            Arrays.fill(this.p_a[i], 1d);
+            Arrays.fill(this.p_a[i], 0.1d);
             Arrays.fill(this.p_b[i], 1d);
         }
 
@@ -927,7 +927,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % saveSampleInterval == 0) {
                 //updater.setOptimizeParams(true);
-                optimizeP();
+                optimizeP(iteration + optimizeInterval > numIterations);
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
@@ -937,6 +937,12 @@ public class FastQMVParallelTopicModel implements Serializable {
                 optimizeGamma();
                 optimizeBeta();
                 recalcTrees();
+            } else {
+                for (byte i = 0; i < numModalities; i++) {
+                    Arrays.fill(this.p_a[i], Math.max((double)iteration/50, 1d));
+                    //Arrays.fill(this.p_b[i], 1d);
+                }
+
             }
 
             updater.setQueues(queues);
@@ -1018,6 +1024,9 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (iteration % 10 == 0) {
                 if (printLogLikelihood) {
                     for (Byte i = 0; i < numModalities; i++) {
+                        //Arrays.fill(this.p_a[i], (double) (iteration / 100));
+                        //Arrays.fill(this.p_b[i], 1d);
+
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
@@ -2086,7 +2095,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     }
 
-    public void optimizeP() {
+    public void optimizeP(boolean appendMetadata) {
 
 //          for (int thread = 0; thread < numThreads; thread++) {
 //              runnables[thread].getPDistr_Mean();
@@ -2171,6 +2180,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
+                if (appendMetadata) {
+                    appendMetadata("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
+                }
                 p_a[m][i] = Math.min(a, 100);//a=100--> almost p=99%
                 p_a[i][m] = Math.min(a, 100);;
                 p_b[m][i] = b;

@@ -53,21 +53,21 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 5;
+        byte numModalities = 4;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 400;
+        int numTopics = 350;
         //int maxNumTopics = 500;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 200; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
@@ -77,7 +77,7 @@ public class PTMExperiment {
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = true;
+        boolean ACMAuthorSimilarity = false;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
@@ -194,7 +194,7 @@ public class PTMExperiment {
             outPath.mkdir();
             //String stateFile = outputDir + File.separator + "output_state";
             //String outputDocTopicsFile = outputDir + File.separator + "output_doc_topics.csv";
-            //String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
+            String outputTopicPhraseXMLReport = outputDir + File.separator + "topicPhraseXMLReport.xml";
             //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
             //String topicWordWeightsFile = outputDir + File.separator + "topicWordWeightsFile.csv";
             //String stateFileZip = outputDir + File.separator + "output_state.gz";
@@ -415,7 +415,13 @@ public class PTMExperiment {
                 //eee
 
             //    }
+            experimentDescription = "Multi View Topic Modeling Analysis on ACM corpus";
             model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
+
+            PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
+            model.topicPhraseXMLReport(outXMLPhrase, topWords);
+            outXMLPhrase.close();
+            logger.info("topicPhraseXML report finished");
         }
 
         if (calcSimilarities) {
@@ -1049,7 +1055,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
+                sql = " select  pubId, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
 
             }
 
@@ -1068,7 +1074,7 @@ public class PTMExperiment {
 
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                        String txt = rs.getString("text");
+                        String txt = rs.getString("fulltext");
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
