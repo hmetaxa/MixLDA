@@ -924,25 +924,26 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
             updater.setOptimizeParams(false);
-            if (iteration > burninPeriod && optimizeInterval != 0
+            if (iteration < burninPeriod && numModalities>1) {
+                for (byte i = 0; i < numModalities; i++) {
+                    Arrays.fill(this.p_a[i], Math.min((double) iteration / 100, 1d));
+
+                    //Arrays.fill(this.p_b[i], 1d);
+                }
+                logger.info("common p_a: " + formatter.format(this.p_a[0][1]));
+            } else if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % saveSampleInterval == 0) {
                 //updater.setOptimizeParams(true);
                 optimizeP(iteration + optimizeInterval > numIterations);
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
-                mergeSimilarTopics(25, modalities, 0.6);
+                mergeSimilarTopics(20, modalities, 0.6);
 
                 optimizeDP();
                 optimizeGamma();
                 optimizeBeta();
                 recalcTrees();
-            } else {
-                for (byte i = 0; i < numModalities; i++) {
-                    Arrays.fill(this.p_a[i], Math.max((double)iteration/50, 1d));
-                    //Arrays.fill(this.p_b[i], 1d);
-                }
-
             }
 
             updater.setQueues(queues);
@@ -2272,6 +2273,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                         double normalizeSum = 0;
                         for (Byte m = 0; m < cntEnd; m++) {
                             //Omiros: TODO: I should reweight each modality's contribution in the proportion of the document based on its discrimination power (skew index)
+                            //topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
+                            //normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
+                            
                             topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }

@@ -53,31 +53,31 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 4;
+        byte numModalities = 3;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 350;
+        int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 200; //Max 2000
+        int numIterations = 1000; //Max 2000
         int independentIterations = 0;
         int burnIn = 100;
-        int optimizeInterval = 50;
+        int optimizeInterval = 25;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 50; //Reduce features to those that occur more than N times
+        int pruneCnt = 60; //Reduce features to those that occur more than N times
         int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = false;
+        boolean ACMAuthorSimilarity = true;
 //boolean runParametric = true;
 
         boolean DBLP_PPR = false;
@@ -472,11 +472,12 @@ public class PTMExperiment {
                         break;
                     case ACM:
                         if (ACMAuthorSimilarity) {
-                            sql = "select    PubAuthor.AuthorId, TopicId, AVG(weight) as Weight from PubTopic \n"
-                                    + "Inner Join PubAuthor on PubTopic.PubId= PubAuthor.PubId  \n"
-                                    + "INNER JOIN (Select AuthorId FROM PubAuthor\n"
-                                    + "GROUP BY AuthorId HAVING Count(*)>10) catCnts1 ON catCnts1.AuthorId = PubAuthor.AuthorId "
-                                    + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubAuthor.AuthorId,  TopicId order by  PubAuthor.AuthorId   ,weight desc, TopicId";
+                            sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n" +
+"from TopicDistributionPerAuthorView\n" +
+"where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n" +
+"and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n" +
+"and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n" +
+"where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
                         } else {
                             sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
                                     + "Inner Join PubACMCategory on PubTopic.PubId= PubACMCategory.PubId  \n"
@@ -913,10 +914,35 @@ public class PTMExperiment {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("cid") || word.contains("null") || word.contains("usepackage") || word.contains("fig")) {
+            if (word.contains("?") ||word.contains("~") ||word.contains("@") ||word.contains("&")||word.contains("#")||word.contains("-") ||word.contains("cid") || word.contains("italic") || word.contains("null") || word.contains("usepackage") || word.contains("fig")) {
                 prunedTokenizer.stop(word);
             }
         }
+        prunedTokenizer.stop("tion");
+        prunedTokenizer.stop("ing");
+        prunedTokenizer.stop("ment");
+        prunedTokenizer.stop("ytem");
+        prunedTokenizer.stop("wth");
+        prunedTokenizer.stop("whch");
+        prunedTokenizer.stop("nfrmatn");
+        prunedTokenizer.stop("uer");
+        prunedTokenizer.stop("ther");
+        prunedTokenizer.stop("frm");
+        prunedTokenizer.stop("hypermeda");
+        prunedTokenizer.stop("anuae");
+        prunedTokenizer.stop("dcument");
+        prunedTokenizer.stop("tudent");
+        prunedTokenizer.stop("appcatn");
+        prunedTokenizer.stop("tructure");
+        prunedTokenizer.stop("prram");
+        prunedTokenizer.stop("den");
+        prunedTokenizer.stop("aed");
+        prunedTokenizer.stop("cmputer");
+        prunedTokenizer.stop("prram");
+        
+        prunedTokenizer.stop("mre");
+        prunedTokenizer.stop("cence");
+        
 
         if (pruneCount > 0) {
             featureCounter.addPrunedWordsToStoplist(prunedTokenizer, pruneCount);
@@ -1055,7 +1081,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
 
             }
 
@@ -1074,8 +1100,8 @@ public class PTMExperiment {
 
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                        String txt = rs.getString("fulltext");
-                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
+                        String txt = rs.getString("text");
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 5000)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");

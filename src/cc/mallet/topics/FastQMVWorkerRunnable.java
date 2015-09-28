@@ -327,17 +327,19 @@ public class FastQMVWorkerRunnable implements Runnable {
             {
                 Arrays.fill(totalMassOtherModalities, 0);
                 //calc other modalities mass
-                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+               // if (m != 0) { //main (reference) modality 
+                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
-                    int topic = localTopicIndex[denseIndex];
-                    for (byte i = 0; i < numModalities; i++) {
-                        if (i != m && docLength[i] != 0) {
-                            totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
+                        int topic = localTopicIndex[denseIndex];
+                        for (byte i = 0; i < numModalities; i++) {
+                            if (i != m && docLength[i] != 0) {
+                                totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
+                            }
                         }
-                    }
 
-                    totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
-                }
+                        totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
+                    }
+               // }
 
                 FeatureSequence tokenSequenceCurMod = tokenSequence[m];
 
@@ -409,7 +411,6 @@ public class FastQMVWorkerRunnable implements Runnable {
                     //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
                     if (sample < newTopicMass) {
 
-                        
                         newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
                     } else {
                         sample -= newTopicMass;
