@@ -10,6 +10,7 @@ import java.util.ArrayList;
 
 public class TopicAssignment implements Serializable {
 	public Instance instance;
+        public int[] superTopicSequence;
 	public LabelSequence topicSequence;
         public long[] prevTopicsSequence; // array containing points to the entry of the topicSecuenceList which is a LongInteger array. 
         // Max num of topics depends on topicBits (MAX 10-->1024 topics). 
