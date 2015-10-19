@@ -53,14 +53,14 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 3;
+        byte numModalities = 6;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
-        boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean calcSimilarities = false;
+        boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
@@ -71,7 +71,7 @@ public class PTMExperiment {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 25;
-        ExperimentType experimentType = ExperimentType.ACM;
+        ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
         int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -95,6 +95,10 @@ public class PTMExperiment {
             SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
             dictDir = "C:\\projects\\Datasets\\ACM\\";
             //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
+        }
+        if (experimentType == ExperimentType.HEALTHTender) {
+            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/PubMed/PTM3DB.db";
+            dictDir = "C:\\projects\\Datasets\\PubMed\\";
         }
 
         if (dictDir != "") {
@@ -460,10 +464,12 @@ public class PTMExperiment {
 
                         break;
                     case HEALTHTender:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
-                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category2='HEALTH'\n"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId
-                                + "' group By project_code , TopicId order by  project_code, TopicId";
+                        sql = "select TopicDistributionPerGrantView.projectId, TopicDistributionPerGrantView.TopicId, TopicDistributionPerGrantView.NormWeight as Weight \n"
+                                + "from TopicDistributionPerGrantView\n"
+                                + "where TopicDistributionPerGrantView.experimentId='" + experimentId + "'   and TopicDistributionPerGrantView.NormWeight>0.03\n"
+                                + "and TopicDistributionPerGrantView.projectId in (Select projectId FROM PubGrant GROUP BY projectId HAVING Count(*)>4)\n"
+                                + "and TopicDistributionPerGrantView.topicid in (select TopicId from topicdescription \n"
+                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
 
                         break;
                     case Authors:
@@ -472,12 +478,12 @@ public class PTMExperiment {
                         break;
                     case ACM:
                         if (ACMAuthorSimilarity) {
-                            sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n" +
-"from TopicDistributionPerAuthorView\n" +
-"where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n" +
-"and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n" +
-"and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n" +
-"where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                            sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
+                                    + "from TopicDistributionPerAuthorView\n"
+                                    + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
+                                    + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
+                                    + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
+                                    + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
                         } else {
                             sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
                                     + "Inner Join PubACMCategory on PubTopic.PubId= PubACMCategory.PubId  \n"
@@ -914,7 +920,7 @@ public class PTMExperiment {
         Iterator<String> wordIter = alphabet.iterator();
         while (wordIter.hasNext()) {
             String word = (String) wordIter.next();
-            if (word.contains("?") ||word.contains("~") ||word.contains("@") ||word.contains("&")||word.contains("#")||word.contains("-") ||word.contains("cid") || word.contains("italic") || word.contains("null") || word.contains("usepackage") || word.contains("fig")) {
+            if (word.contains("?") || word.contains("~") || word.contains("@") || word.contains("&") || word.contains("#") || word.contains("-") || word.contains("cid") || word.contains("italic") || word.contains("null") || word.contains("usepackage") || word.contains("fig")) {
                 prunedTokenizer.stop(word);
             }
         }
@@ -939,10 +945,9 @@ public class PTMExperiment {
         prunedTokenizer.stop("aed");
         prunedTokenizer.stop("cmputer");
         prunedTokenizer.stop("prram");
-        
+
         prunedTokenizer.stop("mre");
         prunedTokenizer.stop("cence");
-        
 
         if (pruneCount > 0) {
             featureCounter.addPrunedWordsToStoplist(prunedTokenizer, pruneCount);
@@ -1083,6 +1088,10 @@ public class PTMExperiment {
 
                 sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
 
+            } else if (experimentType == ExperimentType.HEALTHTender) {
+
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants";// + " LIMIT 10000";
+
             }
 
             Statement statement = connection.createStatement();
@@ -1141,7 +1150,37 @@ public class PTMExperiment {
                         }
 
                         break;
+                    case HEALTHTender:
+                        //select TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors
+                        txt = rs.getString("text");
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 100000)), null, rs.getString("pubId"), "Text"));
 
+                        if (numModalities > 1) {
+                            instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("pubId"), "Grant"));
+                        }
+                        if (numModalities > 2) {
+                            instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("pubId"), "Area"));
+                        }
+                        ;
+                        if (numModalities > 3) {
+                            if (!rs.getString("Venue").equals("")) {
+                                instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("pubId"), "Venue"));
+                            }
+                        }
+                        if (numModalities > 4) {
+
+                            if (!rs.getString("MESHdescriptors").equals("")) {
+                                instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("pubId"), "MESHdescriptor"));
+                            }
+                        }
+                        if (numModalities > 5) {
+                            if (!rs.getString("Funders").equals("")) {
+                                instanceBuffer.get(5).add(new Instance(rs.getString("Funders"), null, rs.getString("pubId"), "Funder"));
+                            }
+                        }
+
+                        ;
+                        break;
                     default:
                 }
 

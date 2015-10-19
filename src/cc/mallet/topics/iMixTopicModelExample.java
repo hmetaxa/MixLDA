@@ -282,7 +282,7 @@ public class iMixTopicModelExample {
                             + "                              projectView.ABSTRACT AS TEXT, \n"
                             + "                             projectView.GrantId AS GrantIds ,                                               \n"
                             + "                             projectView.Category3 AS Areas,\n"
-                            + "                             projectView.Category3Descr AS AreasDescr,\n"
+                            + "                             projectView.CategoryProject3Descr AS AreasDescr,\n"
                             + "                             '' AS Venue,\n"
                             + "                             '' AS MESHdescriptors\n"
                             + "                             --'' AS MESHqualifiers\n"
