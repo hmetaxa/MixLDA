@@ -46,7 +46,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
     protected double[] gamma; //gamma per modality 
     protected double gammaRoot = 10; // gammaRoot for all modalities (sumTables cnt)
     protected RandomSamplers samp;
-       
+
     protected int numTopics;
     public byte numModalities; // Number of modalities
     protected int numTypes[];
@@ -66,7 +66,6 @@ public class FastQMVUpdaterRunnable implements Runnable {
     boolean optimizeParams = false;
 
     // Optimize gamma[0] hyper params
- 
     protected List<Integer> inActiveTopicIndex; //inactive topic index for all modalities
     private NumberFormat formatter;
 
@@ -124,8 +123,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
         tablesCnt = new double[numModalities];
-        
-        
+
         //this.betaSmoothingTree = betaSmoothingTree;
         //finishedSamplingTreads = new boolean
     }
@@ -172,29 +170,36 @@ public class FastQMVUpdaterRunnable implements Runnable {
 
                         currentTypeTopicCounts = typeTopicCounts[delta.Modality][delta.Type];
 
-                        // Decrement the global topic count totals
-                        currentTypeTopicCounts[delta.OldTopic]--;
-                        if (currentTypeTopicCounts[delta.OldTopic] < 0) {
-                            logger.info("TypeTopicCounts for old Topic " + delta.OldTopic + " below 0");
+                        if (delta.OldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            // Decrement the global topic count totals
+                            currentTypeTopicCounts[delta.OldTopic]--;
+                            if (currentTypeTopicCounts[delta.OldTopic] < 0) {
+                                logger.info("TypeTopicCounts for old Topic " + delta.OldTopic + " below 0");
+                            }
+                            assert (currentTypeTopicCounts[delta.OldTopic] >= 0) : "TypeTopicCounts for old Topic " + delta.OldTopic + " below 0";
                         }
-                        assert (currentTypeTopicCounts[delta.OldTopic] >= 0) : "TypeTopicCounts for old Topic " + delta.OldTopic + " below 0";
-
                         currentTypeTopicCounts[delta.NewTopic]++;
 
-                        tokensPerTopic[delta.Modality][delta.OldTopic]--;
-                        if (tokensPerTopic[delta.Modality][delta.OldTopic] < 0) {
-                            logger.info("tokensPerTopic for old Topic " + delta.OldTopic + " below 0");
-                        }
+                        if (delta.OldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            tokensPerTopic[delta.Modality][delta.OldTopic]--;
+                            if (tokensPerTopic[delta.Modality][delta.OldTopic] < 0) {
+                                logger.info("tokensPerTopic for old Topic " + delta.OldTopic + " below 0");
+                            }
 
-                        assert (tokensPerTopic[delta.Modality][delta.OldTopic] >= 0) : "tokensPerTopic for old Topic " + delta.OldTopic + " below 0";
+                            assert (tokensPerTopic[delta.Modality][delta.OldTopic] >= 0) : "tokensPerTopic for old Topic " + delta.OldTopic + " below 0";
+                        }
 
                         tokensPerTopic[delta.Modality][delta.NewTopic]++;
 
-                        //update histograms
-                        topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt + 1]--;
-                        if (delta.DocOldTopicCnt > 0) {
-                            topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt]++;
+                        if (delta.OldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                            //update histograms
+                            topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt + 1]--;
+
+                            if (delta.DocOldTopicCnt > 0) {
+                                topicDocCounts[delta.Modality][delta.OldTopic][delta.DocOldTopicCnt]++;
+                            }
                         }
+
                         if (delta.DocNewTopicCnt > 1) {
                             topicDocCounts[delta.Modality][delta.NewTopic][delta.DocNewTopicCnt - 1]--;
                         }
@@ -208,7 +213,9 @@ public class FastQMVUpdaterRunnable implements Runnable {
                             //betaSmoothingTree.update(delta.OldTopic, (beta[0] / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
                             //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
                         } else {
-                            trees[delta.Modality][delta.Type].update(delta.OldTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                            if (delta.OldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                                trees[delta.Modality][delta.Type].update(delta.OldTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                            }
                             trees[delta.Modality][delta.Type].update(delta.NewTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
                         }
 
@@ -441,7 +448,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
             //for (byte m = 0; m < numModalities; m++) {
             String alphaStr = "";
             for (int topic = 0; topic < numTopics; topic++) {
-                alphaStr += topic+":"+formatter.format(alpha[m][topic]) + " ";
+                alphaStr += topic + ":" + formatter.format(alpha[m][topic]) + " ";
             }
 
             logger.info("[Alpha[" + m + "]: [" + alphaStr + "] ");

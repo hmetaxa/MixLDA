@@ -295,7 +295,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     //		populate topic counts
                     for (int position = 0; position < docLength[m]; position++) {
                         if (oneDocTopics[m][position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
-                            System.err.println(" Init Sampling UNASSIGNED_TOPIC");
+                            // System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                             continue;
                         }
                         localTopicCounts[m][oneDocTopics[m][position]]++; //, localTopicCounts[m][oneDocTopics[m][position]] + 1);
@@ -327,19 +327,19 @@ public class FastQMVWorkerRunnable implements Runnable {
             {
                 Arrays.fill(totalMassOtherModalities, 0);
                 //calc other modalities mass
-               // if (m != 0) { //main (reference) modality 
-                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                // if (m != 0) { //main (reference) modality 
+                for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
 
-                        int topic = localTopicIndex[denseIndex];
-                        for (byte i = 0; i < numModalities; i++) {
-                            if (i != m && docLength[i] != 0) {
-                                totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
-                            }
+                    int topic = localTopicIndex[denseIndex];
+                    for (byte i = 0; i < numModalities; i++) {
+                        if (i != m && docLength[i] != 0) {
+                            totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
                         }
-
-                        totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
                     }
-               // }
+
+                    totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
+                }
+                // }
 
                 FeatureSequence tokenSequenceCurMod = tokenSequence[m];
 
@@ -351,7 +351,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     currentTypeTopicCounts = typeTopicCounts[m][type];
                     currentTree = trees[m][type];
 
-                    if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
+                    if (oldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
 
                         // Decrement the local doc/topic counts
                         localTopicCounts[m][oldTopic]--;
@@ -468,7 +468,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     //add delta to the queue
                     if (newTopic != oldTopic) {
                         //queue.add(new FastQDelta(oldTopic, newTopic, type, 0, 1, 1));
-                        queue.add(new FastQDelta(oldTopic, newTopic, type, m, localTopicCounts[m][oldTopic], localTopicCounts[m][newTopic]));
+                        queue.add(new FastQDelta(oldTopic, newTopic, type, m, oldTopic == FastQMVParallelTopicModel.UNASSIGNED_TOPIC ? 0 : localTopicCounts[m][oldTopic], localTopicCounts[m][newTopic]));
                     }
 
                 }
@@ -579,7 +579,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                 currentTypeTopicCounts = typeTopicCounts[m][type];
                 currentTree = trees[m][type];
 
-                if (oldTopic != ParallelTopicModel.UNASSIGNED_TOPIC) {
+                if (oldTopic != FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
 
                     // Decrement the local doc/topic counts
                     localTopicCounts[m][oldTopic]--;
