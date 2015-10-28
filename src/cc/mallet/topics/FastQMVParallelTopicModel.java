@@ -303,6 +303,13 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         appendMetadata("Statistics for batch:" + batchId);
 
+        Randoms random = null;
+        if (randomSeed == -1) {
+            random = new Randoms();
+        } else {
+            random = new Randoms(randomSeed);
+        }
+
         for (Byte m = 0; m < numModalities; m++) {
             alphabet[m] = training[m].getDataAlphabet();
             numTypes[m] = alphabet[m].size();
@@ -327,7 +334,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                 int[] topics = new int[size]; //topicSequence.getFeatures();
                 for (int position = 0; position < topics.length; position++) {
                     int type = tokens.getIndexAtPosition(position);
-                    int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
+                    //int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
+                    int topic = random.nextInt(numTopics);
                     topics[position] = topic;
                     typeTotals[m][type]++;
 
@@ -573,6 +581,28 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        for (int i = 0; i < numTopics; i++) {
 //            Arrays.fill(topicSimilarities[i], 0);
 //        }
+        int splittedTopic = -1;
+        //if (!inActiveTopicIndex.isEmpty()) {
+
+        int maxTopic = 0;
+        double maxAlpha = 0;
+        double avgAlpha = 0;
+
+        for (int kk = 0; kk <= numTopics; kk++) {
+            //int k = kactive.get(kk);
+            avgAlpha += alpha[0][kk];
+            if (alpha[0][kk] > maxAlpha) {
+                maxAlpha = alpha[0][kk];
+                maxTopic = kk;
+            }
+        }
+        avgAlpha = avgAlpha / (numTopics - inActiveTopicIndex.size());
+
+        if (maxAlpha > 10 * avgAlpha) {
+            splittedTopic = maxTopic;
+        }
+        //}
+
         TIntIntHashMap mergedTopics = new TIntIntHashMap();
 
         for (int t = 0; t < numTopics; t++) {
@@ -600,7 +630,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         }
 
-        if (mergedTopics.size() > 0) {
+        if (mergedTopics.size() > 0 || splittedTopic > 0) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
                     TopicAssignment document = entity.Assignments[m];
@@ -613,6 +643,12 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                         for (int position = 0; position < topics.length; position++) {
                             int oldTopic = topics[position];
+
+                            if (splittedTopic > 0 && splittedTopic == oldTopic) {
+
+                                topics[position] = ParallelTopicModel.UNASSIGNED_TOPIC;
+
+                            }
                             if (mergedTopics.containsKey(oldTopic)) {
                                 topics[position] = mergedTopics.get(oldTopic);
                             }
@@ -924,7 +960,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
             updater.setOptimizeParams(false);
-            if (iteration < burninPeriod && numModalities>1) {
+            if (iteration < burninPeriod && numModalities > 1) {
                 for (byte i = 0; i < numModalities; i++) {
                     Arrays.fill(this.p_a[i], Math.min((double) iteration / 100, 1d));
 
@@ -2127,7 +2163,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                     //		populate topic counts
                     for (int position = 0; position < docLength[m]; position++) {
-                        if (oneDocTopics[position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                        if (oneDocTopics[position] == UNASSIGNED_TOPIC) {
                             System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                             continue;
                         }
@@ -2146,7 +2182,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                     tokenSequence = ((FeatureSequence) doc.Assignments[m].instance.getData());
 
                     for (int position = 0; position < tokenSequence.getLength(); position++) {
-                        if (oneDocTopics[position] == FastQMVParallelTopicModel.UNASSIGNED_TOPIC) {
+                        if (oneDocTopics[position] == UNASSIGNED_TOPIC) {
                             System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                             continue;
                         }
@@ -2275,7 +2311,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                             //Omiros: TODO: I should reweight each modality's contribution in the proportion of the document based on its discrimination power (skew index)
                             //topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             //normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
-                            
+
                             topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }
