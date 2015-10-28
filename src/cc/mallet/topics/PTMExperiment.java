@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 6;
+        byte numModalities = 3;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -65,15 +65,16 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 400;
+        int numTopics = 350;
         //int maxNumTopics = 500;
         int numIterations = 1000; //Max 2000
+        int numChars = 5000;
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 25;
         ExperimentType experimentType = ExperimentType.HEALTHTender;
-        int pruneCnt = 60; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 20;
+        int pruneCnt = 100; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 10;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -83,7 +84,7 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
@@ -363,7 +364,7 @@ public class PTMExperiment {
              //                }
              */
             String batchId = "-1";
-            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc);
+            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
             logger.info(" instances added through pipe");
 
             model.addInstances(instances, batchId);//trainingInstances);//instances);
@@ -1041,7 +1042,7 @@ public class PTMExperiment {
 
     }
 
-    public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc) {
+    public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc, int numChars) {
 
         String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
         // Begin by importing documents from text to feature sequences
@@ -1065,11 +1066,12 @@ public class PTMExperiment {
         for (byte m = 1; m < numModalities; m++) {
             Alphabet alphabetM = new Alphabet();
             ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-            if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
-                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
-            } else {
-                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ";"));
-            }
+            pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
+//            if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+//                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ","));
+//            } else {
+//                pipeListCSV.add(new CSV2FeatureSequence(alphabetM, ";"));
+//            }
             instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
         }
 
@@ -1110,7 +1112,7 @@ public class PTMExperiment {
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
                         String txt = rs.getString("text");
-                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 5000)), null, rs.getString("pubId"), "text"));
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
@@ -1153,28 +1155,42 @@ public class PTMExperiment {
                     case HEALTHTender:
                         //select TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors
                         txt = rs.getString("text");
-                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 100000)), null, rs.getString("pubId"), "Text"));
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "Text"));
 
                         if (numModalities > 1) {
-                            instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("pubId"), "Grant"));
+
+                            String tmpStr = rs.getString("MESHdescriptors");//.replace("\t", ",");
+                            if (tmpStr != null && !tmpStr.equals("")) {
+                                instanceBuffer.get(1).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("pubId"), "MESHdescriptor"));
+                            }
                         }
+                        
                         if (numModalities > 2) {
-                            instanceBuffer.get(2).add(new Instance(rs.getString("Areas"), null, rs.getString("pubId"), "Area"));
+                            String tmpStr = rs.getString("Venue");//.replace("\t", ",");
+                            if (tmpStr != null && !tmpStr.equals("")) {
+                                instanceBuffer.get(2).add(new Instance(rs.getString("Venue"), null, rs.getString("pubId"), "Venue"));
+                            }
+                        }
+                        
+                         if (numModalities > 3) {
+                            String tmpStr = rs.getString("Areas");//.replace("\t", ",");
+                            if (tmpStr != null && !tmpStr.equals("")) {
+                                instanceBuffer.get(3).add(new Instance(rs.getString("Areas"), null, rs.getString("pubId"), "Area"));
+                            }
                         }
                         ;
-                        if (numModalities > 3) {
-                            if (!rs.getString("Venue").equals("")) {
-                                instanceBuffer.get(3).add(new Instance(rs.getString("Venue"), null, rs.getString("pubId"), "Venue"));
-                            }
-                        }
+                        
                         if (numModalities > 4) {
-
-                            if (!rs.getString("MESHdescriptors").equals("")) {
-                                instanceBuffer.get(4).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("pubId"), "MESHdescriptor"));
+                            String tmpStr = rs.getString("GrantIds");//.replace("\t", ",");
+                            if (tmpStr != null && !tmpStr.equals("")) {
+                                instanceBuffer.get(4).add(new Instance(rs.getString("GrantIds"), null, rs.getString("pubId"), "Grant"));
                             }
                         }
+                       
+                        
                         if (numModalities > 5) {
-                            if (!rs.getString("Funders").equals("")) {
+                            String tmpStr = rs.getString("Funders");//.replace("\t", ",");
+                            if (tmpStr != null && !tmpStr.equals("")) {
                                 instanceBuffer.get(5).add(new Instance(rs.getString("Funders"), null, rs.getString("pubId"), "Funder"));
                             }
                         }
