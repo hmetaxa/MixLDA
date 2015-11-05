@@ -1864,7 +1864,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                         topicSizeHistogram,
                         numTypes[m],
                         betaSum[m]);
-                if (Double.isNaN(betaSum[m])) {
+                if (Double.isNaN(betaSum[m]) || betaSum[m] <0.0001) {
                     betaSum[m] = prevBetaSum;
                 }
                 beta[m] = betaSum[m] / numTypes[m];
@@ -2871,7 +2871,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (Double.isNaN(logLikelihood[m])) {
                 logger.info("at the end");
             } else if (Double.isInfinite(logLikelihood[m])) {
-                logger.info("Infinite value beta" + m + ": " + beta[m] + " * " + numTypes[m]);
+                logger.info("Infinite value beta [" + m + "]: " + beta[m] + " * " + numTypes[m]);
                 logLikelihood[m] = 0;
             }
 
