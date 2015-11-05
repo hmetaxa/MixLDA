@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 6;
+        byte numModalities = 2;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -65,13 +65,13 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 400;
+        int numTopics = 200;
         //int maxNumTopics = 500;
         int numIterations = 1000; //Max 2000
         int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 25;
-        ExperimentType experimentType = ExperimentType.HEALTHTender;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
         int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -1086,11 +1086,11 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// + " LIMIT 10000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView LIMIT 10000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
-                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants";// + " LIMIT 10000";
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants LIMIT 20000";
 
             }
 
@@ -1114,8 +1114,22 @@ public class PTMExperiment {
 
                         if (numModalities > 1) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
+                            String citationStr = "";
                             if (tmpStr != null && !tmpStr.equals("")) {
-                                instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
+                                String[] citations = tmpStr.trim().split(",");
+                                for (int j = 0; j < citations.length; j++) {
+                                    String[] pairs = citations[j].trim().split(":");
+                                    if (pairs.length == 2) {
+                                        for (int i = 0; i < Integer.parseInt(pairs[1]); i++) {
+                                            citationStr+= pairs[0]+",";
+                                        }
+                                    } else {
+                                        citationStr+= citations[j]+",";
+                                        
+                                    }
+                                }
+                                citationStr = citationStr.substring(0, citationStr.length()-1);
+                                instanceBuffer.get(1).add(new Instance(citationStr, null, rs.getString("pubId"), "citation"));
                             }
                         }
                         if (numModalities > 2) {
@@ -1153,7 +1167,7 @@ public class PTMExperiment {
                     case HEALTHTender:
                         //select TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors
                         txt = rs.getString("text");
-                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 100000)), null, rs.getString("pubId"), "Text"));
+                        instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 5000)), null, rs.getString("pubId"), "Text"));
 
                         if (numModalities > 1) {
                             instanceBuffer.get(1).add(new Instance(rs.getString("GrantIds"), null, rs.getString("pubId"), "Grant"));
