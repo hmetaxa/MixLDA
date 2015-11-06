@@ -429,27 +429,32 @@ public class PTMExperiment {
             logger.info("topicPhraseXML report finished");
 
             logger.info("Insert default topic descriptions");
-//
-//            try {
-//                sql = "select distinct batchId from Publication";
-//                Statement statement = connection.createStatement();
-//                statement.setQueryTimeout(60);  // set timeout to 30 sec.
-//                ResultSet rs = statement.executeQuery(sql);
-//
-//            } catch (SQLException e) {
-//             // if the error message is "out of memory", 
-//                // it probably means no database file is found
-//                System.err.println(e.getMessage());
-//            } finally {
-//                try {
-//                    if (connection != null) {
-//                        connection.close();
-//                    }
-//                } catch (SQLException e) {
-//                    // connection close failed.
-//                    System.err.println(e);
-//                }
-//            }
+
+            try {
+                String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n" +
+"select substr(GROUP_CONCAT(Item),1,100), '' , topicId , 1, '" + experimentId + "' \n" +
+"from  TopicDescriptionView\n" +
+" where experimentID = '" + experimentId + "' \n" +
+" GROUP BY TopicID";
+                Statement statement = connection.createStatement();
+                statement.setQueryTimeout(60);  // set timeout to 30 sec.
+                statement.executeUpdate(insertTopicDescriptionSql);
+                //ResultSet rs = statement.executeQuery(sql);
+
+            } catch (SQLException e) {
+             // if the error message is "out of memory", 
+                // it probably means no database file is found
+                System.err.println(e.getMessage());
+            } finally {
+                try {
+                    if (connection != null) {
+                        connection.close();
+                    }
+                } catch (SQLException e) {
+                    // connection close failed.
+                    System.err.println(e);
+                }
+            }
         }
 
         if (calcSimilarities) {
