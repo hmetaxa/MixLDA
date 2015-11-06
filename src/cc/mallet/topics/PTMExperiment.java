@@ -427,254 +427,35 @@ public class PTMExperiment {
             model.topicPhraseXMLReport(outXMLPhrase, topWords);
             outXMLPhrase.close();
             logger.info("topicPhraseXML report finished");
+
+            logger.info("Insert default topic descriptions");
+//
+//            try {
+//                sql = "select distinct batchId from Publication";
+//                Statement statement = connection.createStatement();
+//                statement.setQueryTimeout(60);  // set timeout to 30 sec.
+//                ResultSet rs = statement.executeQuery(sql);
+//
+//            } catch (SQLException e) {
+//             // if the error message is "out of memory", 
+//                // it probably means no database file is found
+//                System.err.println(e.getMessage());
+//            } finally {
+//                try {
+//                    if (connection != null) {
+//                        connection.close();
+//                    }
+//                } catch (SQLException e) {
+//                    // connection close failed.
+//                    System.err.println(e);
+//                }
+//            }
         }
 
         if (calcSimilarities) {
 
-            //calc similarities
-            logger.info("similarities calculation Started");
-            try {
-                // create a database connection
-                //connection = DriverManager.getConnection(SQLLitedb);
-                connection = DriverManager.getConnection(SQLLitedb);
-                Statement statement = connection.createStatement();
-                statement.setQueryTimeout(30);  // set timeout to 30 sec.
+            calcSimilaritiesAndTrends(SQLLitedb, experimentType, experimentId, ACMAuthorSimilarity, similarityType, numTopics);
 
-                // statement.executeUpdate("drop table if exists person");
-//      statement.executeUpdate("create table person (id integer, name string)");
-//      statement.executeUpdate("insert into person values(1, 'leo')");
-//      statement.executeUpdate("insert into person values(2, 'yui')");
-//      ResultSet rs = statement.executeQuery("select * from person");
-                String sql = "";
-                switch (experimentType) {
-                    case Grants:
-                        sql = "select    GrantId, TopicId, AVG(weight) as Weight from PubTopic Inner Join GrantPerDoc on PubTopic.PubId= GrantPerDoc.DocId"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
-                        break;
-                    case FullGrants:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
-                                + " where weight>0.02 AND ExperimentId='" + experimentId
-                                + "' group By project_code , TopicId order by  project_code, TopicId";
-
-                        break;
-                    case FETGrants:
-                        sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
-                                + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1<>'NONFET'\n"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId
-                                + "' group By project_code , TopicId order by  project_code, TopicId";
-
-                        break;
-                    case HEALTHTender:
-                        sql = "select TopicDistributionPerGrantView.projectId, TopicDistributionPerGrantView.TopicId, TopicDistributionPerGrantView.NormWeight as Weight \n"
-                                + "from TopicDistributionPerGrantView\n"
-                                + "where TopicDistributionPerGrantView.experimentId='" + experimentId + "'   and TopicDistributionPerGrantView.NormWeight>0.03\n"
-                                + "and TopicDistributionPerGrantView.projectId in (Select projectId FROM PubGrant GROUP BY projectId HAVING Count(*)>4)\n"
-                                + "and TopicDistributionPerGrantView.topicid in (select TopicId from topicdescription \n"
-                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
-
-                        break;
-                    case Authors:
-                        sql = "select    AuthorId, TopicId, AVG(weight) as Weight from PubTopic Inner Join AuthorPerDoc on PubTopic.PubId= AuthorPerDoc.DocId"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
-                        break;
-                    case ACM:
-                        if (ACMAuthorSimilarity) {
-                            sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
-                                    + "from TopicDistributionPerAuthorView\n"
-                                    + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
-                                    + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
-                                    + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
-                                    + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
-                        } else {
-                            sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
-                                    + "Inner Join PubACMCategory on PubTopic.PubId= PubACMCategory.PubId  \n"
-                                    + "INNER JOIN (Select CatId FROM PubACMCategory \n"
-                                    + "GROUP BY CatId HAVING Count(*)>10) catCnts1 ON catCnts1.CatId = PubACMCategory.catId\n"
-                                    + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubACMCategory.CatId , TopicId order by  PubACMCategory.CatId, Weight desc, TopicId";
-                        }
-
-                        break;
-                    case PM_pdb:
-                        sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
-
-                        break;
-                    case DBLP:
-                        sql = "select  Source, TopicId, AVG(weight) as Weight from PubTopic Inner Join prlinks on PubTopic.PubId= prlinks.source"
-                                + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
-
-                        break;
-                    default:
-                }
-
-                // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
-                ResultSet rs = statement.executeQuery(sql);
-
-                HashMap<String, SparseVector> labelVectors = null;
-                HashMap<String, double[]> similarityVectors = null;
-                if (similarityType == SimilarityType.cos) {
-                    labelVectors = new HashMap<String, SparseVector>();
-                } else {
-                    similarityVectors = new HashMap<String, double[]>();
-                }
-
-                String labelId = "";
-                int[] topics = new int[numTopics];
-                double[] weights = new double[numTopics];
-                int cnt = 0;
-                double a;
-                while (rs.next()) {
-
-                    String newLabelId = "";
-
-                    switch (experimentType) {
-                        case Grants:
-
-                            newLabelId = rs.getString("GrantId");
-                            break;
-                        case FullGrants:
-                        case FETGrants:
-                        case HEALTHTender:
-                            newLabelId = rs.getString("project_code");
-                            break;
-                        case Authors:
-                            newLabelId = rs.getString("AuthorId");
-                            break;
-                        case ACM:
-                            if (ACMAuthorSimilarity) {
-                                newLabelId = rs.getString("AuthorId");
-                            } else {
-                                newLabelId = rs.getString("Category");
-                            }
-                            break;
-                        case PM_pdb:
-                            newLabelId = rs.getString("pdbCode");
-                            break;
-                        case DBLP:
-                            newLabelId = rs.getString("Source");
-                            break;
-                        default:
-                    }
-
-                    if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
-                        if (similarityType == SimilarityType.cos) {
-                            labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
-                        } else {
-                            similarityVectors.put(labelId, weights);
-                        }
-                        topics = new int[numTopics];
-                        weights = new double[numTopics];
-                        cnt = 0;
-                    }
-                    labelId = newLabelId;
-                    topics[cnt] = rs.getInt("TopicId");
-                    weights[cnt] = rs.getDouble("Weight");
-                    cnt++;
-
-                }
-
-                cnt = 0;
-                double similarity = 0;
-                double similarityThreshold = 0.15;
-                NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
-
-                int entityType = experimentType.ordinal();
-                if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
-                    entityType = 100 + entityType;
-                };
-
-                statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
-                String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s' and entityType=%d", experimentId, entityType);
-                statement.executeUpdate(deleteSQL);
-
-                PreparedStatement bulkInsert = null;
-                sql = "insert into EntitySimilarity values(?,?,?,?,?);";
-
-                try {
-
-                    connection.setAutoCommit(false);
-                    bulkInsert = connection.prepareStatement(sql);
-
-                    if (similarityType == SimilarityType.Jen_Sha_Div) {
-                        for (String fromGrantId : similarityVectors.keySet()) {
-                            boolean startCalc = false;
-
-                            for (String toGrantId : similarityVectors.keySet()) {
-                                if (!fromGrantId.equals(toGrantId) && !startCalc) {
-                                    continue;
-                                } else {
-                                    startCalc = true;
-                                    similarity = Maths.jensenShannonDivergence(similarityVectors.get(fromGrantId), similarityVectors.get(toGrantId)); // the function returns distance not similarity
-                                    if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-
-                                        bulkInsert.setInt(1, entityType);
-                                        bulkInsert.setString(2, fromGrantId);
-                                        bulkInsert.setString(3, toGrantId);
-                                        bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
-                                        bulkInsert.setString(5, experimentId);
-                                        bulkInsert.executeUpdate();
-                                    }
-                                }
-                            }
-                        }
-                    } else if (similarityType == SimilarityType.cos) {
-                        for (String fromGrantId : labelVectors.keySet()) {
-                            boolean startCalc = false;
-
-                            for (String toGrantId : labelVectors.keySet()) {
-                                if (!fromGrantId.equals(toGrantId) && !startCalc) {
-                                    continue;
-                                } else {
-                                    startCalc = true;
-                                    similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
-                                    if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                                        bulkInsert.setInt(1, entityType);
-                                        bulkInsert.setString(2, fromGrantId);
-                                        bulkInsert.setString(3, toGrantId);
-                                        bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
-                                        bulkInsert.setString(5, experimentId);
-                                        bulkInsert.executeUpdate();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    connection.commit();
-
-                } catch (SQLException e) {
-
-                    if (connection != null) {
-                        try {
-                            System.err.print("Transaction is being rolled back");
-                            connection.rollback();
-                        } catch (SQLException excep) {
-                            System.err.print("Error in insert grantSimilarity");
-                        }
-                    }
-                } finally {
-
-                    if (bulkInsert != null) {
-                        bulkInsert.close();
-                    }
-                    connection.setAutoCommit(true);
-                }
-
-            } catch (SQLException e) {
-                // if the error message is "out of memory", 
-                // it probably means no database file is found
-                System.err.println(e.getMessage());
-            } finally {
-                try {
-                    if (connection != null) {
-                        connection.close();
-                    }
-                } catch (SQLException e) {
-                    // connection close failed.
-                    System.err.println(e);
-                }
-            }
-
-            logger.info("similarities calculation finished");
         }
 
 //        if (modelDiagnosticsFile
@@ -1042,6 +823,258 @@ public class PTMExperiment {
 
     }
 
+    public void calcSimilaritiesAndTrends(String SQLLitedb, ExperimentType experimentType, String experimentId, boolean ACMAuthorSimilarity, SimilarityType similarityType, int numTopics) {
+        //calc similarities
+
+        logger.info("similarities calculation Started");
+        Connection connection = null;
+        try {
+            // create a database connection
+            //connection = DriverManager.getConnection(SQLLitedb);
+            connection = DriverManager.getConnection(SQLLitedb);
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+            logger.info("similarities calculation Started");
+
+            // statement.executeUpdate("drop table if exists person");
+//      statement.executeUpdate("create table person (id integer, name string)");
+//      statement.executeUpdate("insert into person values(1, 'leo')");
+//      statement.executeUpdate("insert into person values(2, 'yui')");
+//      ResultSet rs = statement.executeQuery("select * from person");
+            String sql = "";
+            switch (experimentType) {
+//                case Grants:
+//                    sql = "select    GrantId, TopicId, AVG(weight) as Weight from PubTopic Inner Join GrantPerDoc on PubTopic.PubId= GrantPerDoc.DocId"
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
+//                    break;
+//                case FullGrants:
+//                    sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId
+//                            + "' group By project_code , TopicId order by  project_code, TopicId";
+//
+//                    break;
+//                case FETGrants:
+//                    sql = "select    project_code, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
+//                            + "   inner join projectView on links.project_code=projectView.GrantId and links.funder='FP7'  and Category1<>'NONFET'\n"
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId
+//                            + "' group By project_code , TopicId order by  project_code, TopicId";
+//
+//                    break;
+                case HEALTHTender:
+                    sql = "select TopicDistributionPerGrantView.projectId, TopicDistributionPerGrantView.TopicId, TopicDistributionPerGrantView.NormWeight as Weight \n"
+                            + "from TopicDistributionPerGrantView\n"
+                            + "where TopicDistributionPerGrantView.experimentId='" + experimentId + "'   and TopicDistributionPerGrantView.NormWeight>0.03\n"
+                            + "and TopicDistributionPerGrantView.projectId in (Select projectId FROM PubGrant GROUP BY projectId HAVING Count(*)>4)\n"
+                            + "and TopicDistributionPerGrantView.topicid in (select TopicId from topicdescription \n"
+                            + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+
+                    break;
+//                case Authors:
+//                    sql = "select    AuthorId, TopicId, AVG(weight) as Weight from PubTopic Inner Join AuthorPerDoc on PubTopic.PubId= AuthorPerDoc.DocId"
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By AuthorId , TopicId order by  AuthorId   , TopicId";
+//                    break;
+                case ACM:
+                    if (ACMAuthorSimilarity) {
+                        sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
+                                + "from TopicDistributionPerAuthorView\n"
+                                + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
+                                + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
+                                + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
+                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                    }
+                    //else {
+//                        sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
+//                                + "Inner Join PubACMCategory on PubTopic.PubId= PubACMCategory.PubId  \n"
+//                                + "INNER JOIN (Select CatId FROM PubACMCategory \n"
+//                                + "GROUP BY CatId HAVING Count(*)>10) catCnts1 ON catCnts1.CatId = PubACMCategory.catId\n"
+//                                + "where weight>0.02 AND ExperimentId='" + experimentId + "' group By PubACMCategory.CatId , TopicId order by  PubACMCategory.CatId, Weight desc, TopicId";
+//                    }
+
+                    break;
+//                case PM_pdb:
+//                    sql = "select    pdbCode, TopicId, AVG(weight) as Weight from topicsPerDoc Inner Join pdblink on topicsPerDoc.DocId= pdblink.pmcId"
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By pdbCode , TopicId order by  pdbCode   , TopicId";
+//
+//                    break;
+//                case DBLP:
+//                    sql = "select  Source, TopicId, AVG(weight) as Weight from PubTopic Inner Join prlinks on PubTopic.PubId= prlinks.source"
+//                            + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By Source , TopicId order by  Source   , TopicId";
+//
+//                    break;
+                default:
+            }
+
+            // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
+            ResultSet rs = statement.executeQuery(sql);
+
+            HashMap<String, SparseVector> labelVectors = null;
+            HashMap<String, double[]> similarityVectors = null;
+            if (similarityType == SimilarityType.cos) {
+                labelVectors = new HashMap<String, SparseVector>();
+            } else {
+                similarityVectors = new HashMap<String, double[]>();
+            }
+
+            String labelId = "";
+            int[] topics = new int[numTopics];
+            double[] weights = new double[numTopics];
+            int cnt = 0;
+            double a;
+            while (rs.next()) {
+
+                String newLabelId = "";
+
+                switch (experimentType) {
+                    case Grants:
+
+                        newLabelId = rs.getString("GrantId");
+                        break;
+                    case FullGrants:
+                    case FETGrants:
+                    case HEALTHTender:
+                        newLabelId = rs.getString("projectId");
+                        break;
+                    case Authors:
+                        newLabelId = rs.getString("AuthorId");
+                        break;
+                    case ACM:
+                        if (ACMAuthorSimilarity) {
+                            newLabelId = rs.getString("AuthorId");
+                        } else {
+                            newLabelId = rs.getString("Category");
+                        }
+                        break;
+                    case PM_pdb:
+                        newLabelId = rs.getString("pdbCode");
+                        break;
+                    case DBLP:
+                        newLabelId = rs.getString("Source");
+                        break;
+                    default:
+                }
+
+                if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
+                    if (similarityType == SimilarityType.cos) {
+                        labelVectors.put(labelId, new SparseVector(topics, weights, topics.length, topics.length, true, true, true));
+                    } else {
+                        similarityVectors.put(labelId, weights);
+                    }
+                    topics = new int[numTopics];
+                    weights = new double[numTopics];
+                    cnt = 0;
+                }
+                labelId = newLabelId;
+                topics[cnt] = rs.getInt("TopicId");
+                weights[cnt] = rs.getDouble("Weight");
+                cnt++;
+
+            }
+
+            cnt = 0;
+            double similarity = 0;
+            double similarityThreshold = 0.15;
+            NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+
+            int entityType = experimentType.ordinal();
+            if (experimentType == ExperimentType.ACM && !ACMAuthorSimilarity) {
+                entityType = 100 + entityType;
+            };
+
+            statement.executeUpdate("create table if not exists EntitySimilarity (EntityType int, EntityId1 nvarchar(50), EntityId2 nvarchar(50), Similarity double, ExperimentId nvarchar(50)) ");
+            String deleteSQL = String.format("Delete from EntitySimilarity where  ExperimentId = '%s' and entityType=%d", experimentId, entityType);
+            statement.executeUpdate(deleteSQL);
+
+            PreparedStatement bulkInsert = null;
+            sql = "insert into EntitySimilarity values(?,?,?,?,?);";
+
+            try {
+
+                connection.setAutoCommit(false);
+                bulkInsert = connection.prepareStatement(sql);
+
+                if (similarityType == SimilarityType.Jen_Sha_Div) {
+                    for (String fromGrantId : similarityVectors.keySet()) {
+                        boolean startCalc = false;
+
+                        for (String toGrantId : similarityVectors.keySet()) {
+                            if (!fromGrantId.equals(toGrantId) && !startCalc) {
+                                continue;
+                            } else {
+                                startCalc = true;
+                                similarity = Maths.jensenShannonDivergence(similarityVectors.get(fromGrantId), similarityVectors.get(toGrantId)); // the function returns distance not similarity
+                                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+
+                                    bulkInsert.setInt(1, entityType);
+                                    bulkInsert.setString(2, fromGrantId);
+                                    bulkInsert.setString(3, toGrantId);
+                                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                                    bulkInsert.setString(5, experimentId);
+                                    bulkInsert.executeUpdate();
+                                }
+                            }
+                        }
+                    }
+                } else if (similarityType == SimilarityType.cos) {
+                    for (String fromGrantId : labelVectors.keySet()) {
+                        boolean startCalc = false;
+
+                        for (String toGrantId : labelVectors.keySet()) {
+                            if (!fromGrantId.equals(toGrantId) && !startCalc) {
+                                continue;
+                            } else {
+                                startCalc = true;
+                                similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromGrantId), labelVectors.get(toGrantId))); // the function returns distance not similarity
+                                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+                                    bulkInsert.setInt(1, entityType);
+                                    bulkInsert.setString(2, fromGrantId);
+                                    bulkInsert.setString(3, toGrantId);
+                                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                                    bulkInsert.setString(5, experimentId);
+                                    bulkInsert.executeUpdate();
+                                }
+                            }
+                        }
+                    }
+                }
+                connection.commit();
+
+            } catch (SQLException e) {
+
+                if (connection != null) {
+                    try {
+                        System.err.print("Transaction is being rolled back");
+                        connection.rollback();
+                    } catch (SQLException excep) {
+                        System.err.print("Error in insert grantSimilarity");
+                    }
+                }
+            } finally {
+
+                if (bulkInsert != null) {
+                    bulkInsert.close();
+                }
+                connection.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
+        logger.info("similarities calculation finished");
+    }
+
     public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc, int numChars) {
 
         String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
@@ -1123,14 +1156,14 @@ public class PTMExperiment {
                                     String[] pairs = citations[j].trim().split(":");
                                     if (pairs.length == 2) {
                                         for (int i = 0; i < Integer.parseInt(pairs[1]); i++) {
-                                            citationStr+= pairs[0]+",";
+                                            citationStr += pairs[0] + ",";
                                         }
                                     } else {
-                                        citationStr+= citations[j]+",";
-                                        
+                                        citationStr += citations[j] + ",";
+
                                     }
                                 }
-                                citationStr = citationStr.substring(0, citationStr.length()-1);
+                                citationStr = citationStr.substring(0, citationStr.length() - 1);
                                 instanceBuffer.get(1).add(new Instance(citationStr, null, rs.getString("pubId"), "citation"));
                             }
                         }
@@ -1178,30 +1211,29 @@ public class PTMExperiment {
                                 instanceBuffer.get(1).add(new Instance(rs.getString("MESHdescriptors"), null, rs.getString("pubId"), "MESHdescriptor"));
                             }
                         }
-                        
+
                         if (numModalities > 2) {
                             String tmpStr = rs.getString("Venue");//.replace("\t", ",");
                             if (tmpStr != null && !tmpStr.equals("")) {
                                 instanceBuffer.get(2).add(new Instance(rs.getString("Venue"), null, rs.getString("pubId"), "Venue"));
                             }
                         }
-                        
-                         if (numModalities > 3) {
+
+                        if (numModalities > 3) {
                             String tmpStr = rs.getString("Areas");//.replace("\t", ",");
                             if (tmpStr != null && !tmpStr.equals("")) {
                                 instanceBuffer.get(3).add(new Instance(rs.getString("Areas"), null, rs.getString("pubId"), "Area"));
                             }
                         }
                         ;
-                        
+
                         if (numModalities > 4) {
                             String tmpStr = rs.getString("GrantIds");//.replace("\t", ",");
                             if (tmpStr != null && !tmpStr.equals("")) {
                                 instanceBuffer.get(4).add(new Instance(rs.getString("GrantIds"), null, rs.getString("pubId"), "Grant"));
                             }
                         }
-                       
-                        
+
                         if (numModalities > 5) {
                             String tmpStr = rs.getString("Funders");//.replace("\t", ",");
                             if (tmpStr != null && !tmpStr.equals("")) {
