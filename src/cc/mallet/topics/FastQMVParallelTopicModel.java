@@ -1821,6 +1821,78 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
+       public double[]  getEffectiveNumberOfWords() {
+           
+        
+        for (int topic = 0; topic < numTopics; topic++) {
+
+            double sumSquaredProbabilities = 0.0;
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+
+            for (IDSorter info : sortedWords) {
+                int type = info.getID();
+                double probability = info.getWeight() / tokensPerTopic[0][topic];
+
+                sumSquaredProbabilities += probability * probability;
+            }
+
+            scores.setTopicScore(topic, 1.0 / sumSquaredProbabilities);
+        }
+
+        return scores;
+    }
+       
+       
+       private double[] calcTopicsSkew() {
+        // Calc Skew weight
+        //skewOn == SkewType.LabelsOnly
+        // The skew index of eachType
+        double[]topicsSkew = new double[numTopics]; //<modality, type>
+        
+        topicDocCounts[1] 
+        // The skew index of each Lbl Type
+        //public double[] lblTypeSkewIndexes;
+        //double [][] typeSkewIndexes = new 
+        double skewSum = 0;
+        int nonZeroSkewCnt = 1;
+
+        
+            for (int type = 0; type < numTypes[i]; type++) {
+
+                int totalTypeCounts = 0;
+                typeSkewIndexes[i][type] = 0;
+
+                int[] targetCounts = typeTopicCounts[i][type];
+
+                int index = 0;
+                int count = 0;
+                while (index < targetCounts.length) {
+                    count = targetCounts[index];
+                    typeSkewIndexes[i][type] += Math.pow((double) count, 2);
+                    totalTypeCounts += count;
+                    //currentTopic = currentTypeTopicCounts[index] & topicMask;
+                    index++;
+                }
+
+                if (totalTypeCounts > 0) {
+                    typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
+                }
+                if (typeSkewIndexes[i][type] > 0) {
+                    nonZeroSkewCnt++;
+                    skewSum += typeSkewIndexes[i][type];
+                }
+
+            }
+
+            skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
+            appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
+
+        }
+
+        return skewWeight;
+
+    }
+       
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
