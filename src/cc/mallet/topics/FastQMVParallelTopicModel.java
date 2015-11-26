@@ -545,19 +545,24 @@ public class FastQMVParallelTopicModel implements Serializable {
             topicSortedWords.add(getSortedWords(m));
         }
 
+        int[][] topicTypeCounts = new int[numModalities][numTopics];
+        double[][] topicsSkewWeight = calcTopicsSkewOnText(topicTypeCounts, topicSortedWords);
+
         for (int topic = 0; topic < numTopics; topic++) {
             int previousVocabularySize = 0;
             labelId = Integer.toString(topic);
             int[] wordTypes = new int[numWords * modalities.size()];
             double[] weights = new double[numWords * modalities.size()];
-
+            
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
+                
+                int activeNumWords = Math.min(numWords, (int)Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
                 int wordCnt = 0;
-                while (iterator.hasNext() && wordCnt < numWords) {
+                while (iterator.hasNext() && wordCnt < activeNumWords) {
 
                     IDSorter info = iterator.next();
                     wordTypes[wordCnt] = previousVocabularySize + info.getID();//((String) entity).hashCode();
@@ -1821,78 +1826,28 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
-       public double[]  getEffectiveNumberOfWords() {
-           
-        
-        for (int topic = 0; topic < numTopics; topic++) {
+    public double[][] calcTopicsSkewOnText(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
 
-            double sumSquaredProbabilities = 0.0;
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+        double[][] topicsSkewWeight = new double[numModalities][numTopics];
+        //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
+        for (Byte i = 0; i < numModalities; i++) {
+            for (int topic = 0; topic < numTopics; topic++) {
 
-            for (IDSorter info : sortedWords) {
-                int type = info.getID();
-                double probability = info.getWeight() / tokensPerTopic[0][topic];
+                topicsSkewWeight[i][topic] = 0.0;
+                TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
+                topicTypeCounts[i][topic] = sortedWords.size();
 
-                sumSquaredProbabilities += probability * probability;
-            }
-
-            scores.setTopicScore(topic, 1.0 / sumSquaredProbabilities);
-        }
-
-        return scores;
-    }
-       
-       
-       private double[] calcTopicsSkew() {
-        // Calc Skew weight
-        //skewOn == SkewType.LabelsOnly
-        // The skew index of eachType
-        double[]topicsSkew = new double[numTopics]; //<modality, type>
-        
-        topicDocCounts[1] 
-        // The skew index of each Lbl Type
-        //public double[] lblTypeSkewIndexes;
-        //double [][] typeSkewIndexes = new 
-        double skewSum = 0;
-        int nonZeroSkewCnt = 1;
-
-        
-            for (int type = 0; type < numTypes[i]; type++) {
-
-                int totalTypeCounts = 0;
-                typeSkewIndexes[i][type] = 0;
-
-                int[] targetCounts = typeTopicCounts[i][type];
-
-                int index = 0;
-                int count = 0;
-                while (index < targetCounts.length) {
-                    count = targetCounts[index];
-                    typeSkewIndexes[i][type] += Math.pow((double) count, 2);
-                    totalTypeCounts += count;
-                    //currentTopic = currentTypeTopicCounts[index] & topicMask;
-                    index++;
-                }
-
-                if (totalTypeCounts > 0) {
-                    typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
-                }
-                if (typeSkewIndexes[i][type] > 0) {
-                    nonZeroSkewCnt++;
-                    skewSum += typeSkewIndexes[i][type];
+                for (IDSorter info : sortedWords) {
+                    double probability = info.getWeight() / tokensPerTopic[i][topic];
+                    topicsSkewWeight[i][topic] += probability * probability;
                 }
 
             }
-
-            skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
-            appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
-
         }
 
-        return skewWeight;
-
+        return topicsSkewWeight;
     }
-       
+
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
@@ -1936,7 +1891,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                         topicSizeHistogram,
                         numTypes[m],
                         betaSum[m]);
-                if (Double.isNaN(betaSum[m]) || betaSum[m] <0.0001) {
+                if (Double.isNaN(betaSum[m]) || betaSum[m] < 0.0001) {
                     betaSum[m] = prevBetaSum;
                 }
                 beta[m] = betaSum[m] / numTypes[m];
