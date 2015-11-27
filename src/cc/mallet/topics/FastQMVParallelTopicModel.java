@@ -532,7 +532,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     }
 
-    public void mergeSimilarTopics(int numWords, TByteArrayList modalities, double mergeSimilarity) {
+    public void mergeSimilarTopics(int maxNumWords, TByteArrayList modalities, double mergeSimilarity, double splitLimit) {
 
         // consider similarity on top numWords
         HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
@@ -551,13 +551,13 @@ public class FastQMVParallelTopicModel implements Serializable {
         for (int topic = 0; topic < numTopics; topic++) {
             int previousVocabularySize = 0;
             labelId = Integer.toString(topic);
-            int[] wordTypes = new int[numWords * modalities.size()];
-            double[] weights = new double[numWords * modalities.size()];
+            int[] wordTypes = new int[maxNumWords * modalities.size()];
+            double[] weights = new double[maxNumWords * modalities.size()];
             
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
                 
-                int activeNumWords = Math.min(numWords, (int)Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
+                int activeNumWords = Math.min(maxNumWords, (int)Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
@@ -573,7 +573,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 previousVocabularySize += maxTypeCount[m];
             }
 
-            labelVectors.put(labelId, new SparseVector(wordTypes, weights, numWords, numWords, true, false, true));
+            labelVectors.put(labelId, new SparseVector(wordTypes, weights, maxNumWords, maxNumWords, true, false, true));
         }
 
         double similarity = 0;
@@ -586,29 +586,12 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        for (int i = 0; i < numTopics; i++) {
 //            Arrays.fill(topicSimilarities[i], 0);
 //        }
-        int splittedTopic = -1;
-        //if (!inActiveTopicIndex.isEmpty()) {
-
-        int maxTopic = 0;
-        double maxAlpha = 0;
-        double avgAlpha = 0;
-
-        for (int kk = 0; kk <= numTopics; kk++) {
-            //int k = kactive.get(kk);
-            avgAlpha += alpha[0][kk];
-            if (alpha[0][kk] > maxAlpha) {
-                maxAlpha = alpha[0][kk];
-                maxTopic = kk;
-            }
-        }
-        avgAlpha = avgAlpha / (numTopics - inActiveTopicIndex.size());
-
-        if (maxAlpha > 10 * avgAlpha) {
-            splittedTopic = maxTopic;
-        }
+        
+          
         //}
 
         TIntIntHashMap mergedTopics = new TIntIntHashMap();
+      
 
         for (int t = 0; t < numTopics; t++) {
 
@@ -634,8 +617,18 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
         }
-
-        if (mergedTopics.size() > 0 || splittedTopic > 0) {
+        
+        List<Integer> splittedTopics = new LinkedList<Integer>();
+        
+        for (int kk = 0; kk <= numTopics; kk++) {
+            if ( topicsSkewWeight[0][kk]* tokensPerTopic[0][kk]>splitLimit && !mergedTopics.containsKey(kk))
+                splittedTopics.add(kk);
+            
+            
+        }
+       
+        
+        if (mergedTopics.size() > 0 || (!splittedTopics.isEmpty())) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
                     TopicAssignment document = entity.Assignments[m];
@@ -649,7 +642,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                         for (int position = 0; position < topics.length; position++) {
                             int oldTopic = topics[position];
 
-                            if (splittedTopic > 0 && splittedTopic == oldTopic) {
+                            if (splittedTopics.contains(oldTopic)) {
 
                                 topics[position] = ParallelTopicModel.UNASSIGNED_TOPIC;
 
@@ -979,7 +972,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
-                mergeSimilarTopics(20, modalities, 0.6);
+                mergeSimilarTopics(20, modalities, 0.6, 15);
 
                 optimizeDP();
                 optimizeGamma();
