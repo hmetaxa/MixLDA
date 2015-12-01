@@ -532,7 +532,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     }
 
-    public void mergeSimilarTopics(int maxNumWords, TByteArrayList modalities, double mergeSimilarity, double splitLimit) {
+    public void mergeSimilarTopics(int maxNumWords, TByteArrayList modalities, double mergeSimilarity, int deleteNumTopics) {
 
         // consider similarity on top numWords
         HashMap<String, SparseVector> labelVectors = new HashMap<String, SparseVector>();
@@ -618,17 +618,44 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         }
         
-        List<Integer> splittedTopics = new LinkedList<Integer>();
+        List<Integer> deletedTopics = new LinkedList<Integer>();
         
         for (int kk = 0; kk <= numTopics; kk++) {
-            if ( topicsSkewWeight[0][kk]* tokensPerTopic[0][kk]>splitLimit && !mergedTopics.containsKey(kk))
-                splittedTopics.add(kk);
+             //tokensPerTopic[0][kk]
+            if ( topicsSkewWeight[0][kk]* alpha[0][kk]>splitLimit && !mergedTopics.containsKey(kk))
+            {
+                deletedTopics.add(kk);
+                logger.info("Delete topics: " + kk);
+            }
             
             
         }
        
+        //Topics having a large number of tokens but low Token and topic exclusivity (differentiation) 
+        //or topics that are small but have small topic exclusivity should be deleted... 
         
-        if (mergedTopics.size() > 0 || (!splittedTopics.isEmpty())) {
+         int splittedTopic = -1;
+        //if (!inActiveTopicIndex.isEmpty()) {
+
+        int maxTopic = 0;
+        double maxAlpha = 0;
+        double avgAlpha = 0;
+
+        for (int kk = 0; kk <= numTopics; kk++) {
+            //int k = kactive.get(kk);
+            avgAlpha += alpha[0][kk];
+            if (alpha[0][kk] > maxAlpha) {
+                maxAlpha = alpha[0][kk];
+                maxTopic = kk;
+            }
+        }
+        avgAlpha = avgAlpha / (numTopics - inActiveTopicIndex.size());
+
+        if (maxAlpha > 10 * avgAlpha) {
+            splittedTopic = maxTopic;
+        }
+        
+        if (mergedTopics.size() > 0 || (!deletedTopics.isEmpty())) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
                     TopicAssignment document = entity.Assignments[m];
@@ -642,7 +669,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                         for (int position = 0; position < topics.length; position++) {
                             int oldTopic = topics[position];
 
-                            if (splittedTopics.contains(oldTopic)) {
+                            if (deletedTopics.contains(oldTopic)) {
 
                                 topics[position] = ParallelTopicModel.UNASSIGNED_TOPIC;
 
@@ -1841,6 +1868,28 @@ public class FastQMVParallelTopicModel implements Serializable {
         return topicsSkewWeight;
     }
 
+      public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
+
+        double[][] topicsSkewWeight = new double[numModalities][numTopics];
+        //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
+        for (Byte i = 0; i < numModalities; i++) {
+            for (int topic = 0; topic < numTopics; topic++) {
+
+                topicsSkewWeight[i][topic] = 0.0;
+                TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
+                topicTypeCounts[i][topic] = sortedWords.size();
+
+                for (IDSorter info : sortedWords) {
+                    double probability = info.getWeight() / tokensPerTopic[i][topic];
+                    topicsSkewWeight[i][topic] += probability * probability;
+                }
+
+            }
+        }
+
+        return topicsSkewWeight;
+    }
+    
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
