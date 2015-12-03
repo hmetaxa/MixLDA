@@ -633,7 +633,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         List<Integer> deletedTopics = new LinkedList<Integer>();
-        for (int kk = 0; kk <= numTopics; kk++) {
+        for (int kk = 0; kk < numTopics; kk++) {
             sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] * Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
             //tokensPerTopic[0][kk]
             //ABS(LOG10(C2)-LOG10(M$10))
@@ -645,7 +645,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         Arrays.sort(sortedTopics);
-        for (int j = 0; j <= deleteNumTopics; j++) {
+        for (int j = 0; j < deleteNumTopics; j++) {
 
             deletedTopics.add(sortedTopics[j].getID());
             logger.info("Delete topic: " + sortedTopics[j].getID());
@@ -996,7 +996,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
-                mergeSimilarTopics(20, modalities, 0.6, 15);
+                mergeSimilarTopics(20, modalities, 0.6, 3);
 
                 optimizeDP();
                 optimizeGamma();

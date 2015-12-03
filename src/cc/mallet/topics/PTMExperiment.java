@@ -65,9 +65,9 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 200;
+        int numTopics = 100;
         //int maxNumTopics = 500;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 400; //Max 2000
         int numChars = 5000;
         int independentIterations = 0;
         int burnIn = 50;
