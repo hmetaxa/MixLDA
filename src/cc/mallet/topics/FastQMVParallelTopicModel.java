@@ -553,11 +553,10 @@ public class FastQMVParallelTopicModel implements Serializable {
             labelId = Integer.toString(topic);
             int[] wordTypes = new int[maxNumWords * modalities.size()];
             double[] weights = new double[maxNumWords * modalities.size()];
-            
+
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
-                
-                int activeNumWords = Math.min(maxNumWords, (int)Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
+                int activeNumWords = Math.min(maxNumWords, (int) Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
@@ -586,12 +585,8 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        for (int i = 0; i < numTopics; i++) {
 //            Arrays.fill(topicSimilarities[i], 0);
 //        }
-        
-          
         //}
-
         TIntIntHashMap mergedTopics = new TIntIntHashMap();
-      
 
         for (int t = 0; t < numTopics; t++) {
 
@@ -617,44 +612,46 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
         }
-        
-        List<Integer> deletedTopics = new LinkedList<Integer>();
-        
-        for (int kk = 0; kk <= numTopics; kk++) {
-             //tokensPerTopic[0][kk]
-            if ( topicsSkewWeight[0][kk]* alpha[0][kk]>splitLimit && !mergedTopics.containsKey(kk))
-            {
-                deletedTopics.add(kk);
-                logger.info("Delete topics: " + kk);
-            }
-            
-            
-        }
-       
-        //Topics having a large number of tokens but low Token and topic exclusivity (differentiation) 
-        //or topics that are small but have small topic exclusivity should be deleted... 
-        
-         int splittedTopic = -1;
-        //if (!inActiveTopicIndex.isEmpty()) {
 
-        int maxTopic = 0;
-        double maxAlpha = 0;
+      
         double avgAlpha = 0;
+        int cnt = 0;
 
         for (int kk = 0; kk <= numTopics; kk++) {
             //int k = kactive.get(kk);
             avgAlpha += alpha[0][kk];
-            if (alpha[0][kk] > maxAlpha) {
-                maxAlpha = alpha[0][kk];
-                maxTopic = kk;
-            }
-        }
-        avgAlpha = avgAlpha / (numTopics - inActiveTopicIndex.size());
+            cnt += alpha[0][kk] == 0 ? 0 : 1;
 
-        if (maxAlpha > 10 * avgAlpha) {
-            splittedTopic = maxTopic;
         }
-        
+
+        avgAlpha = avgAlpha / cnt; /// (numTopics - inActiveTopicIndex.size());
+
+        IDSorter[] sortedTopics = new IDSorter[numTopics];
+        for (int topic = 0; topic < numTopics; topic++) {
+            // Initialize the sorters with dummy values
+            sortedTopics[topic] = new IDSorter(topic, topic);
+        }
+
+        List<Integer> deletedTopics = new LinkedList<Integer>();
+        for (int kk = 0; kk <= numTopics; kk++) {
+            sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] * Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
+            //tokensPerTopic[0][kk]
+            //ABS(LOG10(C2)-LOG10(M$10))
+            //if (topicsSkewWeight[0][kk] * Math.abs(Math.log10( alpha[0][kk]) - Math.log10( alpha[0][kk]))  > splitLimit && !mergedTopics.containsKey(kk)) {
+//                deletedTopics.add(kk);
+            //           
+            //        }
+
+        }
+
+        Arrays.sort(sortedTopics);
+        for (int j = 0; j <= deleteNumTopics; j++) {
+
+            deletedTopics.add(sortedTopics[j].getID());
+            logger.info("Delete topic: " + sortedTopics[j].getID());
+
+        }
+
         if (mergedTopics.size() > 0 || (!deletedTopics.isEmpty())) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
@@ -1868,7 +1865,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         return topicsSkewWeight;
     }
 
-      public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
+    public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
 
         double[][] topicsSkewWeight = new double[numModalities][numTopics];
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
@@ -1889,7 +1886,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         return topicsSkewWeight;
     }
-    
+
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
