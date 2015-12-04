@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 1;
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -70,7 +70,7 @@ public class PTMExperiment {
         int numIterations = 400; //Max 2000
         int numChars = 5000;
         int independentIterations = 0;
-        int burnIn = 50;
+        int burnIn = 100;
         int optimizeInterval = 25;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
@@ -430,12 +430,17 @@ public class PTMExperiment {
 
             logger.info("Insert default topic descriptions");
 
-            try {
+             
+        try {
+            // create a database connection
+            //connection = DriverManager.getConnection(SQLLitedb);
+            
                 String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n" +
 "select substr(GROUP_CONCAT(Item),1,100), '' , topicId , 1, '" + experimentId + "' \n" +
 "from  TopicDescriptionView\n" +
 " where experimentID = '" + experimentId + "' \n" +
 " GROUP BY TopicID";
+                connection = DriverManager.getConnection(SQLLitedb);
                 Statement statement = connection.createStatement();
                 statement.setQueryTimeout(60);  // set timeout to 30 sec.
                 statement.executeUpdate(insertTopicDescriptionSql);

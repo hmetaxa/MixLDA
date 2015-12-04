@@ -556,7 +556,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
-                int activeNumWords = Math.min(maxNumWords, (int) Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
+                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
@@ -613,7 +613,6 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         }
 
-      
         double avgAlpha = 0;
         int cnt = 0;
 
@@ -628,13 +627,23 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         IDSorter[] sortedTopics = new IDSorter[numTopics];
         for (int topic = 0; topic < numTopics; topic++) {
-            // Initialize the sorters with dummy values
-            sortedTopics[topic] = new IDSorter(topic, topic);
+            // Initialize the sorters with big values
+
+            sortedTopics[topic] = new IDSorter(topic, Double.MAX_VALUE);
         }
 
         List<Integer> deletedTopics = new LinkedList<Integer>();
+        double totalCohDiscrDiffWeight = 0;
+        int totalCohDiscrDiffWeightcnt = 0;
         for (int kk = 0; kk < numTopics; kk++) {
-            sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] * Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
+            if (alpha[0][kk] != 0) {
+                double diffLogWeight = Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha));
+                //sortedTopics[kk] = new IDSorter(kk, diffLogWeight);
+                sortedTopics[kk] = new IDSorter(kk, topicsSkewWeight[0][kk] / diffLogWeight);
+                totalCohDiscrDiffWeight += topicsSkewWeight[0][kk] / diffLogWeight;
+                totalCohDiscrDiffWeightcnt++;
+                //sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] / Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
+            }
             //tokensPerTopic[0][kk]
             //ABS(LOG10(C2)-LOG10(M$10))
             //if (topicsSkewWeight[0][kk] * Math.abs(Math.log10( alpha[0][kk]) - Math.log10( alpha[0][kk]))  > splitLimit && !mergedTopics.containsKey(kk)) {
@@ -645,10 +654,12 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         Arrays.sort(sortedTopics);
-        for (int j = 0; j < deleteNumTopics; j++) {
-
-            deletedTopics.add(sortedTopics[j].getID());
-            logger.info("Delete topic: " + sortedTopics[j].getID());
+        for (int j = sortedTopics.length-1; j >= sortedTopics.length - deleteNumTopics; j--) {
+            if (10 * sortedTopics[j].getWeight() < totalCohDiscrDiffWeight / totalCohDiscrDiffWeightcnt) {
+                //deletedTopics.add(sortedTopics[j].getID());
+                logger.info("Delete topic: " + sortedTopics[j].getID());
+            }
+            
 
         }
 
@@ -996,7 +1007,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
-                mergeSimilarTopics(20, modalities, 0.6, 3);
+                if (iteration >= burninPeriod + optimizeInterval) {
+                    mergeSimilarTopics(40, modalities, 0.6, (int)  numTopics/100);
+                }
 
                 optimizeDP();
                 optimizeGamma();
@@ -1855,8 +1868,10 @@ public class FastQMVParallelTopicModel implements Serializable {
                 topicTypeCounts[i][topic] = sortedWords.size();
 
                 for (IDSorter info : sortedWords) {
+
                     double probability = info.getWeight() / tokensPerTopic[i][topic];
                     topicsSkewWeight[i][topic] += probability * probability;
+
                 }
 
             }
