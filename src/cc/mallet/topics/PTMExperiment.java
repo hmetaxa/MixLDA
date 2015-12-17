@@ -59,8 +59,8 @@ public class PTMExperiment {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
-        boolean calcSimilarities = false;
-        boolean runTopicModelling = true;
+        boolean calcSimilarities = true;
+        boolean runTopicModelling = false;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
@@ -72,7 +72,7 @@ public class PTMExperiment {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 25;
-        ExperimentType experimentType = ExperimentType.ACM;
+        ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
         int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -85,6 +85,8 @@ public class PTMExperiment {
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
                 + numIterations + "IT_" + numChars + "CHRs_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
+        
+        experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = "";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
@@ -872,12 +874,13 @@ public class PTMExperiment {
 //
 //                    break;
                 case HEALTHTender:
-                    sql = "select TopicDistributionPerGrantView.projectId, TopicDistributionPerGrantView.TopicId, TopicDistributionPerGrantView.NormWeight as Weight \n"
-                            + "from TopicDistributionPerGrantView\n"
-                            + "where TopicDistributionPerGrantView.experimentId='" + experimentId + "'   and TopicDistributionPerGrantView.NormWeight>0.03\n"
-                            + "and TopicDistributionPerGrantView.projectId in (Select projectId FROM PubGrant GROUP BY projectId HAVING Count(*)>4)\n"
-                            + "and TopicDistributionPerGrantView.topicid in (select TopicId from topicdescription \n"
-                            + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                    sql = "select EntityTopicDistribution.EntityId as projectId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
+"                            from EntityTopicDistribution\n" +
+"                            where EntityTopicDistribution.EntityType='Grant' AND EntityTopicDistribution.EntityId<>'' AND\n" +
+"                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
+"                            and EntityTopicDistribution.EntityId in (Select grantId FROM PubGrant GROUP BY grantId HAVING Count(*)>4)\n" +
+"                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
+"                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>2)";
 
                     break;
 //                case Authors:
