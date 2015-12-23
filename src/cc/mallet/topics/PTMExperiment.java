@@ -53,7 +53,8 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 1;
+        byte numModalities = 5;
+               
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -74,7 +75,7 @@ public class PTMExperiment {
         int optimizeInterval = 25;
         ExperimentType experimentType = ExperimentType.HEALTHTender;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 20;
+        int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -1134,7 +1135,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView LIMIT 10000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 10000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 

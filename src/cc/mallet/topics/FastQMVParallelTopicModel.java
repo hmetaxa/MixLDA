@@ -1882,24 +1882,8 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
 
-        double[][] topicsSkewWeight = new double[numModalities][numTopics];
-        //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
-        for (Byte i = 0; i < numModalities; i++) {
-            for (int topic = 0; topic < numTopics; topic++) {
-
-                topicsSkewWeight[i][topic] = 0.0;
-                TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
-                topicTypeCounts[i][topic] = sortedWords.size();
-
-                for (IDSorter info : sortedWords) {
-                    double probability = info.getWeight() / tokensPerTopic[i][topic];
-                    topicsSkewWeight[i][topic] += probability * probability;
-                }
-
-            }
-        }
-
-        return topicsSkewWeight;
+       //not implemented
+        return null;
     }
 
     public void optimizeBeta() {

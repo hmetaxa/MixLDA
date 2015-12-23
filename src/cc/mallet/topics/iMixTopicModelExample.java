@@ -58,7 +58,7 @@ public class iMixTopicModelExample {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean calcSimilarities = true;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean calcTokensPerEntity = false;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
@@ -68,7 +68,7 @@ public class iMixTopicModelExample {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 50;
-        ExperimentType experimentType = ExperimentType.ACM;
+        ExperimentType experimentType = ExperimentType.FullGrants;
         int pruneCnt = 20; //Reduce features to those that occur more than N times
         int pruneLblCnt = 7;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
@@ -105,6 +105,8 @@ public class iMixTopicModelExample {
         String experimentId = experimentType.toString() + "_" + numTopics + "T_" + (maxNumTopics > numTopics + 1 ? maxNumTopics + "maxT_" : "")
                 + numIterations + "IT_" + independentIterations + "IIT_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
         String experimentDescription = "";
+        //experimentId = "FullGrants_300T_1200IT_0IIT_100B_4M_cos";
+        experimentId = "FullGrants_320T_1200IT_0IIT_100B_4M_cos";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -1011,9 +1013,14 @@ public class iMixTopicModelExample {
                                 + " where weight>0.02 AND ExperimentId='" + experimentId + "' group By GrantId , TopicId order by  GrantId   , TopicId";
                         break;
                     case FullGrants:
-                        sql = "select    links.projectId  as ProjectId, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
-                                + " where weight>0.02 AND ExperimentId='" + experimentId
-                                + "' group By links.projectId , TopicId order by  links.projectId, TopicId";
+                        sql = "select EntityTopicDistribution.EntityId as projectId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
+"                            from EntityTopicDistribution\n" +
+"                            where EntityTopicDistribution.EntityType='Grant' AND EntityTopicDistribution.EntityId<>'' AND\n" +
+"                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.01\n" +
+"                            and EntityTopicDistribution.EntityId in (Select projectId FROM links GROUP BY links.projectid HAVING Count(*)>2)";
+                                //"select    links.projectId  as ProjectId, TopicId, AVG(weight) as Weight from PubTopic Inner Join links  on PubTopic.PubId= links.OriginalId "
+                                //+ " where weight>0.02 AND ExperimentId='" + experimentId
+                                //+ "' group By links.projectId , TopicId order by  links.projectId, TopicId";
 
                         break;
                     case FETGrants:
