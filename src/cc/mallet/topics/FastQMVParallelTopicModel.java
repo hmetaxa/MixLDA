@@ -654,12 +654,11 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         Arrays.sort(sortedTopics);
-        for (int j = sortedTopics.length-1; j >= sortedTopics.length - deleteNumTopics; j--) {
+        for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
             if (10 * sortedTopics[j].getWeight() < totalCohDiscrDiffWeight / totalCohDiscrDiffWeightcnt) {
                 //deletedTopics.add(sortedTopics[j].getID());
                 logger.info("Delete topic: " + sortedTopics[j].getID());
             }
-            
 
         }
 
@@ -1008,7 +1007,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    mergeSimilarTopics(40, modalities, 0.6, (int)  numTopics/100);
+                    mergeSimilarTopics(40, modalities, 0.6, (int) numTopics / 100);
                 }
 
                 optimizeDP();
@@ -1882,7 +1881,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
     public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
 
-       //not implemented
+        //not implemented
         return null;
     }
 
@@ -1929,10 +1928,19 @@ public class FastQMVParallelTopicModel implements Serializable {
                         topicSizeHistogram,
                         numTypes[m],
                         betaSum[m]);
-                if (Double.isNaN(betaSum[m]) || betaSum[m] < 0.0001) {
+
+                if (betaSum[m] < numTypes[m] * 0.001) { //too sparse for this topic model (num of topics probably large for this modality).. prevent smoothing from going to zero 
+                    logger.warning("Too sparse model: set Beta to 0.001");
+                    beta[m] = 0.001;
                     betaSum[m] = prevBetaSum;
+
+                } else if (Double.isNaN(betaSum[m])) {
+                    logger.warning("Dirichlet optimization has become unstable (NaN Value). Resetting to previous Beta");
+                    betaSum[m] = prevBetaSum;
+                    beta[m] = betaSum[m] / numTypes[m];
+                } else {
+                    beta[m] = betaSum[m] / numTypes[m];
                 }
-                beta[m] = betaSum[m] / numTypes[m];
             } catch (RuntimeException e) {
                 // Dirichlet optimization has become unstable. This is known to happen for very small corpora (~5 docs).
                 logger.warning("Dirichlet optimization has become unstable:" + e.getMessage() + ". Resetting to previous Beta");
@@ -2282,7 +2290,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
-                if (appendMetadata) {
+                if (appendMetadata && m==0) { //do it only once
                     appendMetadata("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
                 }
                 p_a[m][i] = Math.min(a, 100);//a=100--> almost p=99%
