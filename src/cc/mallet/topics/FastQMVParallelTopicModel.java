@@ -92,6 +92,7 @@ public class FastQMVParallelTopicModel implements Serializable {
     public int[][][] typeTopicCounts; //
     public int[][] tokensPerTopic; // indexed by <topic index> 
     public FTree[][] trees; //store 
+    public double[][] typeDiscrWeight;
     //public FTree betaSmoothingTree; //store  we will have big overhead on updating (two more tree updates)
 
     //public List<ConcurrentLinkedQueue<FastQDelta>> queues;
@@ -425,9 +426,11 @@ public class FastQMVParallelTopicModel implements Serializable {
         typeTopicCounts = new int[numModalities][][];
         tokensPerTopic = new int[numModalities][numTopics];
         maxTypeCount = new int[numModalities];
+        typeDiscrWeight = new double[numModalities][]; //<modality, type>
 
         for (Byte m = 0; m < numModalities; m++) {
             typeTopicCounts[m] = new int[numTypes[m]][numTopics];
+            typeDiscrWeight[m] = new double[numTypes[m]];
             trees[m] = new FTree[numTypes[m]];
 
             //find maxTypeCount needed in countHistogram Optimize Beta
@@ -546,7 +549,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         int[][] topicTypeCounts = new int[numModalities][numTopics];
-        double[][] topicsSkewWeight = calcTopicsSkewOnText(topicTypeCounts, topicSortedWords);
+        double[][] topicsSkewWeight = calcTopicsSkewOnText(topicTypeCounts, topicSortedWords, true);
 
         for (int topic = 0; topic < numTopics; topic++) {
             int previousVocabularySize = 0;
@@ -1802,12 +1805,12 @@ public class FastQMVParallelTopicModel implements Serializable {
 //    public void printDocumentTopics(PrintWriter out) {
 //        printDocumentTopics(out, 0.0, -1);
 //    }
-    //    //TODO save weights in DB (not needed any more as thay calculated on the fly)
-    private double[] calcSkew() {
+    //    TODO save weights in DB (not needed any more as thay calculated on the fly)
+    private double[] calcSkew(double[][] typeDiscrWeight) {
         // Calc Skew weight
         //skewOn == SkewType.LabelsOnly
         // The skew index of eachType
-        double[][] typeSkewIndexes = new double[numModalities][]; //<modality, type>
+        //double[][] typeDiscrWeight = new double[numModalities][]; //<modality, type>
         double[] skewWeight = new double[numModalities];
         // The skew index of each Lbl Type
         //public double[] lblTypeSkewIndexes;
@@ -1816,12 +1819,12 @@ public class FastQMVParallelTopicModel implements Serializable {
         int nonZeroSkewCnt = 1;
 
         for (Byte i = 0; i < numModalities; i++) {
-            typeSkewIndexes[i] = new double[numTypes[i]];
+            //typeDiscrWeight[i] = new double[numTypes[i]];
 
             for (int type = 0; type < numTypes[i]; type++) {
 
                 int totalTypeCounts = 0;
-                typeSkewIndexes[i][type] = 0;
+                typeDiscrWeight[i][type] = 0;
 
                 int[] targetCounts = typeTopicCounts[i][type];
 
@@ -1829,18 +1832,18 @@ public class FastQMVParallelTopicModel implements Serializable {
                 int count = 0;
                 while (index < targetCounts.length) {
                     count = targetCounts[index];
-                    typeSkewIndexes[i][type] += Math.pow((double) count, 2);
+                    typeDiscrWeight[i][type] += Math.pow((double) count, 2);
                     totalTypeCounts += count;
                     //currentTopic = currentTypeTopicCounts[index] & topicMask;
                     index++;
                 }
 
                 if (totalTypeCounts > 0) {
-                    typeSkewIndexes[i][type] = typeSkewIndexes[i][type] / Math.pow((double) (totalTypeCounts), 2);
+                    typeDiscrWeight[i][type] = typeDiscrWeight[i][type] / Math.pow((double) (totalTypeCounts), 2);
                 }
-                if (typeSkewIndexes[i][type] > 0) {
+                if (typeDiscrWeight[i][type] > 0) {
                     nonZeroSkewCnt++;
-                    skewSum += typeSkewIndexes[i][type];
+                    skewSum += typeDiscrWeight[i][type];
                 }
 
             }
@@ -1855,7 +1858,9 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
-    public double[][] calcTopicsSkewOnText(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
+    public double[][] calcTopicsSkewOnText(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
+
+        double[] skewWeight = calcSkew(typeDiscrWeight);
 
         double[][] topicsSkewWeight = new double[numModalities][numTopics];
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
@@ -1868,7 +1873,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                 for (IDSorter info : sortedWords) {
 
-                    double probability = info.getWeight() / tokensPerTopic[i][topic];
+                    double probability = onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1 * info.getWeight() / tokensPerTopic[i][topic];
                     topicsSkewWeight[i][topic] += probability * probability;
 
                 }
@@ -2290,9 +2295,10 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
-                if (appendMetadata && m==0) { //do it only once
+                if (appendMetadata && m == 0) { //do it only once
                     appendMetadata("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
                 }
+
                 p_a[m][i] = Math.min(a, 100);//a=100--> almost p=99%
                 p_a[i][m] = Math.min(a, 100);;
                 p_b[m][i] = b;
@@ -2326,7 +2332,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             max = numTopics;
         }
 
-        double[] skewWeight = calcSkew();
+        double[] skewWeight = calcSkew(typeDiscrWeight);
 
         Connection connection = null;
         Statement statement = null;

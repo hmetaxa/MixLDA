@@ -274,11 +274,12 @@ public class FastQMVWorkerRunnable implements Runnable {
             for (byte m = 0; m < numModalities; m++) {
 
                 for (byte j = m; j < numModalities; j++) {
-                    double pRand = m == j ? 1.0 : p_a[m][j] == 0 ? 0
+                    double pRand =
+                            m == j ? 1.0 : p_a[m][j] == 0 ? 0
                             : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
 
-                    p[m][j] = pRand;
-                    p[j][m] = pRand;
+                    p[m][j] = beta[m]==0.001 ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
+                    p[j][m] = beta[j]==0.001 ? 0 :pRand;  //too sparse modality --> ignore its doc /topic distribution
                 }
 
                 docLength[m] = 0;
