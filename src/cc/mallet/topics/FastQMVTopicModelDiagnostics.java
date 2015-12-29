@@ -1,6 +1,5 @@
 package cc.mallet.topics;
 
-
 import java.io.*;
 import java.util.*;
 import java.text.*;
@@ -26,7 +25,10 @@ public class FastQMVTopicModelDiagnostics {
     /**
      * All words in sorted order, with counts
      */
-    ArrayList<TreeSet<IDSorter>> topicSortedWords;
+    //ArrayList<TreeSet<IDSorter>> topicSortedWords;
+
+    ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords; //= new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
+
     /**
      * The top N words in each topic in an array for easy access
      */
@@ -44,13 +46,18 @@ public class FastQMVTopicModelDiagnostics {
     int numTokens = 0;
 
     public FastQMVTopicModelDiagnostics(FastQMVParallelTopicModel model, int numTopWords) {
-        numTopics =  model.getNumTopics();
+        numTopics = model.getNumTopics();
         this.numTopWords = numTopWords;
 
         this.model = model;
 
         alphabet = model.getAlphabet()[0];
-        topicSortedWords = model.getSortedWords(0);
+
+        topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(model.numModalities);
+        for (Byte m = 0; m < model.numModalities; m++) {
+            topicSortedWords.add(model.getSortedWords(m));
+        }
+        //topicSortedWords = model.getSortedWords(0);
 
         topicTopWords = new String[numTopics][numTopWords];
 
@@ -64,7 +71,7 @@ public class FastQMVTopicModelDiagnostics {
         for (int topic = 0; topic < numTopics; topic++) {
 
             int position = 0;
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             // How many words should we report? Some topics may have fewer than
             //  the default number of words with non-zero weight.
@@ -87,6 +94,7 @@ public class FastQMVTopicModelDiagnostics {
         diagnostics.add(getDocumentEntropy(model.tokensPerTopic[0]));
         diagnostics.add(getWordLengthScores());
         diagnostics.add(getCoherence());
+        diagnostics.add(getDiscrCoherence());
         diagnostics.add(getDistanceFromUniform());
         diagnostics.add(getDistanceFromCorpus());
         diagnostics.add(getEffectiveNumberOfWords());
@@ -94,6 +102,7 @@ public class FastQMVTopicModelDiagnostics {
         diagnostics.add(getRank1Percent());
         diagnostics.add(getDocumentPercentRatio(FIFTY_PERCENT_INDEX, TWO_PERCENT_INDEX));
         diagnostics.add(getDocumentPercent(5));
+        
     }
 
     public void collectDocumentStatistics() {
@@ -174,7 +183,7 @@ public class FastQMVTopicModelDiagnostics {
 
                             sumCountTimesLogCount[topic] += topicCounts[topic] * Math.log(topicCounts[topic]);
 
-                            double proportion = (model.gamma[0]*model.alpha[0][topic] + topicCounts[topic]) / (model.alphaSum[0] + docLength);
+                            double proportion = (model.gamma[0] * model.alpha[0][topic] + topicCounts[topic]) / (model.alphaSum[0] + docLength);
                             for (int i = 0; i < DEFAULT_DOC_PROPORTIONS.length; i++) {
                                 if (proportion < DEFAULT_DOC_PROPORTIONS[i]) {
                                     break;
@@ -250,7 +259,7 @@ public class FastQMVTopicModelDiagnostics {
 
             double topicScore = 0.0;
             int position = 0;
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             for (IDSorter info : sortedWords) {
                 int type = info.getID();
@@ -273,6 +282,33 @@ public class FastQMVTopicModelDiagnostics {
         return scores;
     }
 
+    public TopicScores getDiscrCoherence() {
+
+        double avgAlpha = 0;
+        int cnt = 0;
+
+        for (int kk = 0; kk <= numTopics; kk++) {
+            //int k = kactive.get(kk);
+            avgAlpha += model.alpha[0][kk];
+            cnt += model.alpha[0][kk] == 0 ? 0 : 1;
+
+        }
+
+        avgAlpha = avgAlpha / cnt; /// (numTopics - inActiveTopicIndex.size());
+        double[][] topicsDiscrWeight = model.calcDiscrWeightWithinTopics(topicSortedWords, true);
+        TopicScores scores = new TopicScores("normDiscrWeight", numTopics, numTopWords);
+        for (int kk = 0; kk < numTopics; kk++) {
+            if (model.alpha[0][kk] != 0) {
+                double diffLogWeight = Math.abs(Math.log10(model.alpha[0][kk]) - Math.log10(avgAlpha));
+                scores.setTopicScore(kk, topicsDiscrWeight[0][kk] / diffLogWeight);
+
+            }
+
+        }
+
+        return scores;
+    }
+
     public TopicScores getEffectiveNumberOfWords() {
         int[] tokensPerTopic = model.tokensPerTopic[0];
 
@@ -283,7 +319,7 @@ public class FastQMVTopicModelDiagnostics {
         for (int topic = 0; topic < numTopics; topic++) {
 
             double sumSquaredProbabilities = 0.0;
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             for (IDSorter info : sortedWords) {
                 int type = info.getID();
@@ -314,7 +350,7 @@ public class FastQMVTopicModelDiagnostics {
 
             double topicScore = 0.0;
             int position = 0;
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             for (IDSorter info : sortedWords) {
                 int type = info.getID();
@@ -345,7 +381,7 @@ public class FastQMVTopicModelDiagnostics {
 
         for (int topic = 0; topic < numTopics; topic++) {
             int[][] matrix = topicCodocumentMatrices[topic];
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             double topicScore = 0.0;
 
@@ -427,7 +463,6 @@ public class FastQMVTopicModelDiagnostics {
         scores.wordScoresDefined = true;
 
         // Get the mean length
-
         double meanLength = 0.0;
         int totalWords = 0;
 
@@ -445,7 +480,6 @@ public class FastQMVTopicModelDiagnostics {
         meanLength /= totalWords;
 
         // Now calculate the standard deviation
-
         double lengthVariance = 0.0;
 
         for (int topic = 0; topic < numTopics; topic++) {
@@ -462,7 +496,6 @@ public class FastQMVTopicModelDiagnostics {
         lengthVariance /= (totalWords - 1);
 
         // Finally produce an overall topic score
-
         double lengthSD = Math.sqrt(lengthVariance);
         for (int topic = 0; topic < numTopics; topic++) {
             for (int position = 0; position < topicTopWords[topic].length; position++) {
@@ -551,26 +584,21 @@ public class FastQMVTopicModelDiagnostics {
         return scores;
     }
 
-  
     public void saveToDB(String SQLLitedb, String experimentId, double perplexity, String BatchId) {
         //String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
         Connection connection = null;
         try {
 
-
             connection = DriverManager.getConnection(SQLLitedb);
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);  // set timeout to 30 sec.
-
-            
 
             PreparedStatement bulkInsert = null;
             String sql = "insert into expDiagnostics values(?,?,?,?,?,?);";
 
             connection.setAutoCommit(false);
             bulkInsert = connection.prepareStatement(sql);
-
 
             for (byte m = 0; m < model.numModalities; m++) {
 
@@ -606,7 +634,6 @@ public class FastQMVTopicModelDiagnostics {
 //                    bulkInsert.executeUpdate();
 //                    p++;
 //                }
-
             }
 
             for (int topic = 0; topic < numTopics; topic++) {
@@ -620,7 +647,6 @@ public class FastQMVTopicModelDiagnostics {
                     bulkInsert.setDouble(6, scores.scores[topic]);
                     bulkInsert.executeUpdate();
                 }
-
 
 //                for (int position = 0; position < topicTopWords[topic].length; position++) {
 //                    if (topicTopWords[topic][position] == null) {
@@ -643,8 +669,6 @@ public class FastQMVTopicModelDiagnostics {
 //                }
             }
 
-
-
             connection.commit();
             if (bulkInsert != null) {
                 bulkInsert.close();
@@ -663,7 +687,6 @@ public class FastQMVTopicModelDiagnostics {
             }
         } finally {
         }
-
 
     }
 
@@ -706,7 +729,6 @@ public class FastQMVTopicModelDiagnostics {
         StringBuilder out = new StringBuilder();
         Formatter formatter = new Formatter(out, Locale.US);
 
-
         out.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         out.append("<model>\n");
 
@@ -721,7 +743,7 @@ public class FastQMVTopicModelDiagnostics {
             }
             out.append(">\n");
 
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(0).get(topic);
 
             // How many words should we report? Some topics may have fewer than
             //  the default number of words with non-zero weight.
@@ -791,7 +813,7 @@ public class FastQMVTopicModelDiagnostics {
         int numTopics = Integer.parseInt(args[1]);
         byte mod = 1;
         FastQMVParallelTopicModel model = new FastQMVParallelTopicModel(numTopics, mod, 0.1, 0.01, true);
-        model.addInstances(training,"");
+        model.addInstances(training, "");
         model.setNumIterations(1000);
 
         model.estimate();

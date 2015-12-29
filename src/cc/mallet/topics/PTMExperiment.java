@@ -60,8 +60,8 @@ public class PTMExperiment {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         boolean runOnLine = false;
-        boolean calcSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean calcSimilarities = false;
+        boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
@@ -73,7 +73,7 @@ public class PTMExperiment {
         int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 25;
-        ExperimentType experimentType = ExperimentType.HEALTHTender;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 60; //Reduce features to those that occur more than N times
         int pruneLblCnt = 5;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.

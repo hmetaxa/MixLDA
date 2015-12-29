@@ -534,6 +534,8 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
     }
+    
+
 
     public void mergeSimilarTopics(int maxNumWords, TByteArrayList modalities, double mergeSimilarity, int deleteNumTopics) {
 
@@ -548,8 +550,9 @@ public class FastQMVParallelTopicModel implements Serializable {
             topicSortedWords.add(getSortedWords(m));
         }
 
-        int[][] topicTypeCounts = new int[numModalities][numTopics];
-        double[][] topicsSkewWeight = calcTopicsSkewOnText(topicTypeCounts, topicSortedWords, true);
+        //int[][] topicTypeCounts = new int[numModalities][numTopics];
+        double[][] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true);
+             
 
         for (int topic = 0; topic < numTopics; topic++) {
             int previousVocabularySize = 0;
@@ -559,7 +562,8 @@ public class FastQMVParallelTopicModel implements Serializable {
 
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
-                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsSkewWeight[m][topic] * topicTypeCounts[m][topic]));
+                int topicTypeCount = topicSortedWords.get(m).get(topic).size();
+                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount ));
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
@@ -642,24 +646,18 @@ public class FastQMVParallelTopicModel implements Serializable {
             if (alpha[0][kk] != 0) {
                 double diffLogWeight = Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha));
                 //sortedTopics[kk] = new IDSorter(kk, diffLogWeight);
-                sortedTopics[kk] = new IDSorter(kk, topicsSkewWeight[0][kk] / diffLogWeight);
-                totalCohDiscrDiffWeight += topicsSkewWeight[0][kk] / diffLogWeight;
+                sortedTopics[kk] = new IDSorter(kk, topicsDiscrWeight[0][kk] / diffLogWeight);
+                totalCohDiscrDiffWeight += topicsDiscrWeight[0][kk] / diffLogWeight;
                 totalCohDiscrDiffWeightcnt++;
                 //sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] / Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
             }
-            //tokensPerTopic[0][kk]
-            //ABS(LOG10(C2)-LOG10(M$10))
-            //if (topicsSkewWeight[0][kk] * Math.abs(Math.log10( alpha[0][kk]) - Math.log10( alpha[0][kk]))  > splitLimit && !mergedTopics.containsKey(kk)) {
-//                deletedTopics.add(kk);
-            //           
-            //        }
-
+            
         }
 
         Arrays.sort(sortedTopics);
         for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
             if (10 * sortedTopics[j].getWeight() < totalCohDiscrDiffWeight / totalCohDiscrDiffWeightcnt) {
-                //deletedTopics.add(sortedTopics[j].getID());
+                deletedTopics.add(sortedTopics[j].getID());
                 logger.info("Delete topic: " + sortedTopics[j].getID());
             }
 
@@ -1806,7 +1804,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        printDocumentTopics(out, 0.0, -1);
 //    }
     //    TODO save weights in DB (not needed any more as thay calculated on the fly)
-    private double[] calcSkew(double[][] typeDiscrWeight) {
+    private double[] calcDiscrWeightAcrossTopicsPerModality(double[][] typeDiscrWeight) {
         // Calc Skew weight
         //skewOn == SkewType.LabelsOnly
         // The skew index of eachType
@@ -1858,9 +1856,9 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
-    public double[][] calcTopicsSkewOnText(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
+    public double[][] calcDiscrWeightWithinTopics( ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
 
-        double[] skewWeight = calcSkew(typeDiscrWeight);
+        double[] skewWeight = calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
 
         double[][] topicsSkewWeight = new double[numModalities][numTopics];
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
@@ -1869,7 +1867,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                 topicsSkewWeight[i][topic] = 0.0;
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
-                topicTypeCounts[i][topic] = sortedWords.size();
+                ///topicTypeCounts[i][topic] = sortedWords.size();
 
                 for (IDSorter info : sortedWords) {
 
@@ -1884,11 +1882,11 @@ public class FastQMVParallelTopicModel implements Serializable {
         return topicsSkewWeight;
     }
 
-    public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
-
-        //not implemented
-        return null;
-    }
+//    public double[][] calcTopicsSkewOnPubs(int[][] topicTypeCounts, ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords) {
+//
+//        //not implemented
+//        return null;
+//    }
 
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
@@ -2332,7 +2330,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             max = numTopics;
         }
 
-        double[] skewWeight = calcSkew(typeDiscrWeight);
+        double[] skewWeight = calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
 
         Connection connection = null;
         Statement statement = null;
