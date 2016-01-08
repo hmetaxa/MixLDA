@@ -67,6 +67,7 @@ public class FastQMVWorkerRunnable implements Runnable {
     protected int MHsteps = 1;
     protected boolean useCycleProposals = false;
     protected List<Integer> inActiveTopicIndex;
+    //static double[] samplingWeights = new double[101]; //for debugging
 
     public FastQMVWorkerRunnable(
             int numTopics,
@@ -389,7 +390,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                         }
 
                         // Decrement the global type topic counts  at the end (through delta / queue)
-                   } 
+                    }
                     //else {
 //                        int test = 1;
 //                    }
@@ -409,6 +410,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : gamma[m] * alpha[m][numTopics] / (currentTypeTopicCounts.length);//check this
 
                     double nextUniform = ThreadLocalRandom.current().nextDouble();
+                    //samplingWeights[(int) Math.round(nextUniform * 100)] += 1;
                     double sample = nextUniform * (newTopicMass + topicDocWordMass + currentTree.tree[1]);
                     newTopic = -1;
 
@@ -419,11 +421,14 @@ public class FastQMVWorkerRunnable implements Runnable {
                         System.out.println("Sample new topic: " + newTopic);
                     } else {
                         sample -= newTopicMass;
-                        newTopic = sample < topicDocWordMass
-                                ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)]
-                                : currentTree.sample(nextUniform);
+                        if (sample < topicDocWordMass) {
+                            newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
+                        } else {
+                            
+                            double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
+                            newTopic = currentTree.sample(nextUniform2);
+                        }
 
-                      
                     }
 //            if (sample < topicDocWordMass) {
 //

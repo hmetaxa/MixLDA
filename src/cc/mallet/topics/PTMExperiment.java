@@ -52,26 +52,26 @@ public class PTMExperiment {
 
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
-        int topLabels = 10;
+        //int topLabels = 10;
         byte numModalities = 1;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
-        boolean runOnLine = false;
+        //boolean runOnLine = false;
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
-        boolean calcTokensPerEntity = true;
-        int numOfThreads = 4;
+        //boolean calcTokensPerEntity = true;
+        int numOfThreads = 2;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 700;
+        int numTopics = 600;
         //int maxNumTopics = 500;
-        int numIterations = 750; //Max 2000
+        int numIterations = 700; //Max 2000
         int numChars = 5000;
-        int independentIterations = 0;
-        int burnIn = 750;
+        //int independentIterations = 0;
+        int burnIn = 100;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 70; //Reduce features to those that occur more than N times
@@ -81,11 +81,34 @@ public class PTMExperiment {
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
 //boolean runParametric = true;
+//
+//        try {
+//
+//            double[] temp = {0.3, 1.5, 0.4, 0.3};
+//            FTree tree = new FTree(temp);
+//
+//            int tmp = tree.sample(2.1 / tree.tree[1]);
+//            logger.info("FTree sample 2.1 (2):" + tmp);
+//
+//            double tmp2 = tree.getComponent(0);
+//            logger.info("FTree getComponent(0):" + tmp2);
+//
+//            tmp2 = tree.getComponent(3);
+//            logger.info("FTree getComponent(3):" + tmp2);
+//
+//            tree.update(2, 1.4);
+//
+//            tmp = tree.sample(3.19 /tree.tree[1]);
+//            logger.info("FTree sample 3.19 (2):" + tmp);
+//
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt  + "PRN" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
 
         //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = experimentId + ": \n";
@@ -208,6 +231,30 @@ public class PTMExperiment {
             //String stateFileZip = outputDir + File.separator + "output_state.gz";
             String modelEvaluationFile = outputDir + File.separator + "model_evaluation.txt";
             //String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
+
+            String batchId = "-1";
+            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
+            logger.info(" instances added through pipe");
+
+            boolean runOrigParallelModel = false;
+            if (runOrigParallelModel) {
+                ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics * 0.01, 0.01);
+
+                modelOrig.addInstances(instances[0]);
+
+                    // Use two parallel samplers, which each look at one half the corpus and combine
+                //  statistics after every iteration.
+                modelOrig.setNumThreads(2);
+                    // Run the model for 50 iterations and stop (this is for testing only, 
+                //  for real applications, use 1000 to 2000 iterations)
+                modelOrig.setNumIterations(numIterations);
+                modelOrig.optimizeInterval = optimizeInterval;
+                modelOrig.burninPeriod = burnIn;
+                    //model.optimizeInterval = 0;
+                //model.burninPeriod = 0;
+                //model.saveModelInterval=250;
+                modelOrig.estimate();
+            }
 
             double beta = 0.01;
             double[] betaMod = new double[numModalities];
@@ -365,11 +412,11 @@ public class PTMExperiment {
              //                    //existedAlphabets[m] = instances[m].getDataAlphabet();
              //                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
              //                }
+           
+             String batchId = "-1";
+             InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
+             logger.info(" instances added through pipe");
              */
-            String batchId = "-1";
-            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
-            logger.info(" instances added through pipe");
-
             model.addInstances(instances, batchId);//trainingInstances);//instances);
             logger.info(" instances added");
 
@@ -390,7 +437,7 @@ public class PTMExperiment {
             logger.info("printDocumentTopics finished");
 
             logger.info("Model Id: \n" + experimentId);
-            
+
             logger.info("Model Metadata: \n" + model.getExpMetadata());
 
             if (modelEvaluationFile != null) {
@@ -436,7 +483,7 @@ public class PTMExperiment {
             logger.info("Insert default topic descriptions");
 
             try {
-            // create a database connection
+                // create a database connection
                 //connection = DriverManager.getConnection(SQLLitedb);
 
                 String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n"
@@ -1136,7 +1183,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 50000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 20000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 

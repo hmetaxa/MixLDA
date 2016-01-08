@@ -68,6 +68,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
     // Optimize gamma[0] hyper params
     protected List<Integer> inActiveTopicIndex; //inactive topic index for all modalities
     private NumberFormat formatter;
+    
 
     public FastQMVUpdaterRunnable(
             int[][][] typeTopicCounts,

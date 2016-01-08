@@ -875,6 +875,14 @@ public class ParallelTopicModel implements Serializable {
             } else {
                 logger.info((elapsedMillis / 1000) + "s ");
             }
+            
+                         
+            String alphaStr = "";
+            for (int topic = 0; topic < numTopics; topic++) {
+                alphaStr += topic + ":" + formatter.format(tokensPerTopic[topic]) + " ";
+            }
+
+            logger.info(alphaStr);
 
             if (iteration > burninPeriod && optimizeInterval != 0
                     && iteration % optimizeInterval == 0) {

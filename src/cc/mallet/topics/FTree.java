@@ -23,7 +23,13 @@ public class FTree {
      * serializable value *
      */
     protected double[] tree;
+    
     protected int size;
+    
+//    static int[] topicCounts = new int[100]; //for debugging
+//    static double[] topicWeights = new double[100]; //for debugging
+//    static double[] samplingWeights = new double[101]; //for debugging
+//    
     //protected BitSet activeTopics ; 
     //protected int activeTopicsNum ; 
 
@@ -65,6 +71,7 @@ public class FTree {
 
         this.size = size;
         tree = new double[2 * size];
+        //topicCounts = new int[size];
         //activeTopics = new BitSet(size);
 
         // this.hash = 0;
@@ -95,9 +102,11 @@ public class FTree {
 
 // Reversely initialize elements
         Arrays.fill(tree, 0);
+       // Arrays.fill(topicCounts, 0);
         for (int i = 2 * size - 1; i > 0; --i) {
             if (i >= size) {
                 tree[i] = weights[i - size];
+//                topicWeights[i - size]+=weights[i - size];
             } else {
                 tree[i] = tree[2 * i] + tree[2 * i + 1];
             }
@@ -109,9 +118,11 @@ public class FTree {
             throw new IllegalArgumentException();
         }
 
-        // due to multi threading / queue based updates, we should only pass the sample [0,1] from uniform
-        u = u * tree[1];
+        
         int i = 1;
+        //samplingWeights[(int)Math.round(u*100)]+=1;
+        // due to multi threading / queue based updates, we should only pass the sample [0,1] from uniform
+        u = u * tree[i];
 
         while (i < size) {
             //i = u < tree[2 * i] ? 2 * i : 2 * i + 1;
@@ -123,13 +134,17 @@ public class FTree {
             }
         }
 
-        return i - size;
+        int ret = i - size;
+        //topicCounts[ret]++;
+        return ret;
+        
     }
 
     public synchronized void update(int topic, double new_value) {
         // t = 0..T-1, 
         int i = topic + size;
         double delta = new_value - tree[i];
+        //topicWeights[topic]+=delta;
         while (i > 0) {
             tree[i] += delta;
             i = i / 2;

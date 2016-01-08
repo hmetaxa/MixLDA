@@ -378,6 +378,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         initializeHistograms();
         initSpace();
         buildInitialTypeTopicCounts();
+        
         recalcTrees(true);
 
     }
@@ -1000,8 +1001,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
+
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    mergeSimilarTopics(40, modalities, 0.65, 0);
+                    //mergeSimilarTopics(40, modalities, 0.65, 0);
                 }
 
                 optimizeDP();
@@ -1074,6 +1076,14 @@ public class FastQMVParallelTopicModel implements Serializable {
             } else {
                 logger.info((elapsedMillis / 1000) + "s ");
             }
+            
+                      
+            String alphaStr = "";
+            for (int topic = 0; topic < numTopics; topic++) {
+                alphaStr += topic + ":" + formatter.format(tokensPerTopic[0][topic]) + " ";
+            }
+
+            logger.info(alphaStr);
 
 //            if (iteration > burninPeriod && optimizeInterval != 0
 //                    && iteration % optimizeInterval == 0) {
@@ -2040,6 +2050,7 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 
     private void optimizeDP() {
+
         double[][] mk = new double[numModalities][numTopics + 1];
 
         Arrays.fill(tablesCnt, 0);
