@@ -378,6 +378,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         initializeHistograms();
         initSpace();
         buildInitialTypeTopicCounts();
+        recalcTrees(true);
 
     }
 
@@ -500,42 +501,26 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         //init trees
-        double[] temp = new double[numTopics];
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int w = 0; w < numTypes[m]; ++w) {
-
-                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
-                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-//                temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0]) * alpha[currentTopic] / (tokensPerTopic[currentTopic] + betaSum);
-                    if (useCycleProposals) {
-                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
-                    } else {
-                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                    }
-
-                }
-
-                //trees[w].init(numTopics);
-                trees[m][w] = new FTree(temp);
-                //reset temp
-                Arrays.fill(temp, 0);
-
-            }
-
-            docSmoothingOnlyMass[m] = 0;
-            if (useCycleProposals) {
-                // cachedCoefficients cumulative array that will be used for binary search
-                for (int topic = 0; topic < numTopics; topic++) {
-                    docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
-                    docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
-                }
-            }
-        }
-
+//        double[] temp = new double[numTopics];
+//        for (Byte m = 0; m < numModalities; m++) {
+//            for (int w = 0; w < numTypes[m]; ++w) {
+//
+//                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
+//                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
+//                    temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
+//
+//                }
+//
+//                //trees[w].init(numTopics);
+//                trees[m][w] = new FTree(temp);
+//                //reset temp
+//                Arrays.fill(temp, 0);
+//
+//            }
+//
+//            docSmoothingOnlyMass[m] = 0;
+//        }
     }
-    
-
 
     public void mergeSimilarTopics(int maxNumWords, TByteArrayList modalities, double mergeSimilarity, int deleteNumTopics) {
 
@@ -552,7 +537,6 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         //int[][] topicTypeCounts = new int[numModalities][numTopics];
         double[][] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true);
-             
 
         for (int topic = 0; topic < numTopics; topic++) {
             int previousVocabularySize = 0;
@@ -563,7 +547,9 @@ public class FastQMVParallelTopicModel implements Serializable {
             for (Byte m = 0; m < numModalities && modalities.contains(m); m++) {
 
                 int topicTypeCount = topicSortedWords.get(m).get(topic).size();
-                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount ));
+                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
+
+                //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
                 Iterator<IDSorter> iterator = sortedWords.iterator();
 
@@ -644,21 +630,28 @@ public class FastQMVParallelTopicModel implements Serializable {
         int totalCohDiscrDiffWeightcnt = 0;
         for (int kk = 0; kk < numTopics; kk++) {
             if (alpha[0][kk] != 0) {
-                double diffLogWeight = Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha));
+                //double diffLogWeight = Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha));
                 //sortedTopics[kk] = new IDSorter(kk, diffLogWeight);
-                sortedTopics[kk] = new IDSorter(kk, topicsDiscrWeight[0][kk] / diffLogWeight);
-                totalCohDiscrDiffWeight += topicsDiscrWeight[0][kk] / diffLogWeight;
-                totalCohDiscrDiffWeightcnt++;
+                //sortedTopics[kk] = new IDSorter(kk, topicsDiscrWeight[0][kk] / diffLogWeight);
+                if (topicsDiscrWeight[0][kk] != 0) {
+                    sortedTopics[kk] = new IDSorter(kk, topicsDiscrWeight[0][kk]);
+                    totalCohDiscrDiffWeight += topicsDiscrWeight[0][kk]; // / diffLogWeight;
+                    totalCohDiscrDiffWeightcnt++;
+                }
                 //sortedTopics[kk].set(kk, topicsSkewWeight[0][kk] / Math.abs(Math.log10(alpha[0][kk]) - Math.log10(avgAlpha)));
             }
-            
+
         }
+
+        double avgDiscrWeight = totalCohDiscrDiffWeight / totalCohDiscrDiffWeightcnt;
 
         Arrays.sort(sortedTopics);
         for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
-            if (10 * sortedTopics[j].getWeight() < totalCohDiscrDiffWeight / totalCohDiscrDiffWeightcnt) {
-                deletedTopics.add(sortedTopics[j].getID());
-                logger.info("Delete topic: " + sortedTopics[j].getID());
+            if (Math.log10(avgDiscrWeight) - Math.log10(sortedTopics[j].getWeight()) > 1) {
+                if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
+                    deletedTopics.add(sortedTopics[j].getID());
+                    logger.info("Delete topic: " + sortedTopics[j].getID());
+                }
             }
 
         }
@@ -679,7 +672,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                             if (deletedTopics.contains(oldTopic)) {
 
-                                topics[position] = ParallelTopicModel.UNASSIGNED_TOPIC;
+                                topics[position] = FastQMVParallelTopicModel.UNASSIGNED_TOPIC;
 
                             }
                             if (mergedTopics.containsKey(oldTopic)) {
@@ -995,26 +988,26 @@ public class FastQMVParallelTopicModel implements Serializable {
             updater.setOptimizeParams(false);
             if (iteration < burninPeriod && numModalities > 1) {
                 for (byte i = 0; i < numModalities; i++) {
-                    Arrays.fill(this.p_a[i], Math.min((double) iteration / 100, 1d));
+                    Arrays.fill(this.p_a[i], Math.min((double) iteration / 100 + 0.2d, 0.7d));
 
                     //Arrays.fill(this.p_b[i], 1d);
                 }
                 logger.info("common p_a: " + formatter.format(this.p_a[0][1]));
             } else if (iteration > burninPeriod && optimizeInterval != 0
-                    && iteration % saveSampleInterval == 0) {
+                    && iteration % optimizeInterval == 0) {
                 //updater.setOptimizeParams(true);
                 optimizeP(iteration + optimizeInterval > numIterations);
                 //merge similar topics
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    mergeSimilarTopics(40, modalities, 0.6, (int) numTopics / 100);
+                    mergeSimilarTopics(40, modalities, 0.65, 0);
                 }
 
                 optimizeDP();
                 optimizeGamma();
                 optimizeBeta();
-                recalcTrees();
+                recalcTrees(false);
             }
 
             updater.setQueues(queues);
@@ -1310,6 +1303,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                     for (Byte m = 0; m < numModalities; m++) {
                         topicSortedWords.add(getSortedWords(m));
                     }
+                    //double[][] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true);
 
                     for (int topic = 0; topic < numTopics; topic++) {
                         for (Byte m = 0; m < numModalities; m++) {
@@ -1319,7 +1313,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                             int word = 1;
                             Iterator<IDSorter> iterator = sortedWords.iterator();
 
-                            while (iterator.hasNext() && word < 20) {
+                            //int activeNumWords = Math.min(40, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
+                            while (iterator.hasNext() && word < 40) {
                                 IDSorter info = iterator.next();
                                 bulkInsert.setInt(1, topic);
                                 bulkInsert.setInt(2, m);
@@ -1847,7 +1842,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
             skewWeight[i] = skewSum / (double) nonZeroSkewCnt;  // (double) 1 / (1 + skewSum / (double) nonZeroSkewCnt);
-            appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
+            //appendMetadata("Modality<" + i + "> Discr. Weight: " + formatter.format(skewWeight[i])); //LL for eachmodality
 
         }
 
@@ -1856,9 +1851,12 @@ public class FastQMVParallelTopicModel implements Serializable {
     }
 //
 
-    public double[][] calcDiscrWeightWithinTopics( ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
+    public double[][] calcDiscrWeightWithinTopics(ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
 
-        double[] skewWeight = calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
+        if (onDicrWeightTokens) {
+            calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
+
+        }
 
         double[][] topicsSkewWeight = new double[numModalities][numTopics];
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
@@ -1867,15 +1865,26 @@ public class FastQMVParallelTopicModel implements Serializable {
 
                 topicsSkewWeight[i][topic] = 0.0;
                 TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
-                ///topicTypeCounts[i][topic] = sortedWords.size();
+                double totalTopicCnts = tokensPerTopic[i][topic];
 
-                for (IDSorter info : sortedWords) {
-
-                    double probability = onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1 * info.getWeight() / tokensPerTopic[i][topic];
-                    topicsSkewWeight[i][topic] += probability * probability;
-
+                if (onDicrWeightTokens) {
+                    totalTopicCnts = 0;
+                    for (IDSorter info : sortedWords) {
+                        double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1);
+                        double normCounts = tokenWeight * info.getWeight();
+                        totalTopicCnts += normCounts;
+                    }
                 }
 
+                for (IDSorter info : sortedWords) {
+                    double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1);
+                    double probability = tokenWeight * info.getWeight() / totalTopicCnts;
+                    topicsSkewWeight[i][topic] += probability * probability;
+                }
+//                if (topicsSkewWeight[i][topic] == 0)
+//                {
+//                    logger.warning("calcDiscrWeightWithinTopics: zero weight for topic:"+topic);
+//                }
             }
         }
 
@@ -1887,7 +1896,6 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        //not implemented
 //        return null;
 //    }
-
     public void optimizeBeta() {
         // The histogram starts at count 0, so if all of the
         //  tokens of the most frequent type were assigned to one topic,
@@ -1933,14 +1941,23 @@ public class FastQMVParallelTopicModel implements Serializable {
                         betaSum[m]);
 
                 if (betaSum[m] < numTypes[m] * 0.001) { //too sparse for this topic model (num of topics probably large for this modality).. prevent smoothing from going to zero 
-                    logger.warning("Too sparse model: set Beta to 0.001");
+                    logger.warning("Too sparse modality: set Beta to 0.001");
                     beta[m] = 0.001;
-                    betaSum[m] = prevBetaSum;
+                    betaSum[m] = beta[m] * numTypes[m];
 
                 } else if (Double.isNaN(betaSum[m])) {
-                    logger.warning("Dirichlet optimization has become unstable (NaN Value). Resetting to previous Beta");
-                    betaSum[m] = prevBetaSum;
-                    beta[m] = betaSum[m] / numTypes[m];
+                    //probably too sparse also??
+                    //logger.warning("Dirichlet optimization has become unstable (NaN Value). Resetting to previous Beta");
+                    if (beta[m] == 0.01) //initial beta... --> too sparse 
+                    {
+                        beta[m] = 0.001;
+                        betaSum[m] = beta[m] * numTypes[m];
+                        logger.warning("Too sparse modality. Dirichlet optimization has failed. Set Beta to 0.001");
+                    } else {
+                        betaSum[m] = prevBetaSum;
+                        beta[m] = betaSum[m] / numTypes[m];
+                        logger.warning("Dirichlet optimization has become unstable (NaN Value). Resetting to previous Beta");
+                    }
                 } else {
                     beta[m] = betaSum[m] / numTypes[m];
                 }
@@ -1981,7 +1998,9 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         for (Byte m = 0; m < numModalities; m++) {
+
             for (int r = 0; r < R; r++) {
+                double prevGamma = gamma[m];
                 // gamma[0]: root level (Escobar+West95) with n = T
                 // (14)
                 double eta = samp.randBeta(gammaRoot + 1, totaltablesCnt);
@@ -2006,7 +2025,10 @@ public class FastQMVParallelTopicModel implements Serializable {
                 }
                 // (47)
                 gamma[m] = samp.randGamma(aalpha + tablesCnt[m] - qs, 1. / (balpha - qw));
-
+                if (gamma[m] == 0) {
+                    gamma[m] = prevGamma;
+                    logger.info("Warning: Gamma optimization become unstable for modality[" + m + "]. Return to previous Gamma! ");
+                }
                 //  }
             }
             logger.info("GammaRoot: " + gammaRoot);
@@ -2070,7 +2092,8 @@ public class FastQMVParallelTopicModel implements Serializable {
                 logger.info("Inactive Topics: " + empty);
             }
             //for (byte m = 0; m < numModalities; m++) {
-            //alpha[m].fill(0, numTopics, 0);
+
+            Arrays.fill(alpha[m], 0);
             alphaSum[m] = 0;
             mk[m][numTopics] = gammaRoot;
             tablesCnt[m] = Vectors.sum(mk[m]);
@@ -2081,8 +2104,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                 // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
                 for (int kk = 0; kk <= numTopics; kk++) {
                     //int k = kactive.get(kk);
-                    alpha[m][kk] = tt[kk] / (double) numSamples;
-                    alphaSum[m] += gamma[m] * alpha[m][kk];
+                    double sampleAlpha = tt[kk] / (double) numSamples;
+                    alpha[m][kk] += sampleAlpha;
+                    alphaSum[m] += sampleAlpha;
                     //tau.set(k, tt[kk]);
                 }
             }
@@ -2170,40 +2194,31 @@ public class FastQMVParallelTopicModel implements Serializable {
 //        }
 //
 //    }
-    private void recalcTrees() {
-        //recalc trees
+    private void recalcTrees(boolean initTree) {
+
         double[] temp = new double[numTopics];
+        Arrays.fill(temp, 0);
         for (Byte m = 0; m < numModalities; m++) {
             for (int w = 0; w < numTypes[m]; ++w) {
 
                 int[] currentTypeTopicCounts = typeTopicCounts[m][w];
                 for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-                    // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    if (useCycleProposals) {
-                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
-                    } else {
-                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                    }
+                    temp[currentTopic] = (!inActiveTopicIndex.isEmpty() && inActiveTopicIndex.contains(currentTopic)) ? 0
+                            : gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
 
                 }
-
-                //trees[w] = new FTree(temp);
-                trees[m][w].constructTree(temp);
-
+                if (initTree) {
+                    //trees[w].init(numTopics);
+                    trees[m][w] = new FTree(temp);
+                } else {
+                    trees[m][w].constructTree(temp);
+                }
                 //reset temp
                 Arrays.fill(temp, 0);
 
             }
 
             docSmoothingOnlyMass[m] = 0;
-            if (useCycleProposals) {
-                // cachedCoefficients cumulative array that will be used for binary search
-                for (int topic = 0; topic < numTopics; topic++) {
-                    docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
-                    docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
-                }
-            }
         }
 
     }
@@ -2293,12 +2308,12 @@ public class FastQMVParallelTopicModel implements Serializable {
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
-                if (appendMetadata && m == 0) { //do it only once
+                if (appendMetadata) { //do it only once
                     appendMetadata("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");
                 }
 
                 p_a[m][i] = Math.min(a, 100);//a=100--> almost p=99%
-                p_a[i][m] = Math.min(a, 100);;
+                p_a[i][m] = Math.min(a, 100);
                 p_b[m][i] = b;
                 p_b[i][m] = b;
 
@@ -2331,6 +2346,9 @@ public class FastQMVParallelTopicModel implements Serializable {
         }
 
         double[] skewWeight = calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
+        for (byte m = 0; m < numModalities; m++) {
+            appendMetadata("Modality<" + m + "> Discr. Weight: " + formatter.format(skewWeight[m])); //LL for eachmodality
+        }
 
         Connection connection = null;
         Statement statement = null;
@@ -2389,7 +2407,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                             //topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             //normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
 
-                            topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
+                            topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + (double) gamma[m] * alphaSum[m]);
                             normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }
                         sortedTopics[topic].set(topic, (topicProportion / normalizeSum));
@@ -2867,7 +2885,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                         }
 
                         // subtract the (count + parameter) sum term
-                        logLikelihood[m] -= Dirichlet.logGammaStirling(alphaSum[m] + docTopics.length);
+                        logLikelihood[m] -= Dirichlet.logGammaStirling((double) gamma[m] * alphaSum[m] + docTopics.length);
                         modalityCnt++;
                     }
                     Arrays.fill(topicCounts, 0);
@@ -2875,16 +2893,16 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
 
             // add the parameter sum term
-            logLikelihood[m] += modalityCnt * Dirichlet.logGammaStirling(alphaSum[m]);
+            logLikelihood[m] += modalityCnt * Dirichlet.logGammaStirling((double) gamma[m] * alphaSum[m]);
 
             if (Double.isNaN(logLikelihood[m])) {
                 logger.warning("NaN in log likelihood level1 calculation" + " for modality: " + m);
                 logLikelihood[m] = 0;
-                break;
+                continue;
             } else if (Double.isInfinite(logLikelihood[m])) {
                 logger.warning("infinite log likelihood at level1 " + " for modality: " + m);
                 logLikelihood[m] = 0;
-                break;
+                continue;
             }
 
             // And the topics
@@ -2930,11 +2948,11 @@ public class FastQMVParallelTopicModel implements Serializable {
                 if (Double.isNaN(logLikelihood[m])) {
                     logger.info("NaN after topic " + topic + " " + tokensPerTopic[m][topic]);
                     logLikelihood[m] = 0;
-                    break;
+                    continue;
                 } else if (Double.isInfinite(logLikelihood[m])) {
                     logger.info("Infinite value after topic " + topic + " " + tokensPerTopic[m][topic]);
                     logLikelihood[m] = 0;
-                    break;
+                    continue;
                 }
 
             }
@@ -2970,7 +2988,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 //     * under this model
 //     */
     public MarginalProbEstimator getProbEstimator() {
-        return new MarginalProbEstimator(numTopics, alpha[0], alphaSum[0], beta[0],
+        return new MarginalProbEstimator(numTopics, alpha[0], (double) gamma[0] * alphaSum[0], beta[0],
                 typeTopicCounts[0], tokensPerTopic[0]);
     }
     // Serialization

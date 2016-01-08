@@ -114,13 +114,13 @@ public class FTree {
         int i = 1;
 
         while (i < size) {
-            i = u < tree[2 * i] ? 2 * i : 2 * i + 1;
-//            if (u < tree[2 * i]) {
-//                i = 2 * i;
-//            } else {
-//                u = u - tree[2 * i];
-//                i = 2 * i + 1;
-//            }
+            //i = u < tree[2 * i] ? 2 * i : 2 * i + 1;
+            if (u < tree[2 * i]) {
+                i = 2 * i;
+            } else {
+                u = u - tree[2 * i];
+                i = 2 * i + 1;
+            }
         }
 
         return i - size;

@@ -95,6 +95,7 @@ public class FastQMVTopicModelDiagnostics {
         diagnostics.add(getWordLengthScores());
         diagnostics.add(getCoherence());
         diagnostics.add(getDiscrCoherence());
+        diagnostics.add(getDiscrWeightWithinTopics());
         diagnostics.add(getDistanceFromUniform());
         diagnostics.add(getDistanceFromCorpus());
         diagnostics.add(getEffectiveNumberOfWords());
@@ -102,7 +103,7 @@ public class FastQMVTopicModelDiagnostics {
         diagnostics.add(getRank1Percent());
         diagnostics.add(getDocumentPercentRatio(FIFTY_PERCENT_INDEX, TWO_PERCENT_INDEX));
         diagnostics.add(getDocumentPercent(5));
-        
+
     }
 
     public void collectDocumentStatistics() {
@@ -183,7 +184,7 @@ public class FastQMVTopicModelDiagnostics {
 
                             sumCountTimesLogCount[topic] += topicCounts[topic] * Math.log(topicCounts[topic]);
 
-                            double proportion = (model.gamma[0] * model.alpha[0][topic] + topicCounts[topic]) / (model.alphaSum[0] + docLength);
+                            double proportion = (model.gamma[0] * model.alpha[0][topic] + topicCounts[topic]) / ((double) model.gamma[0] * model.alphaSum[0] + docLength);
                             for (int i = 0; i < DEFAULT_DOC_PROPORTIONS.length; i++) {
                                 if (proportion < DEFAULT_DOC_PROPORTIONS[i]) {
                                     break;
@@ -277,6 +278,22 @@ public class FastQMVTopicModelDiagnostics {
             }
 
             scores.setTopicScore(topic, topicScore);
+        }
+
+        return scores;
+    }
+
+    public TopicScores getDiscrWeightWithinTopics() {
+
+        double[][] topicsDiscrWeight = model.calcDiscrWeightWithinTopics(topicSortedWords, true);
+        TopicScores scores = new TopicScores("discrWeight", numTopics, numTopWords);
+        for (int kk = 0; kk < numTopics; kk++) {
+            if (model.alpha[0][kk] != 0) {
+
+                scores.setTopicScore(kk, topicsDiscrWeight[0][kk]);
+
+            }
+
         }
 
         return scores;

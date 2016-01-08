@@ -53,8 +53,8 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         int topLabels = 10;
-        byte numModalities = 5;
-               
+        byte numModalities = 1;
+
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
         int docTopicsMax = -1;
@@ -63,19 +63,19 @@ public class PTMExperiment {
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
         boolean calcTokensPerEntity = true;
-        int numOfThreads = 3;
+        int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 700;
         //int maxNumTopics = 500;
-        int numIterations = 400; //Max 2000
+        int numIterations = 750; //Max 2000
         int numChars = 5000;
         int independentIterations = 0;
-        int burnIn = 100;
-        int optimizeInterval = 25;
+        int burnIn = 750;
+        int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 60; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 5;
+        int pruneCnt = 70; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 20;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -85,10 +85,10 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
-        
-        experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
-        String experimentDescription = "";
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt  + "PRN" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
+
+        //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
+        String experimentDescription = experimentId + ": \n";
 
         String SQLLitedb = "jdbc:sqlite:C:/projects/OpenAIRE/fundedarxiv.db";
 
@@ -389,6 +389,8 @@ public class PTMExperiment {
 
             logger.info("printDocumentTopics finished");
 
+            logger.info("Model Id: \n" + experimentId);
+            
             logger.info("Model Metadata: \n" + model.getExpMetadata());
 
             if (modelEvaluationFile != null) {
@@ -433,16 +435,15 @@ public class PTMExperiment {
 
             logger.info("Insert default topic descriptions");
 
-             
-        try {
+            try {
             // create a database connection
-            //connection = DriverManager.getConnection(SQLLitedb);
-            
-                String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n" +
-"select substr(GROUP_CONCAT(Item),1,100), '' , topicId , 1, '" + experimentId + "' \n" +
-"from  TopicDescriptionView\n" +
-" where experimentID = '" + experimentId + "' \n" +
-" GROUP BY TopicID";
+                //connection = DriverManager.getConnection(SQLLitedb);
+
+                String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n"
+                        + "select substr(GROUP_CONCAT(Item),1,100), '' , topicId , 1, '" + experimentId + "' \n"
+                        + "from  TopicDescriptionView\n"
+                        + " where experimentID = '" + experimentId + "' \n"
+                        + " GROUP BY TopicID";
                 connection = DriverManager.getConnection(SQLLitedb);
                 Statement statement = connection.createStatement();
                 statement.setQueryTimeout(60);  // set timeout to 30 sec.
@@ -450,7 +451,7 @@ public class PTMExperiment {
                 //ResultSet rs = statement.executeQuery(sql);
 
             } catch (SQLException e) {
-             // if the error message is "out of memory", 
+                // if the error message is "out of memory", 
                 // it probably means no database file is found
                 System.err.println(e.getMessage());
             } finally {
@@ -875,13 +876,13 @@ public class PTMExperiment {
 //
 //                    break;
                 case HEALTHTender:
-                    sql = "select EntityTopicDistribution.EntityId as projectId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
-"                            from EntityTopicDistribution\n" +
-"                            where EntityTopicDistribution.EntityType='Grant' AND EntityTopicDistribution.EntityId<>'' AND\n" +
-"                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
-"                            and EntityTopicDistribution.EntityId in (Select grantId FROM PubGrant GROUP BY grantId HAVING Count(*)>4)\n" +
-"                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
-"                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>2)";
+                    sql = "select EntityTopicDistribution.EntityId as projectId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n"
+                            + "                            from EntityTopicDistribution\n"
+                            + "                            where EntityTopicDistribution.EntityType='Grant' AND EntityTopicDistribution.EntityId<>'' AND\n"
+                            + "                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
+                            + "                            and EntityTopicDistribution.EntityId in (Select grantId FROM PubGrant GROUP BY grantId HAVING Count(*)>4)\n"
+                            + "                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
+                            + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>2)";
 
                     break;
 //                case Authors:
@@ -1135,11 +1136,11 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 10000";
+                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 50000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
-                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants LIMIT 20000";
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants LIMIT 50000";
 
             }
 
@@ -1335,7 +1336,7 @@ public class PTMExperiment {
                         instance = instances[m].get(0);
                         FeatureSequence fs = (FeatureSequence) instance.getData();
 
-                        fs.prune(counts, newAlphabet, m == 0 ? pruneCnt : pruneLblCnt);
+                        fs.prune(counts, newAlphabet, m == 0 || (m == 1 && experimentType == ExperimentType.ACM) ? pruneLblCnt * 3 : pruneLblCnt);
 
                         newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
                                 instance.getName(),

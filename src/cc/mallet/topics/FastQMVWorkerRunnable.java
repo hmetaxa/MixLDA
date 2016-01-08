@@ -274,12 +274,12 @@ public class FastQMVWorkerRunnable implements Runnable {
             for (byte m = 0; m < numModalities; m++) {
 
                 for (byte j = m; j < numModalities; j++) {
-                    double pRand =
-                            m == j ? 1.0 : p_a[m][j] == 0 ? 0
-                            : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
+                    double pRand
+                            = m == j ? 1.0 : p_a[m][j] == 0 ? 0
+                                            : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
 
-                    p[m][j] = beta[m]==0.001 ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
-                    p[j][m] = beta[j]==0.001 ? 0 :pRand;  //too sparse modality --> ignore its doc /topic distribution
+                    p[m][j] = beta[j] == 0.001 ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
+                    p[j][m] = beta[m] == 0.001 ? 0 : pRand;  //too sparse modality --> ignore its doc /topic distribution
                 }
 
                 docLength[m] = 0;
@@ -338,7 +338,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                         }
                     }
 
-                    totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + alphaSum[m]);
+                    totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + (double) gamma[m] * alphaSum[m]);
                 }
                 // }
 
@@ -389,7 +389,10 @@ public class FastQMVWorkerRunnable implements Runnable {
                         }
 
                         // Decrement the global type topic counts  at the end (through delta / queue)
-                    }
+                   } 
+                    //else {
+//                        int test = 1;
+//                    }
 
                     //		compute word / doc mass for binary search
                     double topicDocWordMass = 0.0;
@@ -397,7 +400,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                     for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                         int topic = localTopicIndex[denseIndex];
                         int n = localTopicCounts[m][topic];
-                        topicDocWordMass += (n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
+                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
                         //topicDocWordMass +=  n * trees[type].getComponent(topic);
                         topicDocWordMasses[denseIndex] = topicDocWordMass;
 
@@ -413,11 +416,14 @@ public class FastQMVWorkerRunnable implements Runnable {
                     if (sample < newTopicMass) {
 
                         newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
+                        System.out.println("Sample new topic: " + newTopic);
                     } else {
                         sample -= newTopicMass;
                         newTopic = sample < topicDocWordMass
                                 ? localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)]
                                 : currentTree.sample(nextUniform);
+
+                      
                     }
 //            if (sample < topicDocWordMass) {
 //

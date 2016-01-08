@@ -439,7 +439,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                 for (int kk = 0; kk <= numTopics; kk++) {
                     //int k = kactive.get(kk);
                     alpha[m][kk] = tt[kk] / (double) numSamples;
-                    alphaSum[m] += gamma[m] * alpha[m][kk];
+                    alphaSum[m] += alpha[m][kk];
                     //tau.set(k, tt[kk]);
                 }
             }
