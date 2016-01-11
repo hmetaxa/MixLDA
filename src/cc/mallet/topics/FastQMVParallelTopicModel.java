@@ -649,11 +649,11 @@ public class FastQMVParallelTopicModel implements Serializable {
         Arrays.sort(sortedTopics);
         for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
             if (Math.log10(avgDiscrWeight) - Math.log10(sortedTopics[j].getWeight()) > 1) {
-                if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
+              //  if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
                     deletedTopics.add(sortedTopics[j].getID());
                     logger.info("Delete topic: " + sortedTopics[j].getID());
-                }
-            }
+              //  }
+           }
 
         }
 
@@ -1003,7 +1003,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 modalities.add((byte) 0);
 
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    //mergeSimilarTopics(40, modalities, 0.65, 0);
+                    mergeSimilarTopics(40, modalities, 0.65, 1);
                 }
 
                 optimizeDP();
@@ -1078,12 +1078,12 @@ public class FastQMVParallelTopicModel implements Serializable {
             }
             
                       
-            String alphaStr = "";
-            for (int topic = 0; topic < numTopics; topic++) {
-                alphaStr += topic + ":" + formatter.format(tokensPerTopic[0][topic]) + " ";
-            }
-
-            logger.info(alphaStr);
+//            String alphaStr = "";
+//            for (int topic = 0; topic < numTopics; topic++) {
+//                alphaStr += topic + ":" + formatter.format(tokensPerTopic[0][topic]) + " ";
+//            }
+//
+//            logger.info(alphaStr);
 
 //            if (iteration > burninPeriod && optimizeInterval != 0
 //                    && iteration % optimizeInterval == 0) {
