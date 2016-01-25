@@ -163,6 +163,7 @@ public class FastQMVUpdaterRunnable implements Runnable {
                 for (int x = 0; x < queues.size(); x++) {
                     while ((delta = queues.get(x).poll()) != null) {
 
+                        
                         if (delta.Modality == -1 && delta.NewTopic == -1 && delta.OldTopic == -1 && delta.Type == -1) { // thread x has finished
                             finishedSamplingTreads.add(x);
                             isFinished = finishedSamplingTreads.size() == queues.size();

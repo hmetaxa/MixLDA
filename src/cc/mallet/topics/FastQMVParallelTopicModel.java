@@ -648,7 +648,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         Arrays.sort(sortedTopics);
         for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
-            if (Math.log10(avgDiscrWeight) - Math.log10(sortedTopics[j].getWeight()) > 1) {
+            if (Math.log10(avgDiscrWeight) - Math.log10(sortedTopics[j].getWeight()) > 2) {
               //  if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
                     deletedTopics.add(sortedTopics[j].getID());
                     logger.info("Delete topic: " + sortedTopics[j].getID());
@@ -2125,7 +2125,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);
             //for (byte m = 0; m < numModalities; m++) {
             String alphaStr = "";
-            for (int topic = 0; topic < numTopics; topic++) {
+            for (int topic = 0; topic < numTopics; topic+=10) {
                 alphaStr += topic + ":" + formatter.format(alpha[m][topic]) + " ";
             }
 

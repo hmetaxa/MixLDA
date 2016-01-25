@@ -63,23 +63,24 @@ public class PTMExperiment {
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 4;
+        int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 400;
+        int numTopics = 1000;
         //int maxNumTopics = 500;
         int numIterations = 1000; //Max 2000
-        int numChars = 10000;
+        int numChars = 20000;
         //int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.HEALTHTender;
-        int pruneCnt = 70; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 20;
+        int pruneCnt = 200; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 30;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
+        boolean ubuntu = true;
 //boolean runParametric = true;
 //
 //        try {
@@ -119,13 +120,24 @@ public class PTMExperiment {
         File dictPath = null;
 
         if (experimentType == ExperimentType.ACM) {
-            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
-            dictDir = "C:\\projects\\Datasets\\ACM\\";
+            if (ubuntu) {
+                SQLLitedb = "jdbc:sqlite:/home/omiros/projects/Datasets/ACM/PTM3DB_ACM.db";
+                dictDir = ":/home/omiros/projects/Datasets/ACM/";
+            } else {
+                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB_ACM.db";
+                dictDir = "C:\\projects\\Datasets\\ACM\\";
+            }
+
             //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
         }
         if (experimentType == ExperimentType.HEALTHTender) {
-            SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/PubMed/PTM3DB_PM.db";
-            dictDir = "C:\\projects\\Datasets\\PubMed\\";
+            if (ubuntu) {
+                SQLLitedb = "jdbc:sqlite:/home/omiros/Projects/Datasets/PubMed/PTM3DB_PM.db";
+                dictDir = ":/home/omiros/projects/Datasets/PubMed/";
+            } else {
+                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/PubMed/PTM3DB_PM.db";
+                dictDir = "C:\\projects\\Datasets\\PubMed\\";
+            }
         }
 
         if (dictDir != "") {
@@ -145,7 +157,7 @@ public class PTMExperiment {
 
             //Create vocabularies for the whole corpus
             //search for file first
-            String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
+            //String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
             Alphabet[] alphabets = new Alphabet[numModalities];
             /*
              if (!new File(txtAlphabetFile).exists()) {
@@ -219,7 +231,7 @@ public class PTMExperiment {
 
              }
              */
-            String outputDir = "C:\\projects\\OpenAIRE\\OUT\\" + experimentId;
+            String outputDir = dictDir + experimentId;
             File outPath = new File(outputDir);
 
             outPath.mkdir();
@@ -474,15 +486,14 @@ public class PTMExperiment {
                 experimentDescription = "Multi View Topic Modeling Analysis on ACM corpus";
                 model.saveExperiment(SQLLitedb, experimentId, experimentDescription);
 
-                PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
-                model.topicPhraseXMLReport(outXMLPhrase, topWords);
-                outXMLPhrase.close();
-                logger.info("topicPhraseXML report finished");
-
+//                PrintWriter outXMLPhrase = new PrintWriter(new FileWriter((new File(outputTopicPhraseXMLReport))));
+//                model.topicPhraseXMLReport(outXMLPhrase, topWords);
+//                outXMLPhrase.close();
+//                logger.info("topicPhraseXML report finished");
                 logger.info("Insert default topic descriptions");
 
                 try {
-                // create a database connection
+                    // create a database connection
                     //connection = DriverManager.getConnection(SQLLitedb);
 
                     String insertTopicDescriptionSql = "INSERT into TopicDescription (Title, Category, TopicId , VisibilityIndex, ExperimentId )\n"
@@ -497,7 +508,7 @@ public class PTMExperiment {
                     //ResultSet rs = statement.executeQuery(sql);
 
                 } catch (SQLException e) {
-                // if the error message is "out of memory", 
+                    // if the error message is "out of memory", 
                     // it probably means no database file is found
                     System.err.println(e.getMessage());
                 } finally {
@@ -1138,7 +1149,7 @@ public class PTMExperiment {
 
     public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc, int numChars) {
 
-        String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
+        //String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
         // Begin by importing documents from text to feature sequences
         ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
 
@@ -1186,7 +1197,7 @@ public class PTMExperiment {
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
-                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView_Grants";// LIMIT 50000";
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView LIMIT 50000";
 
             }
 
@@ -1329,13 +1340,13 @@ public class PTMExperiment {
         try {
             GenerateStoplist(tokenizer, instanceBuffer.get(0), pruneCnt, pruneMaxPerc, pruneMinPerc, false);
             instances[0].addThruPipe(instanceBuffer.get(0).iterator());
-            Alphabet tmpAlp = instances[0].getDataAlphabet();
-            ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(txtAlphabetFile)));
-            oos.writeObject(tmpAlp);
-            oos.close();
+            //Alphabet tmpAlp = instances[0].getDataAlphabet();
+            //ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(txtAlphabetFile)));
+            //oos.writeObject(tmpAlp);
+            //oos.close();
         } catch (IOException e) {
-            System.err.println("Problem serializing text alphabet to file "
-                    + txtAlphabetFile + ": " + e);
+            System.err.println("Problem adding text: "
+                    + e);
         }
 
         for (byte m = 1; m < numModalities; m++) {
@@ -1396,15 +1407,15 @@ public class PTMExperiment {
                     // Make the new list the official list.
                     instances[m] = newInstanceList;
                     Alphabet tmp = newInstanceList.getDataAlphabet();
-                    String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
-                    try {
-                        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(modAlphabetFile)));
-                        oos.writeObject(tmp);
-                        oos.close();
-                    } catch (IOException e) {
-                        System.err.println("Problem serializing modality " + m + " alphabet to file "
-                                + txtAlphabetFile + ": " + e);
-                    }
+//                    String modAlphabetFile = dictDir + File.separator + "dict[" + m + "].txt";
+//                    try {
+//                        ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(new File(modAlphabetFile)));
+//                        oos.writeObject(tmp);
+//                        oos.close();
+//                    } catch (IOException e) {
+//                        System.err.println("Problem serializing modality " + m + " alphabet to file "
+//                                + txtAlphabetFile + ": " + e);
+//                    }
 
                 } else {
                     throw new UnsupportedOperationException("Pruning features from "

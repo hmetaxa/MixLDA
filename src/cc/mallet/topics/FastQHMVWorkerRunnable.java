@@ -467,6 +467,11 @@ public class FastQHMVWorkerRunnable implements Runnable {
                     if (newTopic != oldTopic) {
                         //queue.add(new FastQDelta(oldTopic, newTopic, type, 0, 1, 1));
                         queue.add(new FastQDelta(oldTopic, newTopic, type, m, localTopicCounts[m][oldTopic], localTopicCounts[m][newTopic]));
+                        if (queue.size()>100)
+                        {
+                            
+                            System.out.println("Thread["+threadId+"] queue size="+queue.size());
+                        }
                     }
 
                 }
