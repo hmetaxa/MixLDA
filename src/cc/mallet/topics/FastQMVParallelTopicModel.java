@@ -127,7 +127,10 @@ public class FastQMVParallelTopicModel implements Serializable {
     public double[][] pMean; // modalities correlation
 
     protected double[] tablesCnt; // tables count per modality 
+    protected double rootTablesCnt; // root tables count
+    protected double gammaView[]; // gammaRoot for all modalities (sumTables cnt)
     protected double gammaRoot = 10; // gammaRoot for all modalities (sumTables cnt)
+
     protected RandomSamplers samp;
     protected Randoms random;
 
@@ -200,6 +203,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         this.samp = new RandomSamplers(ThreadLocalRandom.current());
 
         tablesCnt = new double[numModalities];
+        gammaView = new double[numModalities];
 
         random = null;
         if (randomSeed == -1) {
@@ -378,7 +382,7 @@ public class FastQMVParallelTopicModel implements Serializable {
         initializeHistograms();
         initSpace();
         buildInitialTypeTopicCounts();
-        
+
         recalcTrees(true);
 
     }
@@ -649,11 +653,11 @@ public class FastQMVParallelTopicModel implements Serializable {
         Arrays.sort(sortedTopics);
         for (int j = sortedTopics.length - 1; j >= sortedTopics.length - deleteNumTopics; j--) {
             if (Math.log10(avgDiscrWeight) - Math.log10(sortedTopics[j].getWeight()) > 2) {
-              //  if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
-                    deletedTopics.add(sortedTopics[j].getID());
-                    logger.info("Delete topic: " + sortedTopics[j].getID());
-              //  }
-           }
+                //  if ((Math.log10(alpha[0][sortedTopics[j].getID()]) - Math.log10(avgAlpha)) > 1) {
+                deletedTopics.add(sortedTopics[j].getID());
+                logger.info("Delete topic: " + sortedTopics[j].getID());
+                //  }
+            }
 
         }
 
@@ -1076,15 +1080,13 @@ public class FastQMVParallelTopicModel implements Serializable {
             } else {
                 logger.info((elapsedMillis / 1000) + "s ");
             }
-            
-                      
+
 //            String alphaStr = "";
 //            for (int topic = 0; topic < numTopics; topic++) {
 //                alphaStr += topic + ":" + formatter.format(tokensPerTopic[0][topic]) + " ";
 //            }
 //
 //            logger.info(alphaStr);
-
 //            if (iteration > burninPeriod && optimizeInterval != 0
 //                    && iteration % optimizeInterval == 0) {
 //
@@ -2001,28 +2003,38 @@ public class FastQMVParallelTopicModel implements Serializable {
         // number of samples for parameter samplers
         int R = 10;
 
-        double totaltablesCnt = 0;
-        for (Byte m = 0; m < numModalities; m++) {
-            totaltablesCnt += tablesCnt[m];
+       
 
+        //root level DP for all modalities (overall measure) 
+        for (int r = 0; r < R; r++) {
+
+            // gamma[0]: root level (Escobar+West95) with n = T
+            // (14)
+            double eta = samp.randBeta(gammaRoot + 1, rootTablesCnt);
+            double bloge = bgamma - log(eta);
+            // (13')
+            double pie = 1. / (1. + (rootTablesCnt * bloge / (agamma + numTopics - 1)));
+            // (13)
+            int u = samp.randBernoulli(pie);
+            gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
         }
 
+        //second level DP per modality (Global measure per modality) 
         for (Byte m = 0; m < numModalities; m++) {
 
             for (int r = 0; r < R; r++) {
                 double prevGamma = gamma[m];
                 // gamma[0]: root level (Escobar+West95) with n = T
                 // (14)
-                double eta = samp.randBeta(gammaRoot + 1, totaltablesCnt);
+                double eta = samp.randBeta(gammaView[m] + 1, tablesCnt[m]);
                 double bloge = bgamma - log(eta);
                 // (13')
-                double pie = 1. / (1. + (totaltablesCnt * bloge / (agamma + numTopics - 1)));
+                double pie = 1. / (1. + (tablesCnt[m] * bloge / (agamma + numTopics - 1)));
                 // (13)
                 int u = samp.randBernoulli(pie);
-                gammaRoot = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
+                gammaView[m] = samp.randGamma(agamma + numTopics - 1 + u, 1. / bloge);
 
-                // for (byte m = 0; m < numModalities; m++) {
-                // alpha: document level (Teh+06)
+                // document level (Teh+06) measure
                 double qs = 0;
                 double qw = 0;
                 for (int j = 0; j < docLengthCounts[m].length; j++) {
@@ -2042,6 +2054,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 //  }
             }
             logger.info("GammaRoot: " + gammaRoot);
+            logger.info("GammaView[" + m + "]: " + gammaView[m]);
             //for (byte m = 0; m < numModalities; m++) {
             logger.info("Gamma[" + m + "]: " + gamma[m]);
             //}
@@ -2053,12 +2066,16 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         double[][] mk = new double[numModalities][numTopics + 1];
 
+        double[] mk_root = new double[numTopics + 1];
+
         Arrays.fill(tablesCnt, 0);
+        Arrays.fill(mk_root, 0);
 
         for (int t = 0; t < numTopics; t++) {
             inActiveTopicIndex.add(t); //inActive by default and activate if found 
         }
 
+        // view tables simulation
         for (byte m = 0; m < numModalities; m++) {
             for (int t = 0; t < numTopics; t++) {
 
@@ -2092,24 +2109,76 @@ public class FastQMVParallelTopicModel implements Serializable {
                     }
                 }
             }
-            // end outter for loop
+        }
 
-            if (!inActiveTopicIndex.isEmpty()) {
-                String empty = "";
+        //root tables simulation
+        for (int t = 0; t < numTopics; t++) {
 
-                for (int i = 0; i < inActiveTopicIndex.size(); i++) {
-                    empty += formatter.format(inActiveTopicIndex.get(i)) + " ";
+            //int k = kactive.get(kk);
+            for (byte m = 0; m < numModalities; m++) {
+                //for (int j = 0; j < numDocuments; j++) {
+
+                if (mk[m][t] > 1) {
+
+                    int curTbls = 0;
+                    try {
+                        curTbls = random.nextAntoniak(gammaRoot, (int) Math.ceil(mk[m][t]));
+
+                    } catch (Exception e) {
+                        curTbls = 1;
+                    }
+
+                    mk_root[t] += curTbls;
+                    //mk[m][t] += 1;//direct minimal path assignment Samplers.randAntoniak(gamma[0][m] * alpha[m].get(t),  tokensPerTopic[m].get(t));
+                    // nmk[m].get(k));
+                } else if (mk[m][t] == 1) //nmk[m].get(k) = 0 or 1
+                {
+
+                    mk_root[t] += 1;
                 }
-                logger.info("Inactive Topics: " + empty);
             }
+        }
+
+        double[] v = new double[numTopics + 1];
+        Arrays.fill(v, 0);
+        //alphaSum[m] = 0;
+        mk_root[numTopics] = gammaRoot;
+        rootTablesCnt = Vectors.sum(mk_root);
+
+        byte numSamples = 10;
+        for (int i = 0; i < numSamples; i++) {
+            double[] tt = sampleDirichlet(mk_root);
+            // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
+            for (int kk = 0; kk <= numTopics; kk++) {
+                //int k = kactive.get(kk);
+                double sampleAlpha = tt[kk] / (double) numSamples;
+                v[kk] += sampleAlpha;
+                //alphaSum[m] += sampleAlpha;
+                //tau.set(k, tt[kk]);
+            }
+        }
+
+        if (!inActiveTopicIndex.isEmpty()) {
+            String empty = "";
+
+            for (int i = 0; i < inActiveTopicIndex.size(); i++) {
+                empty += formatter.format(inActiveTopicIndex.get(i)) + " ";
+            }
+            logger.info("Inactive Topics: " + empty);
+        }
+
+        for (byte m = 0; m < numModalities; m++) {
             //for (byte m = 0; m < numModalities; m++) {
 
+            for (int t = 0; t < numTopics; t++) {
+                mk[m][t] += v[t] * gammaRoot;
+            }
             Arrays.fill(alpha[m], 0);
             alphaSum[m] = 0;
-            mk[m][numTopics] = gammaRoot;
+            mk[m][numTopics] = gammaView[m] + v[numTopics] * gammaRoot;
             tablesCnt[m] = Vectors.sum(mk[m]);
 
-            byte numSamples = 10;
+            numSamples = 10;
             for (int i = 0; i < numSamples; i++) {
                 double[] tt = sampleDirichlet(mk[m]);
                 // On non parametric with new topic we would have numTopics+1 topics for (int kk = 0; kk <= numTopics; kk++) {
@@ -2125,7 +2194,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             logger.info("AlphaSum[" + m + "]: " + alphaSum[m]);
             //for (byte m = 0; m < numModalities; m++) {
             String alphaStr = "";
-            for (int topic = 0; topic < numTopics; topic+=10) {
+            for (int topic = 0; topic < numTopics; topic += 10) {
                 alphaStr += topic + ":" + formatter.format(alpha[m][topic]) + " ";
             }
 

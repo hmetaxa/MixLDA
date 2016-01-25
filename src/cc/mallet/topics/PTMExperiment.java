@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         //int topLabels = 10;
-        byte numModalities = 2;
+        byte numModalities = 5;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -66,21 +66,21 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 1000;
+        int numTopics = 100;
         //int maxNumTopics = 500;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 300; //Max 2000
         int numChars = 20000;
         //int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 20;
-        ExperimentType experimentType = ExperimentType.HEALTHTender;
+        ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 200; //Reduce features to those that occur more than N times
         int pruneLblCnt = 30;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
-        boolean ubuntu = true;
+        boolean ubuntu = false;
 //boolean runParametric = true;
 //
 //        try {
@@ -89,7 +89,7 @@ public class PTMExperiment {
 //            FTree tree = new FTree(temp);
 //
 //            int tmp = tree.sample(2.1 / tree.tree[1]);
-//            logger.info("FTree sample 2.1 (2):" + tmp);
+//            logger.info("FTree sample 2.1 (2):" + t);
 //
 //            double tmp2 = tree.getComponent(0);
 //            logger.info("FTree getComponent(0):" + tmp2);
@@ -124,7 +124,7 @@ public class PTMExperiment {
                 SQLLitedb = "jdbc:sqlite:/home/omiros/projects/Datasets/ACM/PTM3DB_ACM.db";
                 dictDir = ":/home/omiros/projects/Datasets/ACM/";
             } else {
-                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB_ACM.db";
+                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
                 dictDir = "C:\\projects\\Datasets\\ACM\\";
             }
 
@@ -1197,7 +1197,7 @@ public class PTMExperiment {
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
-                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView LIMIT 50000";
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView LIMIT 10000";
 
             }
 

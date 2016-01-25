@@ -269,6 +269,7 @@ public class FastQMVWorkerRunnable implements Runnable {
             int[][] localTopicCounts = new int[numModalities][numTopics];
 
             double[] totalMassOtherModalities = new double[numTopics];
+            double newTopicMassAllModalities = 0;
 
             double[][] p = new double[numModalities][numModalities];
 
@@ -328,6 +329,7 @@ public class FastQMVWorkerRunnable implements Runnable {
             for (byte m = 0; m < numModalities; m++) // byte m = 0;
             {
                 Arrays.fill(totalMassOtherModalities, 0);
+
                 //calc other modalities mass
                 // if (m != 0) { //main (reference) modality 
                 for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
@@ -335,12 +337,22 @@ public class FastQMVWorkerRunnable implements Runnable {
                     int topic = localTopicIndex[denseIndex];
                     for (byte i = 0; i < numModalities; i++) {
                         if (i != m && docLength[i] != 0) {
-                            totalMassOtherModalities[topic] += p[m][i] * localTopicCounts[i][topic] / docLength[i];
+                            totalMassOtherModalities[topic] += p[m][i] * (localTopicCounts[i][topic] + gamma[i]* alpha[i][topic] ) / (docLength[i] + (double) gamma[i] * alphaSum[i]);
+
                         }
                     }
 
                     totalMassOtherModalities[topic] = totalMassOtherModalities[topic] * (docLength[m] + (double) gamma[m] * alphaSum[m]);
                 }
+
+//new topic Mass 
+                newTopicMassAllModalities = 0;
+                for (byte i = 0; i < numModalities; i++) {
+                    newTopicMassAllModalities += p[m][i] * (gamma[i] * alpha[i][numTopics]) / (docLength[i] + (double) gamma[i] * alphaSum[i]);
+                            //*currentTypeTopicCounts.length);
+                }
+                newTopicMassAllModalities = newTopicMassAllModalities * (docLength[m] + (double) gamma[m] * alphaSum[m]);
+                //newTopicMass
                 // }
 
                 FeatureSequence tokenSequenceCurMod = tokenSequence[m];
@@ -407,7 +419,7 @@ public class FastQMVWorkerRunnable implements Runnable {
 
                     }
 
-                    double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : gamma[m] * alpha[m][numTopics] / (currentTypeTopicCounts.length);//check this
+                    double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : newTopicMassAllModalities / currentTypeTopicCounts.length;//check this
 
                     double nextUniform = ThreadLocalRandom.current().nextDouble();
                     //samplingWeights[(int) Math.round(nextUniform * 100)] += 1;
@@ -424,7 +436,7 @@ public class FastQMVWorkerRunnable implements Runnable {
                         if (sample < topicDocWordMass) {
                             newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
                         } else {
-                            
+
                             double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
                             newTopic = currentTree.sample(nextUniform2);
                         }
