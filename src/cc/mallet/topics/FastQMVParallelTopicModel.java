@@ -2003,8 +2003,6 @@ public class FastQMVParallelTopicModel implements Serializable {
         // number of samples for parameter samplers
         int R = 10;
 
-       
-
         //root level DP for all modalities (overall measure) 
         for (int r = 0; r < R; r++) {
 
@@ -2357,7 +2355,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                             System.err.println(" Init Sampling UNASSIGNED_TOPIC");
                             continue;
                         }
-
+//TODO: we should sort modalities according to length[m]
                         for (byte i = (byte) (m - 1); i >= 0; i--) {
                             pDistr_Mean[m][i][docCnt] += (localTopicCounts[i][oneDocTopics[position]] > 0 ? 1.0 : 0d) / (double) docLength[m];
                             pDistr_Mean[i][m][docCnt] = pDistr_Mean[m][i][docCnt];

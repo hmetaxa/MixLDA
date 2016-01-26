@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         //int topLabels = 10;
-        byte numModalities = 5;
+        byte numModalities = 3;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -66,16 +66,16 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 500;
         //int maxNumTopics = 500;
-        int numIterations = 300; //Max 2000
-        int numChars = 20000;
+        int numIterations = 900; //Max 2000
+        int numChars = 5000;
         //int independentIterations = 0;
-        int burnIn = 50;
+        int burnIn = 100;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 200; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 30;
+        int pruneCnt = 150; //Reduce features to those that occur more than N times
+        int pruneLblCnt = 25;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -109,7 +109,7 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + similarityType.toString(); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_"+numOfThreads +"TH_"+ similarityType.toString(); // + "_" + skewOn.toString();
 
         //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = experimentId + ": \n";
@@ -1193,7 +1193,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 20000";
+                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 20000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
@@ -1216,7 +1216,7 @@ public class PTMExperiment {
 
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                        String txt = rs.getString("text");
+                        String txt = rs.getString("fulltext");
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
