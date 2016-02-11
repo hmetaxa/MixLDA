@@ -889,7 +889,7 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         //pDistr_Var = new double[numModalities][numModalities][data.size()];
         for (byte i = 0; i < numModalities; i++) {
-            Arrays.fill(this.p_a[i], 0.1d);
+            Arrays.fill(this.p_a[i], 0.2d);
             Arrays.fill(this.p_b[i], 1d);
         }
 
@@ -993,7 +993,7 @@ public class FastQMVParallelTopicModel implements Serializable {
             updater.setOptimizeParams(false);
             if (iteration < burninPeriod && numModalities > 1) {
                 for (byte i = 0; i < numModalities; i++) {
-                    Arrays.fill(this.p_a[i], Math.min((double) iteration / 100 + 0.2d, 0.7d));
+                    Arrays.fill(this.p_a[i], Math.min((double) iteration / 100 + 0.3d, 1.1d));
 
                     //Arrays.fill(this.p_b[i], 1d);
                 }

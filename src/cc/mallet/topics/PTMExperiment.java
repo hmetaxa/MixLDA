@@ -53,7 +53,7 @@ public class PTMExperiment {
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
         //int topLabels = 10;
-        byte numModalities = 3;
+        byte numModalities = 6;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -63,19 +63,19 @@ public class PTMExperiment {
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 3;
+        int numOfThreads = 2;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 500;
         //int maxNumTopics = 500;
-        int numIterations = 900; //Max 2000
+        int numIterations = 800; //Max 2000
         int numChars = 5000;
         //int independentIterations = 0;
         int burnIn = 100;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 150; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 25;
+        int pruneLblCnt = 10; //25;
         double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -1193,7 +1193,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView";// LIMIT 20000";
+                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView"; //ACMPubViewNoPPR";// LIMIT 20000";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
