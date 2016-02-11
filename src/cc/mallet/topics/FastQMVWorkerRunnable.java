@@ -6,6 +6,7 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
+import static cc.mallet.topics.FastQMVUpdaterRunnable.logger;
 import java.util.Arrays;
 import java.util.ArrayList;
 
@@ -164,14 +165,16 @@ public class FastQMVWorkerRunnable implements Runnable {
 
         try {
 
+            logger.info("Worker["+ threadId+"] thread started");
             // Initialize the doc smoothing-only sampling bucket (Sum(a[i])
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
                     doc++) {
 
-//				  if (doc % 10 == 0) {
-//				  System.out.println("processing doc " + doc);
-//				  }
+				  //if (doc % 50000 == 0) {
+                                    //  logger.info("Worker["+ threadId+"] processing doc " + doc);
+				  //System.out.println("processing doc " + doc);
+				  //}
 //				
 //                FeatureSequence tokenSequence
 //                        = (FeatureSequence) data.get(doc).instance.getData();
@@ -187,7 +190,7 @@ public class FastQMVWorkerRunnable implements Runnable {
 
             shouldSaveState = false;
             //isFinished = true;
-
+            logger.info("Worker["+ threadId+"] thread finished");
             queue.add(new FastQDelta(-1, -1, -1, -1, -1, -1));
 
             try {
@@ -280,8 +283,8 @@ public class FastQMVWorkerRunnable implements Runnable {
                             = m == j ? 1.0 : p_a[m][j] == 0 ? 0
                                             : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
 
-                    p[m][j] = beta[j] == 0.001 ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
-                    p[j][m] = beta[m] == 0.001 ? 0 : pRand;  //too sparse modality --> ignore its doc /topic distribution
+                    p[m][j] = (j!=0 && beta[j] == 0.0001) ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
+                    p[j][m] = (m!=0 && beta[m] == 0.0001) ? 0 : pRand;  //too sparse modality --> ignore its doc /topic distribution
                 }
 
                 docLength[m] = 0;
