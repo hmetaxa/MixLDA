@@ -5,6 +5,7 @@
  */
 package cc.mallet.topics;
 
+import static cc.mallet.topics.FastQMVParallelTopicModel.logger;
 import static cc.mallet.topics.FastQParallelTopicModel.logger;
 import cc.mallet.types.Dirichlet;
 import cc.mallet.util.MalletLogger;
@@ -161,12 +162,15 @@ public class FastQMVUpdaterRunnable implements Runnable {
                 FastQDelta delta;
                 int[] currentTypeTopicCounts;
                 for (int x = 0; x < queues.size(); x++) {
+                   //logger.info("Updater thread: processing queue["+x+"]");
                     while ((delta = queues.get(x).poll()) != null) {
 
                         
                         if (delta.Modality == -1 && delta.NewTopic == -1 && delta.OldTopic == -1 && delta.Type == -1) { // thread x has finished
                             finishedSamplingTreads.add(x);
                             isFinished = finishedSamplingTreads.size() == queues.size();
+                            
+                            logger.info("Updater thread: worker["+x+"] has finished");
                             continue;
                         }
 

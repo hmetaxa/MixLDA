@@ -52,8 +52,9 @@ public class PTMExperiment {
 
         Logger logger = MalletLogger.getLogger(PTMExperiment.class.getName());
         int topWords = 15;
-        //int topLabels = 10;
-        byte numModalities = 6;
+        int showTopicsInterval = 0;
+        //int topLabels = 10;p
+        byte numModalities = 1;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -62,25 +63,26 @@ public class PTMExperiment {
         //boolean runOnLine = false;
         boolean calcSimilarities = false;
         boolean runTopicModelling = true;
+        boolean runOrigParallelModel = true;
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 2;
+        int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 500;
         //int maxNumTopics = 500;
-        int numIterations = 800; //Max 2000
+        int numIterations = 400; //Max 2000
         int numChars = 5000;
         //int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 150; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 10; //25;
-        double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        int pruneLblCnt = 10;
+        double pruneMaxPerc = 0.5 ;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
-        boolean ubuntu = false;
+        boolean ubuntu = true;
 //boolean runParametric = true;
 //
 //        try {
@@ -121,8 +123,8 @@ public class PTMExperiment {
 
         if (experimentType == ExperimentType.ACM) {
             if (ubuntu) {
-                SQLLitedb = "jdbc:sqlite:/home/omiros/projects/Datasets/ACM/PTM3DB_ACM.db";
-                dictDir = ":/home/omiros/projects/Datasets/ACM/";
+                SQLLitedb = "jdbc:sqlite:/home/omiros/Projects/Datasets/ACM/PTM3DB.db";
+                dictDir = ":/home/omiros/Projects/Datasets/ACM/";
             } else {
                 SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
                 dictDir = "C:\\projects\\Datasets\\ACM\\";
@@ -133,7 +135,7 @@ public class PTMExperiment {
         if (experimentType == ExperimentType.HEALTHTender) {
             if (ubuntu) {
                 SQLLitedb = "jdbc:sqlite:/home/omiros/Projects/Datasets/PubMed/PTM3DB_PM.db";
-                dictDir = ":/home/omiros/projects/Datasets/PubMed/";
+                dictDir = ":/home/omiros/Projects/Datasets/PubMed/";
             } else {
                 SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/PubMed/PTM3DB_PM.db";
                 dictDir = "C:\\projects\\Datasets\\PubMed\\";
@@ -248,7 +250,7 @@ public class PTMExperiment {
             InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
             logger.info(" instances added through pipe");
 
-            boolean runOrigParallelModel = false;
+            
             if (runOrigParallelModel) {
                 ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics * 0.01, 0.01);
 
@@ -256,12 +258,13 @@ public class PTMExperiment {
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                modelOrig.setNumThreads(2);
+                modelOrig.setNumThreads(numOfThreads+1);
                 // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
                 modelOrig.setNumIterations(numIterations);
                 modelOrig.optimizeInterval = optimizeInterval;
                 modelOrig.burninPeriod = burnIn;
+                modelOrig.setTopicDisplay(showTopicsInterval, topWords);
                 //model.optimizeInterval = 0;
                 //model.burninPeriod = 0;
                 //model.saveModelInterval=250;
@@ -289,6 +292,7 @@ public class PTMExperiment {
 
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
                 model.setNumIterations(numIterations);
+                model.setTopicDisplay(showTopicsInterval, topWords);
                 // model.setIndependentIterations(independentIterations);
                 model.optimizeInterval = optimizeInterval;
                 model.burninPeriod = burnIn;
@@ -1197,7 +1201,7 @@ public class PTMExperiment {
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
-                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView LIMIT 10000";
+                sql = " select pubId, TEXT, GrantIds, Funders, Areas, AreasDescr, Venue, MESHdescriptors from HEALTHPubView";// LIMIT 100000";
 
             }
 

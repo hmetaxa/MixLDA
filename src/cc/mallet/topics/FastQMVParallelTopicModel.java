@@ -661,6 +661,8 @@ public class FastQMVParallelTopicModel implements Serializable {
 
         }
 
+        logger.info("Found topics to merge: "+mergedTopics.size());
+        
         if (mergedTopics.size() > 0 || (!deletedTopics.isEmpty())) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
@@ -1007,7 +1009,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                 modalities.add((byte) 0);
 
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    mergeSimilarTopics(40, modalities, 0.65, 1);
+                    mergeSimilarTopics(40, modalities, 0.85, 0);
                 }
 
                 optimizeDP();
@@ -1952,9 +1954,9 @@ public class FastQMVParallelTopicModel implements Serializable {
                         numTypes[m],
                         betaSum[m]);
 
-                if (betaSum[m] < numTypes[m] * 0.001) { //too sparse for this topic model (num of topics probably large for this modality).. prevent smoothing from going to zero 
-                    logger.warning("Too sparse modality: set Beta to 0.001");
-                    beta[m] = 0.001;
+                if (betaSum[m] < numTypes[m] * 0.0001) { //too sparse for this topic model (num of topics probably large for this modality).. prevent smoothing from going to zero 
+                    logger.warning("Too sparse modality: set Beta to 0.0001");
+                    beta[m] = 0.0001;
                     betaSum[m] = beta[m] * numTypes[m];
 
                 } else if (Double.isNaN(betaSum[m])) {
@@ -1962,7 +1964,7 @@ public class FastQMVParallelTopicModel implements Serializable {
                     //logger.warning("Dirichlet optimization has become unstable (NaN Value). Resetting to previous Beta");
                     if (beta[m] == 0.01) //initial beta... --> too sparse 
                     {
-                        beta[m] = 0.001;
+                        beta[m] = 0.0001;
                         betaSum[m] = beta[m] * numTypes[m];
                         logger.warning("Too sparse modality. Dirichlet optimization has failed. Set Beta to 0.001");
                     } else {
