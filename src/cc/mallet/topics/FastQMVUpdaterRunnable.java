@@ -5,22 +5,17 @@
  */
 package cc.mallet.topics;
 
-import static cc.mallet.topics.FastQMVParallelTopicModel.logger;
-import static cc.mallet.topics.FastQParallelTopicModel.logger;
 import cc.mallet.types.Dirichlet;
 import cc.mallet.util.MalletLogger;
 import cc.mallet.util.Randoms;
 import static java.lang.Math.log;
 import java.text.NumberFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
@@ -28,8 +23,11 @@ import org.knowceans.util.RandomSamplers;
 import org.knowceans.util.Vectors;
 
 /**
+ * Parallel multi-view topic model updater task using FTrees 
+ * 
+ * Update thread
  *
- * @author Omiros
+ * @author Omiros Metaxas
  */
 public class FastQMVUpdaterRunnable implements Runnable {
 

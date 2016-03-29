@@ -10,23 +10,18 @@ import static cc.mallet.topics.FastQMVUpdaterRunnable.logger;
 import java.util.Arrays;
 import java.util.ArrayList;
 
-import java.util.zip.*;
-
-import java.io.*;
-import java.text.NumberFormat;
-
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
-import java.util.HashSet;
+
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.ConcurrentLinkedQueue;
+
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * A parallel topic model runnable task using FTrees / cycling proposals.
+ * Parallel multi-view topic model runnable task using FTrees 
  *
  * @author Omiros Metaxas
  */

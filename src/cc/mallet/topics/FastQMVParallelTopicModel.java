@@ -44,13 +44,9 @@ import org.knowceans.util.RandomSamplers;
 import org.knowceans.util.Vectors;
 
 /**
- * Simple parallel threaded implementation of LDA, following Newman, Asuncion,
- * Smyth and Welling, Distributed Algorithms for Topic Models JMLR (2009), with
- * SparseLDA sampling scheme and data structure from Yao, Mimno and McCallum,
- * Efficient Methods for Topic Model Inference on Streaming Document
- * Collections, KDD (2009).
+ * Parallel multi-view topic model using FTrees & queues.
  *
- * @author David Mimno, Andrew McCallum Omiros test mercucial
+ * @author Omiros Metaxas
  */
 public class FastQMVParallelTopicModel implements Serializable {
 
