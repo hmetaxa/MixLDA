@@ -23,7 +23,6 @@ import java.io.*;
 import java.text.NumberFormat;
 
 import cc.mallet.types.*;
-import cc.mallet.topics.TopicAssignment;
 import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
 import gnu.trove.TByteArrayList;
@@ -37,7 +36,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Queue;
 import org.knowceans.util.RandomSamplers;
