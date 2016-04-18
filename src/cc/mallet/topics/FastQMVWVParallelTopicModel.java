@@ -1,6 +1,5 @@
 package cc.mallet.topics;
 
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -128,6 +127,11 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public boolean useCycleProposals = true;
 
     public String batchId = "";
+
+    public double[][][] wordVectors; // Vector representations for tokens per modality <modality, token, vector>
+    public double[][] topicVectors;// Vector representations for topics <topic, vector>
+    public int vectorSize; // Number of vector dimensions
+    public double[][][] wordTopicCosineSimilarityValues; //<modality, token, topic>;
 
     // The number of times each type appears in the corpus
     int[][] typeTotals;
@@ -287,6 +291,46 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public void setSaveSerializedModel(int interval, String filename) {
         this.saveModelInterval = interval;
         this.modelFilename = filename;
+    }
+
+    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet, byte m)
+            throws Exception {
+        System.out.println("Reading word vectors from word-vectors file " + pathToWordVectorsFile
+                + "...");
+
+        BufferedReader br = null;
+        try {
+            br = new BufferedReader(new FileReader(pathToWordVectorsFile));
+            String[] elements = br.readLine().trim().split("\\s+");
+            vectorSize = elements.length - 1;
+            wordVectors[m] = new double[alphabet[m].size()][vectorSize];
+            String word = elements[0];
+            //TODO: I should only take into account words that have wordvectors...
+            if (word2IdVocabulary.containsKey(word)) {
+                for (int j = 0; j < vectorSize; j++) {
+                    wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                }
+            }
+            for (String line; (line = br.readLine()) != null;) {
+                elements = line.trim().split("\\s+");
+                word = elements[0];
+                if (word2IdVocabulary.containsKey(word)) {
+                    for (int j = 0; j < vectorSize; j++) {
+                        wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        for (int i = 0; i < vocabularySize; i++) {
+            if (MatrixOps.absNorm(wordVectors[i]) == 0.0) {
+                System.out.println("The word \"" + id2WordVocabulary.get(i)
+                        + "\" doesn't have a corresponding vector!!!");
+                throw new Exception();
+            }
+        }
     }
 
     public void addInstances(InstanceList[] training, String batchId) {
@@ -649,8 +693,8 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
         }
 
-        logger.info("Found topics to merge: "+mergedTopics.size());
-        
+        logger.info("Found topics to merge: " + mergedTopics.size());
+
         if (mergedTopics.size() > 0 || (!deletedTopics.isEmpty())) {
             for (MixTopicModelTopicAssignment entity : data) {
                 for (Byte m = 0; m < numModalities; m++) {
