@@ -6,7 +6,6 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -55,11 +54,10 @@ import org.knowceans.util.Vectors;
 public class FastQHMVParallelTopicModel implements Serializable {
 
     public static final int UNASSIGNED_TOPIC = -1;
-    
+
     public static final int ROOT_TOPIC = 0;
     public static final int SUPER_TOPIC = 1;
     public static final int SUB_TOPIC = 2;
-
 
     public static Logger logger = MalletLogger.getLogger(FastQHMVParallelTopicModel.class.getName());
 
@@ -143,6 +141,11 @@ public class FastQHMVParallelTopicModel implements Serializable {
 
     public String batchId = "";
 
+    public double[][][] wordVectors; // Vector representations for tokens per modality <modality, token, vector>
+    public double[][] topicVectors;// Vector representations for topics <topic, vector>
+    public int vectorSize; // Number of vector dimensions
+    public double[][][] wordTopicCosineSimilarityValues; //<modality, token, topic>;
+
     // The number of times each type appears in the corpus
     int[][] typeTotals;
     // The max over typeTotals, used for beta[0] optimization
@@ -158,9 +161,10 @@ public class FastQHMVParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQHMVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals) {
+    public FastQHMVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, int vectorSize) {
 
         this.numModalities = numModalities;
+        this.vectorSize = vectorSize;
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
         this.topicAlphabet = newLabelAlphabet(numberOfTopics);
@@ -175,6 +179,10 @@ public class FastQHMVParallelTopicModel implements Serializable {
 
         this.docSmoothingOnlyMass = new double[numModalities];
         this.docSmoothingOnlyCumValues = new double[numModalities][numTopics];
+
+        this.wordVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
+        this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
+        this.wordTopicCosineSimilarityValues = new double[numModalities][][];
 
         tokensPerTopic = new int[numModalities][numTopics];
 
@@ -302,6 +310,48 @@ public class FastQHMVParallelTopicModel implements Serializable {
         this.modelFilename = filename;
     }
 
+    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet, byte m )
+        throws Exception
+    {
+        System.out.println("Reading word vectors from word-vectors file " + pathToWordVectorsFile
+                + "...");
+
+        BufferedReader br = null;
+        try {
+            br = new BufferedReader(new FileReader(pathToWordVectorsFile));
+            String[] elements = br.readLine().trim().split("\\s+");
+            vectorSize = elements.length - 1;
+            wordVectors[m] = new double[alphabet[m].size()][vectorSize];
+            String word = elements[0];
+            //TODO: I should only take into account words that have wordvectors...
+            if (word2IdVocabulary.containsKey(word)) {
+                for (int j = 0; j < vectorSize; j++) {
+                    wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                }
+            }
+            for (String line; (line = br.readLine()) != null;) {
+                elements = line.trim().split("\\s+");
+                word = elements[0];
+                if (word2IdVocabulary.containsKey(word)) {
+                    for (int j = 0; j < vectorSize; j++) {
+                        wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                    }
+                }
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        for (int i = 0; i < vocabularySize; i++) {
+            if (MatrixOps.absNorm(wordVectors[i]) == 0.0) {
+                System.out.println("The word \"" + id2WordVocabulary.get(i)
+                        + "\" doesn't have a corresponding vector!!!");
+                throw new Exception();
+            }
+        }
+    }
+    
     public void addInstances(InstanceList[] training, String batchId) {
 
         TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
@@ -932,7 +982,7 @@ public class FastQHMVParallelTopicModel implements Serializable {
             }
 
             updater.setOptimizeParams(false);
-            if (iteration < burninPeriod && numModalities>1) {
+            if (iteration < burninPeriod && numModalities > 1) {
                 for (byte i = 0; i < numModalities; i++) {
                     Arrays.fill(this.p_a[i], Math.min((double) iteration / 100, 1d));
 
@@ -2283,7 +2333,7 @@ public class FastQHMVParallelTopicModel implements Serializable {
                             //Omiros: TODO: I should reweight each modality's contribution in the proportion of the document based on its discrimination power (skew index)
                             //topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             //normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
-                            
+
                             topicProportion += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m] * ((double) topicCounts[m][topic] + (double) gamma[m] * alpha[m][topic]) / (docLen[m] + alphaSum[m]);
                             normalizeSum += (m == 0 ? 1 : skewWeight[m]) * pMean[0][m];
                         }
