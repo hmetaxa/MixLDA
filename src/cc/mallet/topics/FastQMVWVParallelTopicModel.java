@@ -293,7 +293,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         this.modelFilename = filename;
     }
 
-    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet, byte m)
+    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet, byte m) //word vectors for text modality
             throws Exception {
         System.out.println("Reading word vectors from word-vectors file " + pathToWordVectorsFile
                 + "...");
@@ -303,20 +303,32 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             br = new BufferedReader(new FileReader(pathToWordVectorsFile));
             String[] elements = br.readLine().trim().split("\\s+");
             vectorSize = elements.length - 1;
+
+            this.vectorSize = vectorSize;
+            this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
+
+            this.wordVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
             wordVectors[m] = new double[alphabet[m].size()][vectorSize];
+
+            this.wordTopicCosineSimilarityValues = new double[numModalities][][];
+            this.wordTopicCosineSimilarityValues[m] = new double[alphabet[m].size()][numTopics];
+
             String word = elements[0];
             //TODO: I should only take into account words that have wordvectors...
-            if (word2IdVocabulary.containsKey(word)) {
+            int wordId = alphabet[m].lookupIndex(word, false);
+            if (alphabet[m].lookupIndex(word) != -1) {
                 for (int j = 0; j < vectorSize; j++) {
-                    wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                    wordVectors[m][wordId][j] = new Double(elements[j + 1]);
                 }
             }
             for (String line; (line = br.readLine()) != null;) {
                 elements = line.trim().split("\\s+");
                 word = elements[0];
-                if (word2IdVocabulary.containsKey(word)) {
+                wordId = alphabet[m].lookupIndex(word, false);
+                if (alphabet[m].lookupIndex(word) != -1) {
+
                     for (int j = 0; j < vectorSize; j++) {
-                        wordVectors[word2IdVocabulary.get(word)][j] = new Double(elements[j + 1]);
+                        wordVectors[m][wordId][j] = new Double(elements[j + 1]);
                     }
                 }
             }
@@ -324,9 +336,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             e.printStackTrace();
         }
 
-        for (int i = 0; i < vocabularySize; i++) {
-            if (MatrixOps.absNorm(wordVectors[i]) == 0.0) {
-                System.out.println("The word \"" + id2WordVocabulary.get(i)
+        for (int i = 0; i < alphabet[m].size(); i++) {
+            if (MatrixOps.absNorm(wordVectors[m][i]) == 0.0) {
+                System.out.println("The word \"" + alphabet[m].lookupObject(i)
                         + "\" doesn't have a corresponding vector!!!");
                 throw new Exception();
             }

@@ -237,7 +237,7 @@ public class WordEmbeddings {
         }
     }
 
-    public void write(String SQLLiteDB) {
+    public void write(String SQLLiteDB, int modality ) {
         Connection connection = null;
         Statement statement = null;
         try {
@@ -246,28 +246,30 @@ public class WordEmbeddings {
                 connection = DriverManager.getConnection(SQLLiteDB);
                 statement = connection.createStatement();
                 statement.setQueryTimeout(30);  // set timeout to 30 sec.
-                // statement.executeUpdate("drop table if exists PubTopic");
-                //statement.executeUpdate("create table if not exists PubTopic (PubId nvarchar(50), TopicId Integer, Weight Double , BatchId Text, ExperimentId nvarchar(50)) ");
+                statement.executeUpdate("drop table if exists WordVector");
+                statement.executeUpdate("create table if not exists WordVector (Word nvarchar(50), ColumnId Integer, Weight Double, modality int ) ");
                 //statement.executeUpdate(String.format("Delete from PubTopic where  ExperimentId = '%s'", experimentId));
             }
             PreparedStatement bulkInsert = null;
-            String sql = "insert into WordVector values(?,?,?,?,? );";
+            String sql = "insert into WordVector values(?,?,?,? );";
 
             try {
                 connection.setAutoCommit(false);
                 bulkInsert = connection.prepareStatement(sql);
 
                 for (int word = 0; word < numWords; word++) {
-                    Formatter buffer = new Formatter(new StringBuilder(), Locale.US);
-                    
+                    //Formatter buffer = new Formatter(new StringBuilder(), Locale.US);
+
                     //buffer.format("%s", vocabulary.lookupObject(word));
                     for (int col = 0; col < numColumns; col++) {
-                       buffer.format(" %.6f \t", weights[word * stride + col]);
+                    //   buffer.format(" %.6f \t", weights[word * stride + col]);
+
+                        bulkInsert.setString(1, vocabulary.lookupObject(word).toString());
+                        bulkInsert.setInt(2, col);
+                        bulkInsert.setDouble(3, weights[word * stride + col]);
+                        bulkInsert.setInt(4, modality);
+                        bulkInsert.executeUpdate();
                     }
-                    bulkInsert.setString(1, vocabulary.lookupObject(word).toString());
-                    bulkInsert.setString(2, buffer.toString());
-                   
-                    bulkInsert.executeUpdate();
                 }
 
                 if (!SQLLiteDB.isEmpty()) {
