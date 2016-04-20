@@ -54,6 +54,8 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
     protected int[][][] typeTopicCounts; // indexed by  [modality][tokentype][topic]
     protected int[][] tokensPerTopic; // indexed by <topic index>
+    
+    protected double[][][] typeTopicSimilarity; //<modality, token, topic>;
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
     //protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -90,7 +92,8 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             double[][] p_b, // b for beta prir for modalities correlation
             //            ConcurrentLinkedQueue<FastQDelta> queue, 
             CyclicBarrier cyclicBarrier,
-            List<Integer> inActiveTopicIndex
+            List<Integer> inActiveTopicIndex,
+            double[][][] typeTopicSimilarity
     //, FTree betaSmoothingTree
     ) {
 
@@ -117,6 +120,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
         this.startDoc = startDoc;
         this.numDocs = numDocs;
         this.useCycleProposals = useCycleProposals;
+        this.typeTopicSimilarity = typeTopicSimilarity;
 
         this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
         this.docSmoothingOnlyMass = docSmoothingOnlyMass;
@@ -414,7 +418,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                         int topic = localTopicIndex[denseIndex];
                         int n = localTopicCounts[m][topic];
-                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
+                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * typeTopicSimilarity[m][type][topic] * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
                         //topicDocWordMass +=  n * trees[type].getComponent(topic);
                         topicDocWordMasses[denseIndex] = topicDocWordMass;
 

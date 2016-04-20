@@ -52,6 +52,8 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
 
     protected double[] docSmoothingOnlyMass;
     protected double[][] docSmoothingOnlyCumValues;
+    
+    protected double[][][] typeTopicSimilarity; //<modality, token, topic>;
 
     //protected FTree betaSmoothingTree;
     private final CyclicBarrier cyclicBarrier;
@@ -85,7 +87,8 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
             int[] numTypes,
             int[] maxTypeCount,
             Randoms random,
-            List<Integer> inActiveTopicIndex
+            List<Integer> inActiveTopicIndex,
+            double[][][] typeTopicSimilarity
     //        , FTree betaSmoothingTree
     ) {
 
@@ -110,6 +113,7 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
 
         this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
         this.docSmoothingOnlyMass = docSmoothingOnlyMass;
+        this.typeTopicSimilarity = typeTopicSimilarity;
 
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
@@ -205,18 +209,18 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
                         topicDocCounts[delta.Modality][delta.NewTopic][delta.DocNewTopicCnt]++;
 
                         //Update tree
-                        if (useCycleProposals) {
-                            trees[delta.Modality][delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
-                            trees[delta.Modality][delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
-
-                            //betaSmoothingTree.update(delta.OldTopic, (beta[0] / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
-                            //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
-                        } else {
+//                        if (useCycleProposals) {
+//                            trees[delta.Modality][delta.Type].update(delta.OldTopic, ((currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+//                            trees[delta.Modality][delta.Type].update(delta.NewTopic, ((currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
+//
+//                            //betaSmoothingTree.update(delta.OldTopic, (beta[0] / (tokensPerTopic[delta.OldTopic] + betaSum[0])));
+//                            //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
+//                        } else {
                             if (delta.OldTopic != FastQMVWVParallelTopicModel.UNASSIGNED_TOPIC) {
-                                trees[delta.Modality][delta.Type].update(delta.OldTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                                trees[delta.Modality][delta.Type].update(delta.OldTopic, (typeTopicSimilarity[delta.Modality][delta.Type][delta.OldTopic] * gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
                             }
-                            trees[delta.Modality][delta.Type].update(delta.NewTopic, (gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
-                        }
+                            trees[delta.Modality][delta.Type].update(delta.NewTopic, (typeTopicSimilarity[delta.Modality][delta.Type][delta.NewTopic] * gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
+                        //}
 
                         if (inActiveTopicIndex.contains(delta.NewTopic)) //new topic
                         {
@@ -500,42 +504,5 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
         return distribution;
     }
 
-    private void recalcTrees() {
-        //recalc trees
-
-        double[] temp = new double[numTopics];
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int w = 0; w < numTypes[m]; ++w) {
-
-                int[] currentTypeTopicCounts = typeTopicCounts[m][w];
-                for (int currentTopic = 0; currentTopic < numTopics; currentTopic++) {
-
-                    // temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[0])  / (tokensPerTopic[currentTopic] + betaSum[0]);
-                    if (useCycleProposals) {
-                        temp[currentTopic] = (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]); //with cycle proposal
-                    } else {
-                        temp[currentTopic] = gamma[m] * alpha[m][currentTopic] * (currentTypeTopicCounts[currentTopic] + beta[m]) / (tokensPerTopic[m][currentTopic] + betaSum[m]);
-                    }
-
-                }
-
-                //trees[w] = new FTree(temp);
-                trees[m][w].constructTree(temp);
-
-                //reset temp
-                Arrays.fill(temp, 0);
-
-            }
-
-            docSmoothingOnlyMass[m] = 0;
-            if (useCycleProposals) {
-                // cachedCoefficients cumulative array that will be used for binary search
-                for (int topic = 0; topic < numTopics; topic++) {
-                    docSmoothingOnlyMass[m] += gamma[m] * alpha[m][topic];
-                    docSmoothingOnlyCumValues[m][topic] = docSmoothingOnlyMass[m];
-                }
-            }
-        }
-
-    }
+//   
 }

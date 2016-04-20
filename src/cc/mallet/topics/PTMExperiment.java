@@ -6,6 +6,7 @@ import cc.mallet.util.*;
 import cc.mallet.types.*;
 import cc.mallet.pipe.*;
 import static cc.mallet.topics.FastQMVParallelTopicModel.logger;
+import static cc.mallet.topics.WordEmbeddings.numDimensions;
 //import cc.mallet.pipe.iterator.*;
 //import cc.mallet.topics.*;
 //import cc.mallet.util.Maths;
@@ -78,11 +79,12 @@ public class PTMExperiment {
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 150; //Reduce features to those that occur more than N times
         int pruneLblCnt = 10;
-        double pruneMaxPerc = 0.5 ;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
         boolean ubuntu = true;
+        boolean runWordEmbeddings = true;
 //boolean runParametric = true;
 //
 //        try {
@@ -111,7 +113,7 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_"+numOfThreads +"TH_"+ similarityType.toString(); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + numOfThreads + "TH_" + similarityType.toString(); // + "_" + skewOn.toString();
 
         //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = experimentId + ": \n";
@@ -250,6 +252,20 @@ public class PTMExperiment {
             InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
             logger.info(" instances added through pipe");
 
+            if (runWordEmbeddings) {
+                int numDimensions = 50;
+                int windowSizeOption = 5;
+                int numSamples = 5;
+                WordEmbeddings matrix = new WordEmbeddings(instances[0].getDataAlphabet(), numDimensions, windowSizeOption);
+                matrix.queryWord = "mining";
+                matrix.countWords(instances[0]);
+                matrix.train(instances[0], numOfThreads, numSamples);
+
+                PrintWriter out = new PrintWriter("vectors.txt");
+                matrix.write(out);
+                out.close();
+                matrix.write(SQLLitedb, 0);
+            }
             
             if (runOrigParallelModel) {
                 ParallelTopicModel modelOrig = new ParallelTopicModel(numTopics, numTopics * 0.01, 0.01);
@@ -258,7 +274,7 @@ public class PTMExperiment {
 
                 // Use two parallel samplers, which each look at one half the corpus and combine
                 //  statistics after every iteration.
-                modelOrig.setNumThreads(numOfThreads+1);
+                modelOrig.setNumThreads(numOfThreads + 1);
                 // Run the model for 50 iterations and stop (this is for testing only, 
                 //  for real applications, use 1000 to 2000 iterations)
                 modelOrig.setNumIterations(numIterations);
