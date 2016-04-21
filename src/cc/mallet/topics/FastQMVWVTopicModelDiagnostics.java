@@ -829,8 +829,8 @@ public class FastQMVWVTopicModelDiagnostics {
         training[0] = InstanceList.load(new File(args[0]));
         int numTopics = Integer.parseInt(args[1]);
         byte mod = 1;
-        FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true);
-        model.addInstances(training, "");
+        FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true);
+        model.addInstances(training, "", new int[1]);
         model.setNumIterations(1000);
 
         model.estimate();

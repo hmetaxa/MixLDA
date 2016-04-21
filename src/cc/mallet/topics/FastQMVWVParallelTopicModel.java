@@ -132,6 +132,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public double[][][] topicVectors;// Vector representations for topics <modality, topic, vector>
     public int[] vectorSize; // Number of vector dimensions per modality
     public double[][][] typeTopicSimilarity; //<modality, token, topic>;
+    public boolean useTypeVectors;
+
+    public String SQLLiteDB;
 
     // The number of times each type appears in the corpus
     int[][] typeTotals;
@@ -148,8 +151,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals) {
+    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, String SQLLiteDB, boolean useTypeVectors) {
 
+        this.SQLLiteDB = SQLLiteDB;
+        this.useTypeVectors = useTypeVectors;
         this.numModalities = numModalities;
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
@@ -344,8 +349,8 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
     }
 
-    public void readWordVectorsDB(String SQLLitedb, Alphabet[] alphabet, int[] vectorSize) //word vectors for text modality
-            throws Exception {
+    public void readWordVectorsDB(String SQLLitedb, int[] vectorSize) //word vectors for text modality
+    {
 
         Connection connection = null;
         try {
@@ -370,7 +375,13 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
             while (rs.next()) {
 
-                this.topicVectors[rs.getInt("modality")][rs.getInt("word")][rs.getInt("ColumnId")] = rs.getDouble("weight");
+                int m = rs.getInt("modality");
+                int w = alphabet[m].lookupIndex(rs.getString("word"), false);
+                int c = rs.getInt("ColumnId");
+                double weight = rs.getDouble("weight");
+                if (w != -1) {
+                    this.typeVectors[m][w][c] = weight;
+                }
 
             }
 
@@ -392,11 +403,11 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         for (int m = 0; m < numModalities; m++) {
             for (int i = 0; i < alphabet[m].size(); i++) {
                 Arrays.fill(this.typeTopicSimilarity[m][i], 1);
-                
+
                 if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
                     logger.warning("The word \"" + alphabet[m].lookupObject(i)
                             + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
-                    
+
                     //throw new Exception();
                 }
             }
@@ -404,16 +415,16 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     }
 
     private void CalcTopicTypeVectorSimilarities(int maxNumWords) {
-        
+
         CalcTopicVectors(maxNumWords);
-        
+
         for (int m = 0; m < numModalities; m++) {
             for (int w = 0; w < alphabet[m].size(); w++) {
                 if (MatrixOps.absNorm(typeVectors[m][w]) != 0.0) // meaning that word vector exists
                 {
                     for (int t = 0; t < numTopics; t++) {
 
-                        typeTopicSimilarity[m][w][t] = MatrixOps.cosineSimilarity(topicVectors[m][t], typeVectors[m][w]);
+                        typeTopicSimilarity[m][w][t] = Math.max(MatrixOps.cosineSimilarity(topicVectors[m][t], typeVectors[m][w]), 0);
                     }
                 }
             }
@@ -452,7 +463,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
     }
 
-    public void addInstances(InstanceList[] training, String batchId) {
+    public void addInstances(InstanceList[] training, String batchId, int[] vectorSize) {
 
         TObjectIntHashMap<String> entityPosition = new TObjectIntHashMap<String>();
         typeTotals = new int[numModalities][];
@@ -530,6 +541,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             }
         }
 
+        readWordVectorsDB(SQLLiteDB, vectorSize);
         initializeHistograms();
         initSpace();
         buildInitialTypeTopicCounts();
@@ -1168,7 +1180,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeDP();
                 optimizeGamma();
                 optimizeBeta();
-                CalcTopicTypeVectorSimilarities(40);
+                if (useTypeVectors) {
+                    CalcTopicTypeVectorSimilarities(40);
+                }
                 recalcTrees(false);
             }
 
@@ -3351,10 +3365,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
             byte mod = 1;
-            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true);
+            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
-            lda.addInstances(training, "");
+            lda.addInstances(training, "", new int[1]);
 
             lda.setNumThreads(Integer.parseInt(args[2]));
             lda.estimate();
