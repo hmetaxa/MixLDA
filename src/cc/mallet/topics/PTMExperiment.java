@@ -55,7 +55,7 @@ public class PTMExperiment {
         int topWords = 15;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 1;
+        byte numModalities = 3;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -69,26 +69,26 @@ public class PTMExperiment {
         int numOfThreads = 3;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 300;
         //int maxNumTopics = 500;
-        int numIterations = 400; //Max 2000
+        int numIterations = 600; //Max 2000
         int numChars = 5000;
         //int independentIterations = 0;
-        int burnIn = 50;
+        int burnIn = 20;
         int optimizeInterval = 10;
         ExperimentType experimentType = ExperimentType.ACM;
-        int pruneCnt = 100; //Reduce features to those that occur more than N times
+        int pruneCnt = 150; //Reduce features to those that occur more than N times
         int pruneLblCnt = 10;
-        double pruneMaxPerc = 0.5;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        double pruneMaxPerc = 1;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
         boolean ACMAuthorSimilarity = true;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = true;
+        boolean useTypeVectors = false;
 
         int[] vectorSize = new int[numModalities];
-        vectorSize[0] = 50;
+        vectorSize[0] = 200;
 //boolean runParametric = true;
 //
 //        try {
@@ -1009,7 +1009,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView LIMIT 20000";
+                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView ";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
