@@ -109,7 +109,9 @@ public class WordEmbeddingRunnable implements Runnable {
 					int outputType = tokenBuffer[outputPosition];
 					if (inputType == outputType) { continue; }
 					
-					double innerProduct = model.weights[inputType * stride + 0] + model.weights[inputType * stride + outputOffset];
+					//double innerProduct = model.weights[inputType * stride + 0] + model.weights[inputType * stride + outputOffset];
+                                        //Omiros I think there is an error here
+                                        double innerProduct = model.weights[inputType * stride + 0] + model.weights[outputType * stride + outputOffset];
 					for (int col = 1; col < numColumns; col++) {
 						innerProduct += model.weights[inputType * stride + col] * model.weights[outputType * stride + outputOffset + col];
 					}
@@ -142,7 +144,7 @@ public class WordEmbeddingRunnable implements Runnable {
 						//System.out.format("%s %s %d\n", vocabulary.lookupObject(outputType), vocabulary.lookupObject(sampledType), 0);
 						int sampledTypeOffset = sampledType * stride;
 						
-						innerProduct = model.weights[inputType * stride + 0] + model.weights[sampledTypeOffset + outputOffset];;
+						innerProduct = model.weights[inputType * stride + 0] + model.weights[sampledTypeOffset + outputOffset];
 						for (int col = 0; col < numColumns; col++) {
 							innerProduct += model.weights[inputType * stride + col] * model.weights[sampledTypeOffset + outputOffset + col];
 						}
