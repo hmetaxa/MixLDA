@@ -55,7 +55,7 @@ public class PTMExperiment {
         int topWords = 15;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 3;
+        byte numModalities = 6;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -132,8 +132,10 @@ public class PTMExperiment {
                 SQLLitedb = "jdbc:sqlite:/home/omiros/Projects/Datasets/ACM/PTM3DB.db";
                 dictDir = ":/home/omiros/Projects/Datasets/ACM/";
             } else {
-                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
-                dictDir = "C:\\projects\\Datasets\\ACM\\";
+                //SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
+                //dictDir = "C:\\projects\\Datasets\\ACM\\";
+                SQLLitedb = "jdbc:sqlite:F:/Omiros/DBs/ACM/PTMDB_ACM2016.db";
+                dictDir = "F:\\Omiros\\DBs\\ACM\\";
             }
 
             //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
@@ -1009,7 +1011,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, fulltext, authors, citations, categories, period,JournalISSN from ACMPubView ";
+                sql = " select  pubId, text, fulltext, authors, citations, categories, period, venue from ACMPubViewNoPPR ";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
@@ -1080,9 +1082,9 @@ public class PTMExperiment {
                         }
 
                         if (numModalities > 5) {
-                            String tmpJournalStr = rs.getString("JournalISSN");//.replace("\t", ",");
+                            String tmpJournalStr = rs.getString("Venue");//.replace("\t", ",");
                             if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
-                                instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "journal"));
+                                instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "venue"));
                             }
                         }
 
