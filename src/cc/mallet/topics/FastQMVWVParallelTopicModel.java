@@ -315,6 +315,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
             this.typeTopicSimilarity = new double[numModalities][][];
             this.typeTopicSimilarity[m] = new double[alphabet[m].size()][numTopics];
+            for (int i = 0; i < alphabet[m].size(); i++) {
+                Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+            }
 
             String word = elements[0];
             //TODO: I should only take into account words that have wordvectors...
@@ -352,63 +355,69 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public void readWordVectorsDB(String SQLLitedb, int[] vectorSize) //word vectors for text modality
     {
 
-        Connection connection = null;
-        try {
-            connection = DriverManager.getConnection(SQLLitedb);
-            String sql = "";
+        this.typeVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
+        this.topicVectors = new double[numModalities][][];
+        this.typeTopicSimilarity = new double[numModalities][][];
 
-            sql = "select word, ColumnId, weight, modality from WordVector order by modality, word, columnId";
+        for (int m = 0; m < numModalities; m++) {
+            typeVectors[m] = new double[alphabet[m].size()][vectorSize[m]];
+            this.topicVectors[m] = new double[numTopics][vectorSize[m]];// Vector representations for topics <topic, vector>
+            this.typeTopicSimilarity[m] = new double[alphabet[m].size()][numTopics];
 
-            Statement statement = connection.createStatement();
-            statement.setQueryTimeout(60);  // set timeout to 30 sec.
-            ResultSet rs = statement.executeQuery(sql);
-
-            this.typeVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
-            this.topicVectors = new double[numModalities][][];
-            this.typeTopicSimilarity = new double[numModalities][][];
-
-            for (int m = 0; m < numModalities; m++) {
-                typeVectors[m] = new double[alphabet[m].size()][vectorSize[m]];
-                this.topicVectors[m] = new double[numTopics][vectorSize[m]];// Vector representations for topics <topic, vector>
-                this.typeTopicSimilarity[m] = new double[alphabet[m].size()][numTopics];
-            }
-
-            while (rs.next()) {
-
-                int m = rs.getInt("modality");
-                int w = alphabet[m].lookupIndex(rs.getString("word"), false);
-                int c = rs.getInt("ColumnId");
-                double weight = rs.getDouble("weight");
-                if (w != -1) {
-                    this.typeVectors[m][w][c] = weight;
-                }
-
-            }
-
-        } catch (SQLException e) {
-            // if the error message is "out of memory", 
-            // it probably means no database file is found
-            System.err.println(e.getMessage());
-        } finally {
-            try {
-                if (connection != null) {
-                    connection.close();
-                }
-            } catch (SQLException e) {
-                // connection close failed.
-                System.err.println(e);
+            for (int i = 0; i < alphabet[m].size(); i++) {
+                Arrays.fill(this.typeTopicSimilarity[m][i], 1);
             }
         }
 
-        for (int m = 0; m < numModalities; m++) {
-            for (int i = 0; i < alphabet[m].size(); i++) {
-                Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+        if (useTypeVectors) {
+            Connection connection = null;
+            try {
+                connection = DriverManager.getConnection(SQLLitedb);
+                String sql = "";
 
-                if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
-                    logger.warning("The word \"" + alphabet[m].lookupObject(i)
-                            + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
+                sql = "select word, ColumnId, weight, modality from WordVector order by modality, word, columnId";
 
-                    //throw new Exception();
+                Statement statement = connection.createStatement();
+                statement.setQueryTimeout(60);  // set timeout to 30 sec.
+                ResultSet rs = statement.executeQuery(sql);
+
+                while (rs.next()) {
+
+                    int m = rs.getInt("modality");
+                    int w = alphabet[m].lookupIndex(rs.getString("word"), false);
+                    int c = rs.getInt("ColumnId");
+                    double weight = rs.getDouble("weight");
+                    if (w != -1) {
+                        this.typeVectors[m][w][c] = weight;
+                    }
+
+                }
+
+            } catch (SQLException e) {
+            // if the error message is "out of memory", 
+                // it probably means no database file is found
+                System.err.println(e.getMessage());
+            } finally {
+                try {
+                    if (connection != null) {
+                        connection.close();
+                    }
+                } catch (SQLException e) {
+                    // connection close failed.
+                    System.err.println(e);
+                }
+            }
+
+            for (int m = 0; m < numModalities; m++) {
+                for (int i = 0; i < alphabet[m].size(); i++) {
+                    Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+
+                    if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
+                        logger.warning("The word \"" + alphabet[m].lookupObject(i)
+                                + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
+
+                        //throw new Exception();
+                    }
                 }
             }
         }
