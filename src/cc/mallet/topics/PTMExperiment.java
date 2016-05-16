@@ -55,7 +55,7 @@ public class PTMExperiment {
         int topWords = 15;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 6;
+        byte numModalities = 4;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -66,23 +66,23 @@ public class PTMExperiment {
         boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 3;
+        int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 300;
+        int numTopics = 500;
         //int maxNumTopics = 500;
-        int numIterations = 600; //Max 2000
-        int numChars = 5000;
+        int numIterations = 800; //Max 2000
+        int numChars = 6000;
         //int independentIterations = 0;
-        int burnIn = 20;
-        int optimizeInterval = 10;
+        int burnIn = 100;
+        int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 150; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 10;
-        double pruneMaxPerc = 1;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
+        int pruneLblCnt = 30;
+        double pruneMaxPerc = 0.7;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = true;
+        boolean ACMAuthorSimilarity = false;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = false;
@@ -132,10 +132,10 @@ public class PTMExperiment {
                 SQLLitedb = "jdbc:sqlite:/home/omiros/Projects/Datasets/ACM/PTM3DB.db";
                 dictDir = ":/home/omiros/Projects/Datasets/ACM/";
             } else {
-                //SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTM3DB.db";
-                //dictDir = "C:\\projects\\Datasets\\ACM\\";
-                SQLLitedb = "jdbc:sqlite:F:/Omiros/DBs/ACM/PTMDB_ACM2016.db";
-                dictDir = "F:\\Omiros\\DBs\\ACM\\";
+                SQLLitedb = "jdbc:sqlite:C:/projects/Datasets/ACM/PTMDB_ACM2016.db";
+                dictDir = "C:\\projects\\Datasets\\ACM\\";
+                //SQLLitedb = "jdbc:sqlite:F:/Omiros/DBs/ACM/PTMDB_ACM2016.db";
+                //dictDir = "F:\\Omiros\\DBs\\ACM\\";
             }
 
             //String topicKeysFile = outputDir + File.separator + "output_topic_keys.csv";
@@ -188,6 +188,7 @@ public class PTMExperiment {
             logger.info(" instances added through pipe");
 
             if (runWordEmbeddings) {
+                logger.info(" calc word embeddings starting");
                 //int numDimensions = 50;
                 int windowSizeOption = 5;
                 int numSamples = 5;
@@ -196,10 +197,11 @@ public class PTMExperiment {
                 matrix.countWords(instances[0]);
                 matrix.train(instances[0], numOfThreads, numSamples);
 
-                PrintWriter out = new PrintWriter("vectors.txt");
-                matrix.write(out);
-                out.close();
+                //PrintWriter out = new PrintWriter("vectors.txt");
+                //matrix.write(out);
+                //out.close();
                 matrix.write(SQLLitedb, 0);
+                logger.info(" calc word embeddings ended");
             }
 
             if (runOrigParallelModel) {
@@ -766,12 +768,20 @@ public class PTMExperiment {
 //                    break;
                 case ACM:
                     if (ACMAuthorSimilarity) {
-                        sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
-                                + "from TopicDistributionPerAuthorView\n"
-                                + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
-                                + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
-                                + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
-                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                      sql = "select EntityTopicDistribution.EntityId as authorId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n"
+                            + "                            from EntityTopicDistribution\n"
+                            + "                            where EntityTopicDistribution.EntityType='Author' AND EntityTopicDistribution.EntityId<>'' AND\n"
+                            + "                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
+                            + "                            and EntityTopicDistribution.EntityId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
+                            + "                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
+                            + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                         
+//                        sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
+//                                + "from TopicDistributionPerAuthorView\n"
+//                                + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
+//                                + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
+//                                + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
+//                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
                     }
                     //else {
 //                        sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
@@ -1011,7 +1021,7 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, fulltext, authors, citations, categories, period, venue from ACMPubViewNoPPR ";
+                sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
@@ -1034,7 +1044,7 @@ public class PTMExperiment {
 
                     case ACM:
 //                        instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                        String txt = rs.getString("fulltext");
+                        String txt = rs.getString("text");
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
@@ -1066,27 +1076,37 @@ public class PTMExperiment {
                         }
 
                         if (numModalities > 3) {
-                            String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
-                            if (tmpPeriod != null && !tmpPeriod.equals("")) {
-
-                                instanceBuffer.get(3).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
+                            String tmpJournalStr = rs.getString("Keywords");//.replace("\t", ",");
+                            if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
+                                instanceBuffer.get(3).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "Keywords"));
                             }
                         }
 
                         if (numModalities > 4) {
+                            String tmpAuthorsStr = rs.getString("Venue");//.replace("\t", ",");
+                            if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
+
+                                instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "Venue"));
+                            }
+                        }
+                        
+                        if (numModalities > 5) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                             if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
 
-                                instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                                instanceBuffer.get(5).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
                             }
                         }
 
-                        if (numModalities > 5) {
-                            String tmpJournalStr = rs.getString("Venue");//.replace("\t", ",");
-                            if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
-                                instanceBuffer.get(5).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "venue"));
+                         if (numModalities > 6) {
+                            String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
+                            if (tmpPeriod != null && !tmpPeriod.equals("")) {
+
+                                instanceBuffer.get(6).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
                             }
                         }
+                         
+                       
 
                         break;
                     case HEALTHTender:
