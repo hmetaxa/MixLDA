@@ -1286,6 +1286,16 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
+                        
+                        int totalCnt = FastQMVWVWorkerRunnable.newMassCnt.get() + FastQMVWVWorkerRunnable.topicDocMassCnt.get() + FastQMVWVWorkerRunnable.wordFTreeMassCnt.get();
+                        
+                        logger.info("Sampling newMass:"+ formatter.format(FastQMVWVWorkerRunnable.newMassCnt.get()/totalCnt)+
+                                " topicDocMassCnt:"+ formatter.format(FastQMVWVWorkerRunnable.topicDocMassCnt.get()/totalCnt)
+                               + " wordFTreeMassCnt:"+ formatter.format(FastQMVWVWorkerRunnable.wordFTreeMassCnt.get()/totalCnt)); //LL for eachmodality
+                        FastQMVWVWorkerRunnable.newMassCnt.set(0);
+                        FastQMVWVWorkerRunnable.topicDocMassCnt.set(0);
+                        FastQMVWVWorkerRunnable.wordFTreeMassCnt.set(0);
+                        
 
                         if (iteration + 10 > numIterations) {
                             appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality

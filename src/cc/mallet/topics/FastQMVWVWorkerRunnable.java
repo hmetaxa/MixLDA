@@ -6,7 +6,6 @@
  information, see the file `LICENSE' included with this distribution. */
 package cc.mallet.topics;
 
-
 import java.util.Arrays;
 import java.util.ArrayList;
 
@@ -20,10 +19,11 @@ import java.util.concurrent.BrokenBarrierException;
 
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
 /**
- * Parallel multi-view topic model runnable task using FTrees 
+ * Parallel multi-view topic model runnable task using FTrees
  *
  * @author Omiros Metaxas
  */
@@ -31,6 +31,9 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
     //boolean isFinished = true;
     public static Logger logger = MalletLogger.getLogger(FastQMVWVWorkerRunnable.class.getName());
+    public static AtomicInteger newMassCnt = new AtomicInteger(0);
+    public static AtomicInteger topicDocMassCnt = new AtomicInteger(0);
+    public static AtomicInteger wordFTreeMassCnt = new AtomicInteger(0);
     protected ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
     protected int numTopics; // Number of topics to be fit
@@ -54,7 +57,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
     protected int[][][] typeTopicCounts; // indexed by  [modality][tokentype][topic]
     protected int[][] tokensPerTopic; // indexed by <topic index>
-    
+
     protected double[][][] typeTopicSimilarity; //<modality, token, topic>;
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
@@ -167,16 +170,16 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
         try {
 
-            logger.info("Worker["+ threadId+"] thread started");
+            logger.info("Worker[" + threadId + "] thread started");
             // Initialize the doc smoothing-only sampling bucket (Sum(a[i])
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
                     doc++) {
 
 				  //if (doc % 50000 == 0) {
-                                    //  logger.info("Worker["+ threadId+"] processing doc " + doc);
-				  //System.out.println("processing doc " + doc);
-				  //}
+                //  logger.info("Worker["+ threadId+"] processing doc " + doc);
+                //System.out.println("processing doc " + doc);
+                //}
 //				
 //                FeatureSequence tokenSequence
 //                        = (FeatureSequence) data.get(doc).instance.getData();
@@ -192,7 +195,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
             shouldSaveState = false;
             //isFinished = true;
-            logger.info("Worker["+ threadId+"] thread finished");
+            logger.info("Worker[" + threadId + "] thread finished");
             queue.add(new FastQDelta(-1, -1, -1, -1, -1, -1));
 
             try {
@@ -285,8 +288,8 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                             = m == j ? 1.0 : p_a[m][j] == 0 ? 0
                                             : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
 
-                    p[m][j] = (j!=0 && beta[j] == 0.0001) ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
-                    p[j][m] = (m!=0 && beta[m] == 0.0001) ? 0 : pRand;  //too sparse modality --> ignore its doc /topic distribution
+                    p[m][j] = (j != 0 && beta[j] == 0.0001) ? 0 : pRand; //too sparse modality --> ignore its doc /topic distribution
+                    p[j][m] = (m != 0 && beta[m] == 0.0001) ? 0 : pRand;  //too sparse modality --> ignore its doc /topic distribution
                 }
 
                 docLength[m] = 0;
@@ -342,7 +345,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     int topic = localTopicIndex[denseIndex];
                     for (byte i = 0; i < numModalities; i++) {
                         if (i != m && docLength[i] != 0) {
-                            totalMassOtherModalities[topic] += p[m][i] * (localTopicCounts[i][topic] + gamma[i]* alpha[i][topic] ) / (docLength[i] + (double) gamma[i] * alphaSum[i]);
+                            totalMassOtherModalities[topic] += p[m][i] * (localTopicCounts[i][topic] + gamma[i] * alpha[i][topic]) / (docLength[i] + (double) gamma[i] * alphaSum[i]);
 
                         }
                     }
@@ -354,7 +357,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                 newTopicMassAllModalities = 0;
                 for (byte i = 0; i < numModalities; i++) {
                     newTopicMassAllModalities += p[m][i] * (gamma[i] * alpha[i][numTopics]) / (docLength[i] + (double) gamma[i] * alphaSum[i]);
-                            //*currentTypeTopicCounts.length);
+                    //*currentTypeTopicCounts.length);
                 }
                 newTopicMassAllModalities = newTopicMassAllModalities * (docLength[m] + (double) gamma[m] * alphaSum[m]);
                 //newTopicMass
@@ -433,15 +436,17 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
                     //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
                     if (sample < newTopicMass) {
+                        newMassCnt.getAndIncrement();
 
                         newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
                         System.out.println("Sample new topic: " + newTopic);
                     } else {
                         sample -= newTopicMass;
                         if (sample < topicDocWordMass) {
+                            topicDocMassCnt.getAndIncrement();
                             newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
                         } else {
-
+                            wordFTreeMassCnt.getAndIncrement();
                             double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
                             newTopic = currentTree.sample(nextUniform2);
                         }
