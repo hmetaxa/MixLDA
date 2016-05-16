@@ -170,7 +170,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
         try {
 
-            logger.info("Worker[" + threadId + "] thread started");
+            //logger.info("Worker[" + threadId + "] thread started");
             // Initialize the doc smoothing-only sampling bucket (Sum(a[i])
             for (int doc = startDoc;
                     doc < data.size() && doc < startDoc + numDocs;
@@ -195,7 +195,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
             shouldSaveState = false;
             //isFinished = true;
-            logger.info("Worker[" + threadId + "] thread finished");
+            //logger.info("Worker[" + threadId + "] thread finished");
             queue.add(new FastQDelta(-1, -1, -1, -1, -1, -1));
 
             try {
