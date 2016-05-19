@@ -31,9 +31,9 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
     //boolean isFinished = true;
     public static Logger logger = MalletLogger.getLogger(FastQMVWVWorkerRunnable.class.getName());
-    public static AtomicInteger newMassCnt = new AtomicInteger(0);
-    public static AtomicInteger topicDocMassCnt = new AtomicInteger(0);
-    public static AtomicInteger wordFTreeMassCnt = new AtomicInteger(0);
+    public static AtomicInteger newMassCnt = new AtomicInteger(1);
+    public static AtomicInteger topicDocMassCnt = new AtomicInteger(1);
+    public static AtomicInteger wordFTreeMassCnt = new AtomicInteger(1);
     protected ArrayList<MixTopicModelTopicAssignment> data;
     int startDoc, numDocs;
     protected int numTopics; // Number of topics to be fit

@@ -78,7 +78,7 @@ public class PTMExperiment {
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         int pruneCnt = 150; //Reduce features to those that occur more than N times
-        int pruneLblCnt = 30;
+        int pruneLblCnt = 40;
         double pruneMaxPerc = 0.7;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
@@ -86,6 +86,7 @@ public class PTMExperiment {
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = false;
+        boolean PPRenabled = false;
 
         int[] vectorSize = new int[numModalities];
         vectorSize[0] = 200;
@@ -117,7 +118,7 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + numOfThreads + "TH_" + similarityType.toString() + (useTypeVectors ? "WV" : ""); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + numOfThreads + "TH_" + similarityType.toString() + (useTypeVectors ? "WV" : "")+ (PPRenabled ? "PPR" : "NoPPR"); // + "_" + skewOn.toString();
 
         //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = experimentId + ": \n";
@@ -184,7 +185,7 @@ public class PTMExperiment {
             //String modelDiagnosticsFile = outputDir + File.separator + "model_diagnostics.xml";
 
             String batchId = "-1";
-            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
+            InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars, PPRenabled);
             logger.info(" instances added through pipe");
 
             if (runWordEmbeddings) {
@@ -236,7 +237,7 @@ public class PTMExperiment {
                 Arrays.fill(gamma, 1);
 
                 //double gammaRoot = 4;
-                FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb,useTypeVectors);
+                FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb, useTypeVectors);
                 model.CreateTables(SQLLitedb, experimentId);
 
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
@@ -768,14 +769,14 @@ public class PTMExperiment {
 //                    break;
                 case ACM:
                     if (ACMAuthorSimilarity) {
-                      sql = "select EntityTopicDistribution.EntityId as authorId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n"
-                            + "                            from EntityTopicDistribution\n"
-                            + "                            where EntityTopicDistribution.EntityType='Author' AND EntityTopicDistribution.EntityId<>'' AND\n"
-                            + "                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
-                            + "                            and EntityTopicDistribution.EntityId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
-                            + "                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
-                            + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
-                         
+                        sql = "select EntityTopicDistribution.EntityId as authorId, EntityTopicDistribution.TopicId, EntityTopicDistribution.NormWeight as Weight \n"
+                                + "                            from EntityTopicDistribution\n"
+                                + "                            where EntityTopicDistribution.EntityType='Author' AND EntityTopicDistribution.EntityId<>'' AND\n"
+                                + "                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
+                                + "                            and EntityTopicDistribution.EntityId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
+                                + "                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
+                                + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+
 //                        sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
 //                                + "from TopicDistributionPerAuthorView\n"
 //                                + "where TopicDistributionPerAuthorView.experimentId='" + experimentId + "'   and TopicDistributionPerAuthorView.NormWeight>0.03\n"
@@ -975,7 +976,7 @@ public class PTMExperiment {
         logger.info("similarities calculation finished");
     }
 
-    public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc, int numChars) {
+    public InstanceList[] GenerateAlphabets(String SQLLitedb, ExperimentType experimentType, String dictDir, byte numModalities, int pruneCnt, int pruneLblCnt, double pruneMaxPerc, double pruneMinPerc, int numChars, boolean PPRenabled) {
 
         //String txtAlphabetFile = dictDir + File.separator + "dict[0].txt";
         // Begin by importing documents from text to feature sequences
@@ -1021,7 +1022,11 @@ public class PTMExperiment {
 
             if (experimentType == ExperimentType.ACM) {
 
-                sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
+                if (PPRenabled) {
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
+                } else {
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewNoPPR ";
+                }
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
 
@@ -1089,7 +1094,7 @@ public class PTMExperiment {
                                 instanceBuffer.get(4).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "Venue"));
                             }
                         }
-                        
+
                         if (numModalities > 5) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                             if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
@@ -1098,15 +1103,13 @@ public class PTMExperiment {
                             }
                         }
 
-                         if (numModalities > 6) {
+                        if (numModalities > 6) {
                             String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
                             if (tmpPeriod != null && !tmpPeriod.equals("")) {
 
                                 instanceBuffer.get(6).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
                             }
                         }
-                         
-                       
 
                         break;
                     case HEALTHTender:
@@ -1231,7 +1234,7 @@ public class PTMExperiment {
                         instance = instances[m].get(0);
                         FeatureSequence fs = (FeatureSequence) instance.getData();
 
-                        fs.prune(counts, newAlphabet, m == 0 || (m == 1 && experimentType == ExperimentType.ACM) ? pruneLblCnt * 3 : pruneLblCnt);
+                        fs.prune(counts, newAlphabet, m == 0 || (m == 1 && experimentType == ExperimentType.ACM && PPRenabled) ? pruneLblCnt * 3 : pruneLblCnt);
 
                         newInstanceList.add(newPipe.instanceFrom(new Instance(fs, instance.getTarget(),
                                 instance.getName(),
@@ -1564,133 +1567,133 @@ public class PTMExperiment {
 // for (String batchId : batchIds) {
    /*             try {
 
-                 // clear previous lists
-                 for (byte m = 0; m < numModalities; m++) {
-                 instanceBuffer.get(m).clear();
-                 }
+ // clear previous lists
+ for (byte m = 0; m < numModalities; m++) {
+ instanceBuffer.get(m).clear();
+ }
 
-                 connection = DriverManager.getConnection(SQLLitedb);
-                 String sql = "";
+ connection = DriverManager.getConnection(SQLLitedb);
+ String sql = "";
 
-                 if (experimentType == ExperimentType.ACM) {
-                 experimentDescription = "Topic modeling based on:\n1)Full text from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
-                 + similarityType.toString()
-                 + "\n Similarity on Authors & Categories";
-                 //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
+ if (experimentType == ExperimentType.ACM) {
+ experimentDescription = "Topic modeling based on:\n1)Full text from ACM publications \n2)Authors\n3)Citations\n4)ACMCategories\n SimilarityType:"
+ + similarityType.toString()
+ + "\n Similarity on Authors & Categories";
+ //+ (ACMAuthorSimilarity ? "Authors" : "Categories");
 
-                 sql = batchId == "-1"
-                 ? " select  pubId, fulltext, authors, citations, categories, period from ACMPubView"
-                 : "select  pubId, fulltext, authors, citations, categories, period from ACMPubView where batchId = '" + batchId + "'";
+ sql = batchId == "-1"
+ ? " select  pubId, fulltext, authors, citations, categories, period from ACMPubView"
+ : "select  pubId, fulltext, authors, citations, categories, period from ACMPubView where batchId = '" + batchId + "'";
 
-                 sql += " LIMIT 10000";
+ sql += " LIMIT 10000";
 
-                 }
+ }
 
-                 // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
-                 Statement statement = connection.createStatement();
-                 statement.setQueryTimeout(60);  // set timeout to 30 sec.
-                 ResultSet rs = statement.executeQuery(sql);
-                 String txt = "";
-                 while (rs.next()) {
-                 // read the result set
-                 //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
-                 //String str = "[" + rs.getString("GrantIds") + "]" + rs.getString("text");
-                 //System.out.println("name = " + rs.getString("file"));
-                 //System.out.println("name = " + rs.getString("fundings"));
-                 //int cnt = rs.getInt("grantsCnt");
-                 switch (experimentType) {
+ // String sql = "select fundedarxiv.file from fundedarxiv inner join funds on file=filename Group By fundedarxiv.file LIMIT 10" ;
+ Statement statement = connection.createStatement();
+ statement.setQueryTimeout(60);  // set timeout to 30 sec.
+ ResultSet rs = statement.executeQuery(sql);
+ String txt = "";
+ while (rs.next()) {
+ // read the result set
+ //String lblStr = "[" + rs.getString("GrantIds") + "]" ;//+ rs.getString("text");
+ //String str = "[" + rs.getString("GrantIds") + "]" + rs.getString("text");
+ //System.out.println("name = " + rs.getString("file"));
+ //System.out.println("name = " + rs.getString("fundings"));
+ //int cnt = rs.getInt("grantsCnt");
+ switch (experimentType) {
 
-                 case ACM:
-                 txt = rs.getString("fulltext");
-                 instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
+ case ACM:
+ txt = rs.getString("fulltext");
+ instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, 10000)), null, rs.getString("pubId"), "text"));
 
-                 //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
-                 if (numModalities > 1) {
-                 String tmpStr = rs.getString("Citations");//.replace("\t", ",");
-                 instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
-                 }
-                 if (numModalities > 2) {
-                 String tmpStr = rs.getString("Categories");//.replace("\t", ",");
-                 instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
-                 }
-                 if (numModalities > 3) {
-                 String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
-                 instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
-                 }
+ //instanceBuffer.get(0).add(new Instance(rs.getString("Text"), null, rs.getString("pubId"), "text"));
+ if (numModalities > 1) {
+ String tmpStr = rs.getString("Citations");//.replace("\t", ",");
+ instanceBuffer.get(1).add(new Instance(tmpStr, null, rs.getString("pubId"), "citation"));
+ }
+ if (numModalities > 2) {
+ String tmpStr = rs.getString("Categories");//.replace("\t", ",");
+ instanceBuffer.get(2).add(new Instance(tmpStr, null, rs.getString("pubId"), "category"));
+ }
+ if (numModalities > 3) {
+ String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
+ instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+ }
 
-                 if (numModalities > 4) {
-                 String tmpPeriodStr = rs.getString("Period");//.replace("\t", ",");
-                 instanceBuffer.get(4).add(new Instance(tmpPeriodStr, null, rs.getString("pubId"), "period"));
-                 }
-                 break;
+ if (numModalities > 4) {
+ String tmpPeriodStr = rs.getString("Period");//.replace("\t", ",");
+ instanceBuffer.get(4).add(new Instance(tmpPeriodStr, null, rs.getString("pubId"), "period"));
+ }
+ break;
 
-                 default:
-                 }
+ default:
+ }
 
-                 }
+ }
 
-                 } catch (SQLException e) {
-                 // if the error message is "out of memory", 
-                 // it probably means no database file is found
-                 System.err.println(e.getMessage());
-                 } finally {
-                 try {
-                 if (connection != null) {
-                 connection.close();
-                 }
-                 } catch (SQLException e) {
-                 // connection close failed.
-                 System.err.println(e);
-                 }
-                 }
+ } catch (SQLException e) {
+ // if the error message is "out of memory", 
+ // it probably means no database file is found
+ System.err.println(e.getMessage());
+ } finally {
+ try {
+ if (connection != null) {
+ connection.close();
+ }
+ } catch (SQLException e) {
+ // connection close failed.
+ System.err.println(e);
+ }
+ }
 
-                 logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
+ logger.info("Read " + instanceBuffer.get(0).size() + " instances modality: " + instanceBuffer.get(0).get(0).getSource().toString());
 
-                 // Begin by importing documents from text to feature sequences
-                 ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
+ // Begin by importing documents from text to feature sequences
+ ArrayList<Pipe> pipeListText = new ArrayList<Pipe>();
 
-                 // Pipes: lowercase, tokenize, remove stopwords, map to features
-                 pipeListText.add(new Input2CharSequence(false)); //homer
-                 pipeListText.add(new CharSequenceLowercase());
+ // Pipes: lowercase, tokenize, remove stopwords, map to features
+ pipeListText.add(new Input2CharSequence(false)); //homer
+ pipeListText.add(new CharSequenceLowercase());
 
-                 SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
-                 pipeListText.add(tokenizer);
+ SimpleTokenizer tokenizer = new SimpleTokenizer(0); // empty stop list (new File("stoplists/en.txt"));
+ pipeListText.add(tokenizer);
 
-                 pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
+ pipeListText.add(new StringList2FeatureSequence(alphabets[0]));
 
-                 InstanceList[] instances = new InstanceList[numModalities];
-                 instances[0] = new InstanceList(new SerialPipes(pipeListText));
+ InstanceList[] instances = new InstanceList[numModalities];
+ instances[0] = new InstanceList(new SerialPipes(pipeListText));
 
-                 // Other Modalities
-                 for (byte m = 1; m < numModalities; m++) {
+ // Other Modalities
+ for (byte m = 1; m < numModalities; m++) {
 
-                 ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
-                 if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
-                 pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
-                 } else {
-                 pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ";"));
-                 }
-                 instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
-                 }
+ ArrayList<Pipe> pipeListCSV = new ArrayList<Pipe>();
+ if (experimentType == ExperimentType.ACM || experimentType == ExperimentType.DBLP || experimentType == ExperimentType.DBLP_ACM) {
+ pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ","));
+ } else {
+ pipeListCSV.add(new CSV2FeatureSequence(alphabets[m], ";"));
+ }
+ instances[m] = new InstanceList(new SerialPipes(pipeListCSV));
+ }
 
-                 instances[0].addThruPipe(instanceBuffer.get(0).iterator());
+ instances[0].addThruPipe(instanceBuffer.get(0).iterator());
 
-                 for (byte m = 1; m < numModalities; m++) {
-                 logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-                 //instances[m].clear();
-                 instances[m].addThruPipe(instanceBuffer.get(m).iterator());
-                 }
+ for (byte m = 1; m < numModalities; m++) {
+ logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+ //instances[m].clear();
+ instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+ }
 
-                 //
-                 //Alphabet[] existedAlphabets = new Alphabet[numModalities];
-                 //                for (byte m = 1; m < numModalities; m++) {
-                 //                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
-                 //                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
-                 //                    //existedAlphabets[m] = instances[m].getDataAlphabet();
-                 //                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
-                 //                }
+ //
+ //Alphabet[] existedAlphabets = new Alphabet[numModalities];
+ //                for (byte m = 1; m < numModalities; m++) {
+ //                    logger.info("Read " + instanceBuffer.get(m).size() + " instances modality: " + (instanceBuffer.get(m).size() > 0 ? instanceBuffer.get(m).get(0).getSource().toString() : m));
+ //                    instances[m].clear(); // = new InstanceList(new SerialPipes(pipeListCSV));
+ //                    //existedAlphabets[m] = instances[m].getDataAlphabet();
+ //                    instances[m].addThruPipe(instanceBuffer.get(m).iterator());
+ //                }
            
-                 String batchId = "-1";
-                 InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
-                 logger.info(" instances added through pipe");
-                 */
+ String batchId = "-1";
+ InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt, pruneLblCnt, pruneMaxPerc, pruneMinPerc, numChars);
+ logger.info(" instances added through pipe");
+ */

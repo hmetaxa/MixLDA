@@ -394,7 +394,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 }
 
             } catch (SQLException e) {
-            // if the error message is "out of memory", 
+                // if the error message is "out of memory", 
                 // it probably means no database file is found
                 System.err.println(e.getMessage());
             } finally {
@@ -1286,16 +1286,12 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                         double ll = modelLogLikelihood()[i] / totalTokens[i];
                         perplexities[i][iteration / 10] = ll;
                         logger.info("<" + iteration + "> modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
-                        
+
                         int totalCnt = FastQMVWVWorkerRunnable.newMassCnt.get() + FastQMVWVWorkerRunnable.topicDocMassCnt.get() + FastQMVWVWorkerRunnable.wordFTreeMassCnt.get();
-                        
-                        logger.info("Sampling newMass:"+ formatter.format(FastQMVWVWorkerRunnable.newMassCnt.get()/totalCnt)+
-                                " topicDocMassCnt:"+ formatter.format(FastQMVWVWorkerRunnable.topicDocMassCnt.get()/totalCnt)
-                               + " wordFTreeMassCnt:"+ formatter.format(FastQMVWVWorkerRunnable.wordFTreeMassCnt.get()/totalCnt)); //LL for eachmodality
-                        FastQMVWVWorkerRunnable.newMassCnt.set(0);
-                        FastQMVWVWorkerRunnable.topicDocMassCnt.set(0);
-                        FastQMVWVWorkerRunnable.wordFTreeMassCnt.set(0);
-                        
+
+                        logger.info("Sampling newMass:" + formatter.format((double)FastQMVWVWorkerRunnable.newMassCnt.get() / totalCnt)
+                                + " topicDocMassCnt:" + formatter.format((double)FastQMVWVWorkerRunnable.topicDocMassCnt.get() / totalCnt)
+                                + " wordFTreeMassCnt:" + formatter.format((double)FastQMVWVWorkerRunnable.wordFTreeMassCnt.get() / totalCnt)); //LL for eachmodality
 
                         if (iteration + 10 > numIterations) {
                             appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality
@@ -1306,6 +1302,11 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     logger.info("<" + iteration + ">");
                 }
             }
+
+            FastQMVWVWorkerRunnable.newMassCnt.set(0);
+            FastQMVWVWorkerRunnable.topicDocMassCnt.set(0);
+            FastQMVWVWorkerRunnable.wordFTreeMassCnt.set(0);
+
         }
 
         executor.shutdownNow();

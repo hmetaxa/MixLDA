@@ -167,7 +167,7 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
                             finishedSamplingTreads.add(x);
                             isFinished = finishedSamplingTreads.size() == queues.size();
                             
-                            logger.info("Updater thread: worker["+x+"] has finished");
+                            //logger.info("Updater thread: worker["+x+"] has finished");
                             continue;
                         }
 
