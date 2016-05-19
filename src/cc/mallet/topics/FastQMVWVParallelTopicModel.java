@@ -423,21 +423,40 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
     }
 
-    private void CalcTopicTypeVectorSimilarities(int maxNumWords) {
+    private void CalcTopicTypeVectorSimilarities(int maxNumWords, double weight) {
 
         CalcTopicVectors(maxNumWords);
 
+        double[][] typeSumSimilarities = new double[numModalities][];
+
         for (int m = 0; m < numModalities; m++) {
+            typeSumSimilarities[m] = new double[alphabet[m].size()];
+            Arrays.fill(typeSumSimilarities[m], 0);
+            double similarity = 0;
             for (int w = 0; w < alphabet[m].size(); w++) {
                 if (MatrixOps.absNorm(typeVectors[m][w]) != 0.0) // meaning that word vector exists
                 {
                     for (int t = 0; t < numTopics; t++) {
+                        similarity = weight * Math.max(MatrixOps.cosineSimilarity(topicVectors[m][t], typeVectors[m][w]), 0);
+                        typeTopicSimilarity[m][w][t] = similarity;
+                        typeSumSimilarities[m][w] += similarity;
+                    }
+                }
+            }
 
-                        typeTopicSimilarity[m][w][t] = Math.max(MatrixOps.cosineSimilarity(topicVectors[m][t], typeVectors[m][w]), 0);
+            for (int w = 0; w < alphabet[m].size(); w++) {
+                double avgSimilarity = typeSumSimilarities[m][w] / numTopics;
+                if (MatrixOps.absNorm(typeVectors[m][w]) != 0.0) // meaning that word vector exists
+                {
+                    for (int t = 0; t < numTopics; t++) {
+
+                        typeTopicSimilarity[m][w][t] = typeTopicSimilarity[m][w][t] / avgSimilarity;
+
                     }
                 }
             }
         }
+
     }
 
     private void CalcTopicVectors(int maxNumWords) {
@@ -1190,7 +1209,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeGamma();
                 optimizeBeta();
                 if (useTypeVectors) {
-                    CalcTopicTypeVectorSimilarities(40);
+                    CalcTopicTypeVectorSimilarities(40,0.6);
                 }
                 recalcTrees(false);
             }
@@ -1289,9 +1308,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
                         int totalCnt = FastQMVWVWorkerRunnable.newMassCnt.get() + FastQMVWVWorkerRunnable.topicDocMassCnt.get() + FastQMVWVWorkerRunnable.wordFTreeMassCnt.get();
 
-                        logger.info("Sampling newMass:" + formatter.format((double)FastQMVWVWorkerRunnable.newMassCnt.get() / totalCnt)
-                                + " topicDocMassCnt:" + formatter.format((double)FastQMVWVWorkerRunnable.topicDocMassCnt.get() / totalCnt)
-                                + " wordFTreeMassCnt:" + formatter.format((double)FastQMVWVWorkerRunnable.wordFTreeMassCnt.get() / totalCnt)); //LL for eachmodality
+                        logger.info("Sampling newMass:" + formatter.format((double) FastQMVWVWorkerRunnable.newMassCnt.get() / totalCnt)
+                                + " topicDocMassCnt:" + formatter.format((double) FastQMVWVWorkerRunnable.topicDocMassCnt.get() / totalCnt)
+                                + " wordFTreeMassCnt:" + formatter.format((double) FastQMVWVWorkerRunnable.wordFTreeMassCnt.get() / totalCnt)); //LL for eachmodality
 
                         if (iteration + 10 > numIterations) {
                             appendMetadata("Modality<" + i + "> LL/token: " + formatter.format(ll)); //LL for eachmodality

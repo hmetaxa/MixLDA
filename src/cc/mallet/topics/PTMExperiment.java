@@ -55,7 +55,7 @@ public class PTMExperiment {
         int topWords = 15;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 4;
+        byte numModalities = 1;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -85,7 +85,7 @@ public class PTMExperiment {
         boolean ACMAuthorSimilarity = false;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = false;
+        boolean useTypeVectors = true;
         boolean PPRenabled = false;
 
         int[] vectorSize = new int[numModalities];
