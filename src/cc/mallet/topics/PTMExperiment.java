@@ -55,7 +55,7 @@ public class PTMExperiment {
         int topWords = 15;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 1;
+        byte numModalities = 4;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -69,7 +69,7 @@ public class PTMExperiment {
         int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 500;
+        int numTopics = 100;
         //int maxNumTopics = 500;
         int numIterations = 800; //Max 2000
         int numChars = 6000;
