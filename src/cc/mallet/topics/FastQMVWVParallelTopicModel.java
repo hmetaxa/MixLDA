@@ -1209,7 +1209,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeGamma();
                 optimizeBeta();
                 if (useTypeVectors) {
-                    CalcTopicTypeVectorSimilarities(40,0.6);
+                    CalcTopicTypeVectorSimilarities(40,0.3);
                 }
                 recalcTrees(false);
             }

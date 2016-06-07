@@ -95,7 +95,7 @@
 <!--         for Trove -->
         <repository>
             <id>maven.ontotext.com</id>
-            <url>http://maven.ontotext.com/archiva/repository/public</url>
+            <url>http://maven.ontotext.com/content/repositories/public/</url>
         </repository>
 <!--         for MTJ -->
         <repository>

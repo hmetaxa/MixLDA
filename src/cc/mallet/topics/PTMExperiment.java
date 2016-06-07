@@ -69,9 +69,9 @@ public class PTMExperiment {
         int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
-        int numTopics = 100;
+        int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 800; //Max 2000
+        int numIterations = 1000; //Max 2000
         int numChars = 6000;
         //int independentIterations = 0;
         int burnIn = 100;
@@ -82,11 +82,11 @@ public class PTMExperiment {
         double pruneMaxPerc = 0.7;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         double pruneMinPerc = 0.05;//Remove features that occur in more than (X*100)% of documents. 0.05 is equivalent to IDF of 3.0.
         SimilarityType similarityType = SimilarityType.cos; //Cosine 1 jensenShannonDivergence 2 symmetric KLP
-        boolean ACMAuthorSimilarity = false;
+        boolean ACMAuthorSimilarity = true;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = true;
-        boolean PPRenabled = false;
+        boolean PPRenabled = true;
 
         int[] vectorSize = new int[numModalities];
         vectorSize[0] = 200;
@@ -238,6 +238,7 @@ public class PTMExperiment {
 
                 //double gammaRoot = 4;
                 FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb, useTypeVectors);
+                
                 model.CreateTables(SQLLitedb, experimentId);
 
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
@@ -775,7 +776,7 @@ public class PTMExperiment {
                                 + "                            EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
                                 + "                            and EntityTopicDistribution.EntityId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
                                 + "                            and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
-                                + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                                + "                            where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>0)";
 
 //                        sql = "select TopicDistributionPerAuthorView.AuthorId, TopicDistributionPerAuthorView.TopicId, TopicDistributionPerAuthorView.NormWeight as Weight \n"
 //                                + "from TopicDistributionPerAuthorView\n"
@@ -783,6 +784,24 @@ public class PTMExperiment {
 //                                + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
 //                                + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
 //                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
+                    }
+                    else
+                    {
+                        sql = "select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId  as TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
+"                                                          from EntityTopicDistribution\n" +
+"                                                          where EntityTopicDistribution.EntityType='Journal' AND EntityTopicDistribution.EntityId<>'' AND\n" +
+"                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
+"                                                          and EntityTopicDistribution.EntityId in (Select ISSN FROM PubJournal GROUP BY ISSN HAVING Count(*)>100)\n" +
+"                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
+"                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)\n" +
+"          UNION                                                \n" +
+"select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId as TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
+"                                                          from EntityTopicDistribution\n" +
+"                                                          where EntityTopicDistribution.EntityType='Conference' AND EntityTopicDistribution.EntityId<>'' AND\n" +
+"                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
+"                                                          and EntityTopicDistribution.EntityId in (Select SeriesId FROM PubConference GROUP BY SeriesId HAVING Count(*)>400)\n" +
+"                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
+"                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)";
                     }
                     //else {
 //                        sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
@@ -843,7 +862,7 @@ public class PTMExperiment {
                         if (ACMAuthorSimilarity) {
                             newLabelId = rs.getString("AuthorId");
                         } else {
-                            newLabelId = rs.getString("Category");
+                            newLabelId = rs.getString("VenueId");
                         }
                         break;
                     case PM_pdb:
