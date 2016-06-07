@@ -118,7 +118,7 @@ public class PTMExperiment {
         boolean DBLP_PPR = false;
         //String addedExpId = (experimentType == ExperimentType.ACM ? (ACMAuthorSimilarity ? "Author" : "Category") : "");
         String experimentId = experimentType.toString() + "_" + numTopics + "T_"
-                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + numOfThreads + "TH_" + similarityType.toString() + (useTypeVectors ? "WV" : "")+ (PPRenabled ? "PPR" : "NoPPR"); // + "_" + skewOn.toString();
+                + numIterations + "IT_" + numChars + "CHRs_" + pruneCnt + "_" + pruneLblCnt + "PRN" + burnIn + "B_" + numModalities + "M_" + numOfThreads + "TH_" + similarityType.toString() + (useTypeVectors ? "WV" : "") + (PPRenabled ? "PPR" : "NoPPR"); // + "_" + skewOn.toString();
 
         //experimentId = "HEALTHTender_400T_1000IT_6000CHRs_100B_2M_cos";
         String experimentDescription = experimentId + ": \n";
@@ -238,7 +238,7 @@ public class PTMExperiment {
 
                 //double gammaRoot = 4;
                 FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb, useTypeVectors);
-                
+
                 model.CreateTables(SQLLitedb, experimentId);
 
                 // ParallelTopicModel model = new ParallelTopicModel(numTopics, 1.0, 0.01);
@@ -716,6 +716,136 @@ public class PTMExperiment {
 
     }
 
+    public void CalcTopicSimilarities(String SQLLitedb) {
+
+        Connection connection = null;
+        try {
+
+            connection = DriverManager.getConnection(SQLLitedb);
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+            logger.info("Calc topic vectors started");
+
+            HashMap<String, double[]> topicVectors = new HashMap<String, double[]>();
+
+            String distinctTopicsSQL = "Select  TopicId,  ExperimentId, count(*) as cnt\n"
+                    + "from TopicVector\n"
+                    + "group by TopicId,  ExperimentId";
+
+            ResultSet rs = statement.executeQuery(distinctTopicsSQL);
+
+            while (rs.next()) {
+
+                String experimentId = rs.getString("ExperimentId");
+                int topicId = rs.getInt("TopicId");
+                String newLabelId = experimentId + "_" + topicId;
+                int dimension = rs.getInt("cnt");
+                double[] vector = new double[dimension];
+
+                String selectVectorSQL = String.format("Select Weight from topicVector where ExperimentId= '%s'  and TopicId=%d order by ColumnId", experimentId, topicId);
+
+                ResultSet rs1 = statement.executeQuery(selectVectorSQL);
+                int cnt = 0;
+                while (rs1.next()) {
+                    vector[cnt++] = rs1.getDouble("Weight");
+                }
+
+                topicVectors.put(newLabelId, vector);
+
+            }
+
+            int cnt = 0;
+            double similarity = 0;
+            double similarityThreshold = 0.15;
+            NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+
+            statement.executeUpdate("create table if not exists TopicSimilarity (ExperimentId1 TEXT, TopicId1 TEXT, ExperimentId2 TEXT, TopicId2 TEXT, Similarity double) ");
+            String deleteSQL = String.format("Delete from TopicSimilarity");
+            statement.executeUpdate(deleteSQL);
+
+            PreparedStatement bulkInsert = null;
+            String insertSql = "insert into TopicSimilarity values(?,?,?,?,?);";
+            
+             
+
+            try {
+
+                connection.setAutoCommit(false);
+                bulkInsert = connection.prepareStatement(insertSql);
+
+                for (int t1 = 0; t1 < topicVectors.size(); t1++) {
+                 for (int t2 = t1; t2 < topicVectors.size(); t2++) {
+             
+                similarity = Math.max(MatrixOps.cosineSimilarity(topicVectors..get(t2)[t1], typeVectors[t2]), 0);
+                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
+                    bulkInsert.setInt(1, entityType);
+                    bulkInsert.setString(2, fromGrantId);
+                    bulkInsert.setString(3, toGrantId);
+                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
+                    bulkInsert.setString(5, experimentId);
+                    bulkInsert.executeUpdate();
+                }
+                 }
+                }
+
+                connection.commit();
+
+            } catch (SQLException e) {
+
+                if (connection != null) {
+                    try {
+                        System.err.print("Transaction is being rolled back");
+                        connection.rollback();
+                    } catch (SQLException excep) {
+                        System.err.print("Error in insert grantSimilarity");
+                    }
+                }
+            } finally {
+
+                if (bulkInsert != null) {
+                    bulkInsert.close();
+                }
+                connection.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
+        logger.info("Topic vectors calculation finished");
+
+        for (int topic = 0; topic < numTopics; topic++) {
+
+            int topicTypeCount = topicSortedWords.get(m).get(topic).size();
+            int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
+
+            //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
+            Iterator<IDSorter> iterator = sortedWords.iterator();
+
+            int wordCnt = 0;
+            while (iterator.hasNext() && wordCnt < activeNumWords) {
+                IDSorter info = iterator.next();
+                MatrixOps.plusEquals(topicVectors[m][topic], typeVectors[m][info.getID()], info.getWeight() / tokensPerTopic[m][topic]);
+                wordCnt++;
+            }
+
+        }
+
+    }
+
     public void calcSimilaritiesAndTrends(String SQLLitedb, ExperimentType experimentType, String experimentId, boolean ACMAuthorSimilarity, SimilarityType similarityType, int numTopics) {
         //calc similarities
 
@@ -784,24 +914,22 @@ public class PTMExperiment {
 //                                + "and TopicDistributionPerAuthorView.AuthorId in (Select AuthorId FROM PubAuthor GROUP BY AuthorId HAVING Count(*)>4)\n"
 //                                + "and TopicDistributionPerAuthorView.topicid in (select TopicId from topicdescription \n"
 //                                + "where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex>1)";
-                    }
-                    else
-                    {
-                        sql = "select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId  as TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
-"                                                          from EntityTopicDistribution\n" +
-"                                                          where EntityTopicDistribution.EntityType='Journal' AND EntityTopicDistribution.EntityId<>'' AND\n" +
-"                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
-"                                                          and EntityTopicDistribution.EntityId in (Select ISSN FROM PubJournal GROUP BY ISSN HAVING Count(*)>100)\n" +
-"                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
-"                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)\n" +
-"          UNION                                                \n" +
-"select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId as TopicId, EntityTopicDistribution.NormWeight as Weight \n" +
-"                                                          from EntityTopicDistribution\n" +
-"                                                          where EntityTopicDistribution.EntityType='Conference' AND EntityTopicDistribution.EntityId<>'' AND\n" +
-"                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n" +
-"                                                          and EntityTopicDistribution.EntityId in (Select SeriesId FROM PubConference GROUP BY SeriesId HAVING Count(*)>400)\n" +
-"                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n" +
-"                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)";
+                    } else {
+                        sql = "select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId  as TopicId, EntityTopicDistribution.NormWeight as Weight \n"
+                                + "                                                          from EntityTopicDistribution\n"
+                                + "                                                          where EntityTopicDistribution.EntityType='Journal' AND EntityTopicDistribution.EntityId<>'' AND\n"
+                                + "                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
+                                + "                                                          and EntityTopicDistribution.EntityId in (Select ISSN FROM PubJournal GROUP BY ISSN HAVING Count(*)>100)\n"
+                                + "                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
+                                + "                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)\n"
+                                + "          UNION                                                \n"
+                                + "select EntityTopicDistribution.EntityId as VenueId, EntityTopicDistribution.TopicId as TopicId, EntityTopicDistribution.NormWeight as Weight \n"
+                                + "                                                          from EntityTopicDistribution\n"
+                                + "                                                          where EntityTopicDistribution.EntityType='Conference' AND EntityTopicDistribution.EntityId<>'' AND\n"
+                                + "                                                          EntityTopicDistribution.experimentId= '" + experimentId + "'   and EntityTopicDistribution.NormWeight>0.03\n"
+                                + "                                                          and EntityTopicDistribution.EntityId in (Select SeriesId FROM PubConference GROUP BY SeriesId HAVING Count(*)>400)\n"
+                                + "                                                          and EntityTopicDistribution.topicid in (select TopicId from topicdescription \n"
+                                + "                                                          where topicdescription.experimentId='" + experimentId + "' and topicdescription.VisibilityIndex=1)";
                     }
                     //else {
 //                        sql = "select    PubACMCategory.CatId as Category, TopicId, AVG(weight) as Weight from PubTopic \n"
