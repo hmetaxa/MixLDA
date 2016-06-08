@@ -63,7 +63,8 @@ public class PTMExperiment {
         //boolean ignoreLabels = true;
         //boolean runOnLine = false;
         boolean calcEntitySimilarities = false;
-        boolean calcTopicSimilarities = true;
+        boolean calcTopicSimilarities = false;
+        boolean calcPPRSimilarities = true;
         boolean runTopicModelling = false;
         boolean runOrigParallelModel = false;
         //boolean calcTokensPerEntity = true;
@@ -354,6 +355,10 @@ public class PTMExperiment {
 
         if (calcTopicSimilarities) {
             CalcTopicSimilarities(SQLLitedb);
+        }
+
+        if (calcPPRSimilarities) {
+            calcPPRSimilarities(SQLLitedb);
         }
 
 //        if (modelDiagnosticsFile
@@ -841,6 +846,134 @@ public class PTMExperiment {
 
         logger.info("Topic similarities calculation finished");
 
+    }
+
+    public void calcPPRSimilarities(String SQLLitedb) {
+        //calc similarities
+
+        //logger.info("PPRSimilarities calculation Started");
+        Connection connection = null;
+        try {
+            // create a database connection
+            //connection = DriverManager.getConnection(SQLLitedb);
+            connection = DriverManager.getConnection(SQLLitedb);
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+            logger.info("PPRSimilarities calculation Started");
+
+            // statement.executeUpdate("drop table if exists person");
+//      statement.executeUpdate("create table person (id integer, name string)");
+//      statement.executeUpdate("insert into person values(1, 'leo')");
+//      statement.executeUpdate("insert into person values(2, 'yui')");
+//      ResultSet rs = statement.executeQuery("select * from person");
+            String sql = "SELECT source.OrigId||'PPR' AS PubID, target.OrigId  AS CitationId, prLinks.Counts As Counts FROM prLinks\n"
+                    + "INNER JOIN PubCitationPPRAlias source ON source.RowId = PrLinks.Source\n"
+                    + "INNER JOIN PubCitationPPRAlias target ON target.RowId = PrLinks.Target\n"
+                    + "Union\n"
+                    + "Select PubId, CitationId, 1 as Counts From PubCitation\n"
+                    + "ORDER by PubId ";
+
+            ResultSet rs = statement.executeQuery(sql);
+
+            HashMap<String, SparseVector> labelVectors = null;
+            //HashMap<String, double[]> similarityVectors = null;
+            labelVectors = new HashMap<String, SparseVector>();
+
+            String labelId = "";
+
+            int[] citations = new int[350];
+            double[] weights = new double[350];
+            int cnt = 0;
+
+            while (rs.next()) {
+
+                String newLabelId = "";
+                newLabelId = rs.getString("PubId");
+                if (!newLabelId.equals(labelId) && !labelId.isEmpty()) {
+                    labelVectors.put(labelId, new SparseVector(citations, weights, citations.length, citations.length, true, true, true));
+                    citations = new int[350];
+                    weights = new double[350];
+                    cnt = 0;
+                }
+                labelId = newLabelId;
+                citations[cnt] = rs.getInt("CitationId");
+                weights[cnt] = rs.getDouble("Counts");
+                cnt++;
+
+            }
+
+            cnt = 0;
+            double similarity = 0;
+
+            NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
+
+            statement.executeUpdate("create table if not exists PPRPubCitationSimilarity (PubId TEXT,  Similarity double) ");
+            String deleteSQL = String.format("Delete from PPRPubCitationSimilarity");
+            statement.executeUpdate(deleteSQL);
+
+            PreparedStatement bulkInsert = null;
+            sql = "insert into PPRPubCitationSimilarity values(?,?);";
+
+            try {
+
+                connection.setAutoCommit(false);
+                bulkInsert = connection.prepareStatement(sql);
+
+                for (String fromPubId : labelVectors.keySet()) {
+
+                    if (fromPubId.contains("PPR")) {
+                        continue;
+                    }
+                    String toPubId = fromPubId + "PPR";
+                    similarity = -1;
+
+                    if (labelVectors.get(fromPubId) != null && labelVectors.get(toPubId) != null) {
+                        similarity = 1 - Math.abs(cosineSimilarity.distance(labelVectors.get(fromPubId), labelVectors.get(toPubId))); // the function returns distance not similarity
+                    }
+                    bulkInsert.setString(1, fromPubId);
+                    bulkInsert.setDouble(2, (double) Math.round(similarity * 1000) / 1000);
+
+                    bulkInsert.executeUpdate();
+
+                }
+
+                connection.commit();
+
+            } catch (SQLException e) {
+
+                if (connection != null) {
+                    try {
+                        System.err.print("Transaction is being rolled back");
+                        connection.rollback();
+                    } catch (SQLException excep) {
+                        System.err.print("Error in insert grantSimilarity");
+                    }
+                }
+            } finally {
+
+                if (bulkInsert != null) {
+                    bulkInsert.close();
+                }
+                connection.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
+        logger.info("Pub citation similarities calculation finished");
     }
 
     public void calcSimilaritiesAndTrends(String SQLLitedb, ExperimentType experimentType, String experimentId, boolean ACMAuthorSimilarity, SimilarityType similarityType, int numTopics) {
