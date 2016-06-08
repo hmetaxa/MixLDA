@@ -62,8 +62,9 @@ public class PTMExperiment {
         int docTopicsMax = -1;
         //boolean ignoreLabels = true;
         //boolean runOnLine = false;
-        boolean calcSimilarities = false;
-        boolean runTopicModelling = true;
+        boolean calcEntitySimilarities = false;
+        boolean calcTopicSimilarities = true;
+        boolean runTopicModelling = false;
         boolean runOrigParallelModel = false;
         //boolean calcTokensPerEntity = true;
         int numOfThreads = 4;
@@ -345,10 +346,14 @@ public class PTMExperiment {
                 }
             }
         }
-        if (calcSimilarities) {
+        if (calcEntitySimilarities) {
 
             calcSimilaritiesAndTrends(SQLLitedb, experimentType, experimentId, ACMAuthorSimilarity, similarityType, numTopics);
 
+        }
+
+        if (calcTopicSimilarities) {
+            CalcTopicSimilarities(SQLLitedb);
         }
 
 //        if (modelDiagnosticsFile
@@ -716,6 +721,13 @@ public class PTMExperiment {
 
     }
 
+    private class TopicVector {
+
+        public int TopicId;
+        public String ExperimentId;
+        public double[] Vector;
+    }
+
     public void CalcTopicSimilarities(String SQLLitedb) {
 
         Connection connection = null;
@@ -725,9 +737,7 @@ public class PTMExperiment {
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-            logger.info("Calc topic vectors started");
-
-            HashMap<String, double[]> topicVectors = new HashMap<String, double[]>();
+            logger.info("Calc topic similarities started");
 
             String distinctTopicsSQL = "Select  TopicId,  ExperimentId, count(*) as cnt\n"
                     + "from TopicVector\n"
@@ -735,30 +745,34 @@ public class PTMExperiment {
 
             ResultSet rs = statement.executeQuery(distinctTopicsSQL);
 
+            List<TopicVector> topicVectors = new ArrayList<TopicVector>();
+
             while (rs.next()) {
 
-                String experimentId = rs.getString("ExperimentId");
-                int topicId = rs.getInt("TopicId");
-                String newLabelId = experimentId + "_" + topicId;
+                TopicVector topicVector = new TopicVector();
+
+                topicVector.ExperimentId = rs.getString("ExperimentId");
+                topicVector.TopicId = rs.getInt("TopicId");
+                //String newLabelId = experimentId + "_" + topicId;
                 int dimension = rs.getInt("cnt");
-                double[] vector = new double[dimension];
+                topicVector.Vector = new double[dimension];
 
-                String selectVectorSQL = String.format("Select Weight from topicVector where ExperimentId= '%s'  and TopicId=%d order by ColumnId", experimentId, topicId);
+                String selectVectorSQL = String.format("Select Weight from topicVector where ExperimentId= '%s'  and TopicId=%d order by ColumnId", topicVector.ExperimentId, topicVector.TopicId);
 
-                ResultSet rs1 = statement.executeQuery(selectVectorSQL);
+                Statement statement2 = connection.createStatement();
+                statement2.setQueryTimeout(30);  // set timeout to 30 sec.
+                ResultSet rs1 = statement2.executeQuery(selectVectorSQL);
                 int cnt = 0;
                 while (rs1.next()) {
-                    vector[cnt++] = rs1.getDouble("Weight");
+                    topicVector.Vector[cnt++] = rs1.getDouble("Weight");
                 }
 
-                topicVectors.put(newLabelId, vector);
+                topicVectors.add(topicVector);
 
             }
 
-            int cnt = 0;
             double similarity = 0;
             double similarityThreshold = 0.15;
-            NormalizedDotProductMetric cosineSimilarity = new NormalizedDotProductMetric();
 
             statement.executeUpdate("create table if not exists TopicSimilarity (ExperimentId1 TEXT, TopicId1 TEXT, ExperimentId2 TEXT, TopicId2 TEXT, Similarity double) ");
             String deleteSQL = String.format("Delete from TopicSimilarity");
@@ -766,8 +780,6 @@ public class PTMExperiment {
 
             PreparedStatement bulkInsert = null;
             String insertSql = "insert into TopicSimilarity values(?,?,?,?,?);";
-            
-             
 
             try {
 
@@ -775,18 +787,21 @@ public class PTMExperiment {
                 bulkInsert = connection.prepareStatement(insertSql);
 
                 for (int t1 = 0; t1 < topicVectors.size(); t1++) {
-                 for (int t2 = t1; t2 < topicVectors.size(); t2++) {
-             
-                similarity = Math.max(MatrixOps.cosineSimilarity(topicVectors..get(t2)[t1], typeVectors[t2]), 0);
-                if (similarity > similarityThreshold && !fromGrantId.equals(toGrantId)) {
-                    bulkInsert.setInt(1, entityType);
-                    bulkInsert.setString(2, fromGrantId);
-                    bulkInsert.setString(3, toGrantId);
-                    bulkInsert.setDouble(4, (double) Math.round(similarity * 1000) / 1000);
-                    bulkInsert.setString(5, experimentId);
-                    bulkInsert.executeUpdate();
-                }
-                 }
+                    for (int t2 = t1; t2 < topicVectors.size(); t2++) {
+
+                        similarity = Math.max(MatrixOps.cosineSimilarity(topicVectors.get(t1).Vector, topicVectors.get(t2).Vector), 0);
+
+                        if (similarity > similarityThreshold && !(topicVectors.get(t1).TopicId == topicVectors.get(t2).TopicId && topicVectors.get(t1).ExperimentId == topicVectors.get(t2).ExperimentId)) {
+
+                            bulkInsert.setString(1, topicVectors.get(t1).ExperimentId);
+                            bulkInsert.setInt(2, topicVectors.get(t1).TopicId);
+                            bulkInsert.setString(3, topicVectors.get(t2).ExperimentId);
+                            bulkInsert.setInt(4, topicVectors.get(t2).TopicId);
+                            bulkInsert.setDouble(5, (double) Math.round(similarity * 1000) / 1000);
+
+                            bulkInsert.executeUpdate();
+                        }
+                    }
                 }
 
                 connection.commit();
@@ -824,25 +839,7 @@ public class PTMExperiment {
             }
         }
 
-        logger.info("Topic vectors calculation finished");
-
-        for (int topic = 0; topic < numTopics; topic++) {
-
-            int topicTypeCount = topicSortedWords.get(m).get(topic).size();
-            int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
-
-            //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
-            Iterator<IDSorter> iterator = sortedWords.iterator();
-
-            int wordCnt = 0;
-            while (iterator.hasNext() && wordCnt < activeNumWords) {
-                IDSorter info = iterator.next();
-                MatrixOps.plusEquals(topicVectors[m][topic], typeVectors[m][info.getID()], info.getWeight() / tokensPerTopic[m][topic]);
-                wordCnt++;
-            }
-
-        }
+        logger.info("Topic similarities calculation finished");
 
     }
 
