@@ -54,6 +54,7 @@ public class WordTopicEmbeddings {
     double maxExpValue = 6.0;
     double minExpValue = -6.0;
     double[] sigmoidCache;
+    ArrayList<TopicAssignment> data;
     int sigmoidCacheSize = 1000;
 
     int windowSize = 5;
@@ -132,13 +133,35 @@ public class WordTopicEmbeddings {
         System.out.println("done counting");
     }
 
+    public void addInstances(InstanceList training) {
+
+        for (Instance instance : training) {
+            TopicAssignment t = new TopicAssignment(instance, null);
+            data.add(t);
+        }
+
+    }
+
     public void train(InstanceList instances, int numThreads, int numSamples) {
 
+        this.data = new ArrayList<TopicAssignment>();
+
+        for (Instance instance : instances) {
+            TopicAssignment t = new TopicAssignment(instance, null);
+            data.add(t);
+        }
+
+        train(data, numThreads, numSamples);
+    }
+
+    public void train(ArrayList<TopicAssignment> data, int numThreads, int numSamples) {
+
+        this.data = data;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
         WordTopicEmbeddingRunnable[] runnables = new WordTopicEmbeddingRunnable[numThreads];
         for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread] = new WordTopicEmbeddingRunnable(this, instances, numSamples, numThreads, thread);
+            runnables[thread] = new WordTopicEmbeddingRunnable(this, data, numSamples, numThreads, thread);
             executor.submit(runnables[thread]);
         }
 
@@ -237,7 +260,7 @@ public class WordTopicEmbeddings {
         }
     }
 
-    public void write(String SQLLiteDB, int modality ) {
+    public void write(String SQLLiteDB, int modality) {
         Connection connection = null;
         Statement statement = null;
         try {
@@ -262,7 +285,7 @@ public class WordTopicEmbeddings {
 
                     //buffer.format("%s", vocabulary.lookupObject(word));
                     for (int col = 0; col < numColumns; col++) {
-                    //   buffer.format(" %.6f \t", weights[word * stride + col]);
+                        //   buffer.format(" %.6f \t", weights[word * stride + col]);
 
                         bulkInsert.setString(1, vocabulary.lookupObject(word).toString());
                         bulkInsert.setInt(2, col);
