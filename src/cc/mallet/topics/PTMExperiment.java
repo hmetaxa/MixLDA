@@ -64,8 +64,8 @@ public class PTMExperiment {
         //boolean runOnLine = false;
         boolean calcEntitySimilarities = false;
         boolean calcTopicSimilarities = false;
-        boolean calcPPRSimilarities = true;
-        boolean runTopicModelling = false;
+        boolean calcPPRSimilarities = false;
+        boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
         //boolean calcTokensPerEntity = true;
         int numOfThreads = 4;
@@ -73,7 +73,7 @@ public class PTMExperiment {
         //boolean ignoreSkewness = true;
         int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 1000; //Max 2000
+        int numIterations = 950; //Max 2000
         int numChars = 6000;
         //int independentIterations = 0;
         int burnIn = 100;
@@ -87,7 +87,7 @@ public class PTMExperiment {
         boolean ACMAuthorSimilarity = true;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = true;
+        boolean useTypeVectors = false;
         boolean PPRenabled = true;
 
         int[] vectorSize = new int[numModalities];
