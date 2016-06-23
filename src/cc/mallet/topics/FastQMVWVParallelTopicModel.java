@@ -133,6 +133,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public int[] vectorSize; // Number of vector dimensions per modality
     public double[][][] typeTopicSimilarity; //<modality, token, topic>;
     public boolean useTypeVectors;
+    public boolean trainTypeVectors;
 
     public String SQLLiteDB;
 
@@ -370,53 +371,57 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
 
         if (useTypeVectors) {
-            Connection connection = null;
-            try {
-                connection = DriverManager.getConnection(SQLLitedb);
-                String sql = "";
+            if (trainTypeVectors) {
 
-                sql = "select word, ColumnId, weight, modality from WordVector order by modality, word, columnId";
-
-                Statement statement = connection.createStatement();
-                statement.setQueryTimeout(60);  // set timeout to 30 sec.
-                ResultSet rs = statement.executeQuery(sql);
-
-                while (rs.next()) {
-
-                    int m = rs.getInt("modality");
-                    int w = alphabet[m].lookupIndex(rs.getString("word"), false);
-                    int c = rs.getInt("ColumnId");
-                    double weight = rs.getDouble("weight");
-                    if (w != -1) {
-                        this.typeVectors[m][w][c] = weight;
-                    }
-
-                }
-
-            } catch (SQLException e) {
-                // if the error message is "out of memory", 
-                // it probably means no database file is found
-                System.err.println(e.getMessage());
-            } finally {
+            } else {
+                Connection connection = null;
                 try {
-                    if (connection != null) {
-                        connection.close();
+                    connection = DriverManager.getConnection(SQLLitedb);
+                    String sql = "";
+
+                    sql = "select word, ColumnId, weight, modality from WordVector order by modality, word, columnId";
+
+                    Statement statement = connection.createStatement();
+                    statement.setQueryTimeout(60);  // set timeout to 30 sec.
+                    ResultSet rs = statement.executeQuery(sql);
+
+                    while (rs.next()) {
+
+                        int m = rs.getInt("modality");
+                        int w = alphabet[m].lookupIndex(rs.getString("word"), false);
+                        int c = rs.getInt("ColumnId");
+                        double weight = rs.getDouble("weight");
+                        if (w != -1) {
+                            this.typeVectors[m][w][c] = weight;
+                        }
+
                     }
+
                 } catch (SQLException e) {
-                    // connection close failed.
-                    System.err.println(e);
+                // if the error message is "out of memory", 
+                    // it probably means no database file is found
+                    System.err.println(e.getMessage());
+                } finally {
+                    try {
+                        if (connection != null) {
+                            connection.close();
+                        }
+                    } catch (SQLException e) {
+                        // connection close failed.
+                        System.err.println(e);
+                    }
                 }
-            }
 
-            for (int m = 0; m < numModalities; m++) {
-                for (int i = 0; i < alphabet[m].size(); i++) {
-                    Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+                for (int m = 0; m < numModalities; m++) {
+                    for (int i = 0; i < alphabet[m].size(); i++) {
+                        Arrays.fill(this.typeTopicSimilarity[m][i], 1);
 
-                    if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
-                        logger.warning("The word \"" + alphabet[m].lookupObject(i)
-                                + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
+                        if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
+                            logger.warning("The word \"" + alphabet[m].lookupObject(i)
+                                    + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
 
-                        //throw new Exception();
+                            //throw new Exception();
+                        }
                     }
                 }
             }
@@ -1209,7 +1214,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeGamma();
                 optimizeBeta();
                 if (useTypeVectors) {
-                    CalcTopicTypeVectorSimilarities(40,0.3);
+                    CalcTopicTypeVectorSimilarities(40, 0.3);
                 }
                 recalcTrees(false);
             }

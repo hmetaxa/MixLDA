@@ -7,7 +7,7 @@ public class WordTopicEmbeddingRunnable implements Runnable {
 
     public WordTopicEmbeddings model;
     //public InstanceList instances;
-    public ArrayList<TopicAssignment> data;  // the training instances and their topic assignments
+    public ArrayList<MixTopicModelTopicAssignment> data;  // the training instances and their topic assignments
     public int numSamples;
     public boolean shouldRun = true;
 
@@ -24,14 +24,18 @@ public class WordTopicEmbeddingRunnable implements Runnable {
     public Random random;
 
     int numColumns;
+    int numTopics;
+    int numWords;
 
     public int wordsSoFar = 0;
 
-    public WordTopicEmbeddingRunnable(WordTopicEmbeddings model, ArrayList<TopicAssignment> data, int numSamples, int numThreads, int threadID) {
+    public WordTopicEmbeddingRunnable(WordTopicEmbeddings model, ArrayList<MixTopicModelTopicAssignment> data, int numSamples, int numThreads, int threadID, int numWords, int numTopics) {
         this.model = model;
         this.stride = model.stride;
         this.data = data;
         this.numSamples = numSamples;
+        this.numTopics = numTopics;
+        this.numWords = numWords;
 
         this.numThreads = numThreads;
         this.threadID = threadID;
@@ -56,7 +60,7 @@ public class WordTopicEmbeddingRunnable implements Runnable {
         double sampleNormalizer = 1.0f / numSamples;
         int outputOffset = model.numColumns;
         double cacheScale = 1.0 / (model.maxExpValue - model.minExpValue);
-                    //double innerProduct = model.weights[inputType * stride + 0] + model.weights[inputType * stride + outputOffset];
+        //double innerProduct = model.weights[inputType * stride + 0] + model.weights[inputType * stride + outputOffset];
         //Omiros I think there is an error here
         double innerProduct = model.weights[inputType * stride + 0] + model.weights[outputType * stride + outputOffset];
         for (int col = 1; col < numColumns; col++) {
@@ -134,13 +138,13 @@ public class WordTopicEmbeddingRunnable implements Runnable {
         int[] tokenBuffer = new int[100000];
         int[] topicsBuffer = null;
 
-        boolean topicsEnabled = data.get(0).topicSequence != null;
-        if (topicsEnabled) {
+        //boolean topicsEnabled = data.get(0).topicSequence != null;
+        if (numTopics > 0) {
             topicsBuffer = new int[100000];
         }
 
         while (shouldRun) {
-            Instance instance = data.get(docID).instance;
+            Instance instance = data.get(docID).Assignments[0].instance;
             docID++;
 
             if (docID == maxDocID) {
@@ -153,8 +157,8 @@ public class WordTopicEmbeddingRunnable implements Runnable {
             FeatureSequence tokens = (FeatureSequence) instance.getData();
 
             int[] oneDocTopics = null;
-            if (topicsEnabled) {
-                LabelSequence topicSequence = (LabelSequence) data.get(docID).topicSequence;
+            if (numTopics > 0) {
+                LabelSequence topicSequence = (LabelSequence) data.get(docID).Assignments[0].topicSequence;
                 oneDocTopics = topicSequence.getFeatures();
 
             }
@@ -170,7 +174,7 @@ public class WordTopicEmbeddingRunnable implements Runnable {
                 double frequencyScore = (double) model.wordCounts[inputType] / (0.0001 * model.totalWords);
                 if (random.nextDouble() < (Math.sqrt(frequencyScore) + 1) / frequencyScore) {
                     tokenBuffer[length] = inputType;
-                    if (topicsEnabled) {
+                    if (numTopics > 0) {
                         topicsBuffer[length] = oneDocTopics[inputPosition];
                     }
                     length++;
@@ -185,8 +189,10 @@ public class WordTopicEmbeddingRunnable implements Runnable {
             for (int inputPosition = 0; inputPosition < length; inputPosition++) {
                 int inputType = tokenBuffer[inputPosition];
                 int topic = 0;
-                if (topicsEnabled) {
+                if (numTopics > 0) {
                     topic = topicsBuffer[inputPosition];
+                    gradientLearn(inputType, numWords + topic, learningRate);
+                    gradientLearn(numWords + topic, inputType, learningRate);
                 }
 
                 int subWindow = model.windowSize;
@@ -202,9 +208,12 @@ public class WordTopicEmbeddingRunnable implements Runnable {
                     if (inputType == outputType) {
                         continue;
                     }
-                    
-                    gradientLearn( inputType,  outputType,  learningRate);
-                    
+
+                    gradientLearn(inputType, outputType, learningRate);
+                    if (numTopics > 0) {
+                        gradientLearn(numWords + topic, outputType, learningRate);
+                    }
+
                 }
             }
         }

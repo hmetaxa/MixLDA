@@ -56,7 +56,7 @@ public class WordTopicEmbeddings {
     double maxExpValue = 6.0;
     double minExpValue = -6.0;
     double[] sigmoidCache;
-    ArrayList<TopicAssignment> data;
+    ArrayList<MixTopicModelTopicAssignment> data;
     int sigmoidCacheSize = 1000;
 
     int windowSize = 5;
@@ -137,35 +137,49 @@ public class WordTopicEmbeddings {
         System.out.println("done counting");
     }
 
-    public void addInstances(InstanceList training) {
+    public void addInstances(InstanceList training) { //No Topics.. Standard WVs
 
         for (Instance instance : training) {
             TopicAssignment t = new TopicAssignment(instance, null);
-            data.add(t);
+
+            //data.add(t);
+            MixTopicModelTopicAssignment mt;
+            String entityId = (String) instance.getName();
+            mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[1]);
+            mt.Assignments[0] = t;
+            data.add(mt);
+
         }
 
     }
 
     public void train(InstanceList instances, int numThreads, int numSamples) {
 
-        this.data = new ArrayList<TopicAssignment>();
+        this.data = new ArrayList<MixTopicModelTopicAssignment>();
 
         for (Instance instance : instances) {
             TopicAssignment t = new TopicAssignment(instance, null);
-            data.add(t);
+
+            //data.add(t);
+            MixTopicModelTopicAssignment mt;
+            String entityId = (String) instance.getName();
+            mt = new MixTopicModelTopicAssignment(entityId, new TopicAssignment[1]);
+            mt.Assignments[0] = t;
+            data.add(mt);
+
         }
 
         train(data, numThreads, numSamples);
     }
 
-    public void train(ArrayList<TopicAssignment> data, int numThreads, int numSamples) {
+    public void train(ArrayList<MixTopicModelTopicAssignment> data, int numThreads, int numSamples) {
 
         this.data = data;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
         WordTopicEmbeddingRunnable[] runnables = new WordTopicEmbeddingRunnable[numThreads];
         for (int thread = 0; thread < numThreads; thread++) {
-            runnables[thread] = new WordTopicEmbeddingRunnable(this, data, numSamples, numThreads, thread);
+            runnables[thread] = new WordTopicEmbeddingRunnable(this, data, numSamples, numThreads, thread, numWords, numTopics);
             executor.submit(runnables[thread]);
         }
 
@@ -291,7 +305,7 @@ public class WordTopicEmbeddings {
                     for (int col = 0; col < numColumns; col++) {
                         //   buffer.format(" %.6f \t", weights[word * stride + col]);
 
-                        bulkInsert.setString(1, word <= numWords ? vocabulary.lookupObject(word).toString(): String.valueOf(word-numWords));
+                        bulkInsert.setString(1, word <= numWords ? vocabulary.lookupObject(word).toString() : String.valueOf(word - numWords));
                         bulkInsert.setInt(2, col);
                         bulkInsert.setDouble(3, weights[word * stride + col]);
                         bulkInsert.setInt(4, word <= numWords ? modality : -1);
@@ -352,6 +366,29 @@ public class WordTopicEmbeddings {
         return result;
     }
 
+    public double[][] getWordVectors() {
+        double[][] result = new double[numWords][numColumns];
+        for (int word = 0; word < numWords; word++) {
+            for (int col = 0; col < numColumns; col++) {
+                result[word][col] = weights[word * stride + col];
+            }
+        }
+
+        return result;
+    }
+    
+      public double[][] getTopicVectors() {
+        double[][] result = new double[numTopics][numColumns];
+        for (int word = 0; word < numTopics; word++) {
+            for (int col = 0; col < numColumns; col++) {
+                result[word][col] = weights[word * stride + col];
+            }
+        }
+
+        return result;
+    }
+
+
     public double[] add(double[] result, String word) {
         return add(result, vocabulary.lookupIndex(word));
     }
@@ -384,7 +421,7 @@ public class WordTopicEmbeddings {
 
         InstanceList instances = InstanceList.load(new File(inputFile.value));
 
-        WordTopicEmbeddings matrix = new WordTopicEmbeddings(instances.getDataAlphabet(), numDimensions.value, windowSizeOption.value,0);
+        WordTopicEmbeddings matrix = new WordTopicEmbeddings(instances.getDataAlphabet(), numDimensions.value, windowSizeOption.value, 0);
         matrix.queryWord = exampleWord.value;
         matrix.countWords(instances);
         matrix.train(instances, numThreads.value, numSamples.value);
