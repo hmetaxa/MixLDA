@@ -39,6 +39,8 @@ public class WordTopicEmbeddings {
     Alphabet vocabulary;
 
     int numWords;
+    int numTopics;
+    int numVectors;
     int numColumns;
     double[] weights;
     double[] squaredGradientSums;
@@ -66,10 +68,12 @@ public class WordTopicEmbeddings {
     public WordTopicEmbeddings() {
     }
 
-    public WordTopicEmbeddings(Alphabet a, int numColumns, int windowSize) {
+    public WordTopicEmbeddings(Alphabet a, int numColumns, int windowSize, int numTopics) {
         vocabulary = a;
 
         numWords = vocabulary.size();
+        this.numTopics = numTopics;
+        numVectors = numWords + numTopics;
 
         System.out.format("Vocab size: %d\n", numWords);
 
@@ -77,17 +81,17 @@ public class WordTopicEmbeddings {
 
         this.stride = 2 * numColumns;
 
-        weights = new double[numWords * stride];
-        squaredGradientSums = new double[numWords * stride];
+        weights = new double[(numVectors) * stride];
+        squaredGradientSums = new double[(numVectors) * stride];
 
-        for (int word = 0; word < numWords; word++) {
+        for (int word = 0; word < numVectors; word++) {
             for (int col = 0; col < 2 * numColumns; col++) {
                 weights[word * stride + col] = (random.nextDouble() - 0.5f) / numColumns;
             }
         }
 
-        wordCounts = new int[numWords];
-        samplingDistribution = new double[numWords];
+        wordCounts = new int[numVectors];
+        samplingDistribution = new double[numVectors];
         samplingTable = new int[samplingTableSize];
 
         this.windowSize = windowSize;
@@ -117,10 +121,10 @@ public class WordTopicEmbeddings {
         double normalizer = 1.0f / totalWords;
 
         samplingDistribution[0] = Math.pow(normalizer * wordCounts[0], 0.75);
-        for (int word = 1; word < numWords; word++) {
+        for (int word = 1; word < numVectors; word++) {
             samplingDistribution[word] = samplingDistribution[word - 1] + Math.pow(normalizer * wordCounts[word], 0.75);
         }
-        samplingSum = samplingDistribution[numWords - 1];
+        samplingSum = samplingDistribution[numVectors - 1];
 
         int word = 0;
         for (int i = 0; i < samplingTableSize; i++) {
@@ -205,7 +209,7 @@ public class WordTopicEmbeddings {
     }
 
     public void findClosest(double[] targetVector) {
-        IDSorter[] sortedWords = new IDSorter[numWords];
+        IDSorter[] sortedWords = new IDSorter[numVectors];
 
         double targetSquaredSum = 0.0;
         for (int col = 0; col < numColumns; col++) {
@@ -215,7 +219,7 @@ public class WordTopicEmbeddings {
 
         System.out.println(targetSquaredSum);
 
-        for (int word = 0; word < numWords; word++) {
+        for (int word = 0; word < numVectors; word++) {
 
             double innerProduct = 0.0;
 
@@ -241,16 +245,16 @@ public class WordTopicEmbeddings {
 
     public double averageAbsWeight() {
         double sum = 0.0;
-        for (int word = 0; word < numWords; word++) {
+        for (int word = 0; word < numVectors; word++) {
             for (int col = 0; col < numColumns; col++) {
                 sum += Math.abs(weights[word * stride + col]);
             }
         }
-        return sum / (numWords * numColumns);
+        return sum / (numVectors * numColumns);
     }
 
     public void write(PrintWriter out) {
-        for (int word = 0; word < numWords; word++) {
+        for (int word = 0; word < numVectors; word++) {
             Formatter buffer = new Formatter();
             buffer.format("%s", vocabulary.lookupObject(word));
             for (int col = 0; col < numColumns; col++) {
@@ -280,17 +284,17 @@ public class WordTopicEmbeddings {
                 connection.setAutoCommit(false);
                 bulkInsert = connection.prepareStatement(sql);
 
-                for (int word = 0; word < numWords; word++) {
+                for (int word = 0; word < numVectors; word++) {
                     //Formatter buffer = new Formatter(new StringBuilder(), Locale.US);
 
                     //buffer.format("%s", vocabulary.lookupObject(word));
                     for (int col = 0; col < numColumns; col++) {
                         //   buffer.format(" %.6f \t", weights[word * stride + col]);
 
-                        bulkInsert.setString(1, vocabulary.lookupObject(word).toString());
+                        bulkInsert.setString(1, word <= numWords ? vocabulary.lookupObject(word).toString(): String.valueOf(word-numWords));
                         bulkInsert.setInt(2, col);
                         bulkInsert.setDouble(3, weights[word * stride + col]);
-                        bulkInsert.setInt(4, modality);
+                        bulkInsert.setInt(4, word <= numWords ? modality : -1);
                         bulkInsert.executeUpdate();
                     }
                 }
@@ -380,7 +384,7 @@ public class WordTopicEmbeddings {
 
         InstanceList instances = InstanceList.load(new File(inputFile.value));
 
-        WordTopicEmbeddings matrix = new WordTopicEmbeddings(instances.getDataAlphabet(), numDimensions.value, windowSizeOption.value);
+        WordTopicEmbeddings matrix = new WordTopicEmbeddings(instances.getDataAlphabet(), numDimensions.value, windowSizeOption.value,0);
         matrix.queryWord = exampleWord.value;
         matrix.countWords(instances);
         matrix.train(instances, numThreads.value, numSamples.value);
