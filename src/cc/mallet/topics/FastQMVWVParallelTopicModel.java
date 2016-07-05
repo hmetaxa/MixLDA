@@ -1,5 +1,6 @@
 package cc.mallet.topics;
 
+import static cc.mallet.topics.WordTopicEmbeddings.numDimensions;
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
@@ -128,10 +129,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     public String batchId = "";
 
-    public double[][][] typeVectors; // Vector representations for tokens per modality <modality, token, vector>
-    public double[][][] topicVectors;// Vector representations for topics <modality, topic, vector>
-    public int[] vectorSize; // Number of vector dimensions per modality
-    public double[][][] typeTopicSimilarity; //<modality, token, topic>;
+    public double[][] typeVectors; // Vector representations for tokens per modality <modality, token, vector>
+    public double[][] topicVectors;// Vector representations for topics <modality, topic, vector>
+    public int vectorSize; // Number of vector dimensions per modality
+    public double[][][] typeTopicSimilarity; //<token, topic, topic>;
     public boolean useTypeVectors;
     public boolean trainTypeVectors;
 
@@ -299,7 +300,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         this.modelFilename = filename;
     }
 
-    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet, byte m) //word vectors for text modality
+    public void readWordVectorsFile(String pathToWordVectorsFile, Alphabet[] alphabet) //word vectors for text modality
             throws Exception {
         System.out.println("Reading word vectors from word-vectors file " + pathToWordVectorsFile
                 + "...");
@@ -308,34 +309,34 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         try {
             br = new BufferedReader(new FileReader(pathToWordVectorsFile));
             String[] elements = br.readLine().trim().split("\\s+");
-            this.vectorSize[m] = elements.length - 1;
-            this.topicVectors = new double[numModalities][numTopics][vectorSize[m]];// Vector representations for topics <topic, vector>
+            this.vectorSize = elements.length - 1;
+            this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
 
-            this.typeVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
-            typeVectors[m] = new double[alphabet[m].size()][vectorSize[m]];
+            //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
+            this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
             this.typeTopicSimilarity = new double[numModalities][][];
-            this.typeTopicSimilarity[m] = new double[alphabet[m].size()][numTopics];
-            for (int i = 0; i < alphabet[m].size(); i++) {
-                Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+            this.typeTopicSimilarity[0] = new double[alphabet[0].size()][numTopics];
+            for (int i = 0; i < alphabet[0].size(); i++) {
+                Arrays.fill(this.typeTopicSimilarity[0][i], 1);
             }
 
             String word = elements[0];
             //TODO: I should only take into account words that have wordvectors...
-            int wordId = alphabet[m].lookupIndex(word, false);
-            if (alphabet[m].lookupIndex(word) != -1) {
-                for (int j = 0; j < vectorSize[m]; j++) {
-                    typeVectors[m][wordId][j] = new Double(elements[j + 1]);
+            int wordId = alphabet[0].lookupIndex(word, false);
+            if (alphabet[0].lookupIndex(word) != -1) {
+                for (int j = 0; j < vectorSize; j++) {
+                    typeVectors[wordId][j] = new Double(elements[j + 1]);
                 }
             }
             for (String line; (line = br.readLine()) != null;) {
                 elements = line.trim().split("\\s+");
                 word = elements[0];
-                wordId = alphabet[m].lookupIndex(word, false);
-                if (alphabet[m].lookupIndex(word) != -1) {
+                wordId = alphabet[0].lookupIndex(word, false);
+                if (alphabet[0].lookupIndex(word) != -1) {
 
-                    for (int j = 0; j < vectorSize[m]; j++) {
-                        typeVectors[m][wordId][j] = new Double(elements[j + 1]);
+                    for (int j = 0; j < vectorSize; j++) {
+                        typeVectors[wordId][j] = new Double(elements[j + 1]);
                     }
                 }
             }
@@ -343,10 +344,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             e.printStackTrace();
         }
 
-        for (int i = 0; i < alphabet[m].size(); i++) {
-            Arrays.fill(this.typeTopicSimilarity[m][i], 1);
-            if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
-                System.out.println("The word \"" + alphabet[m].lookupObject(i)
+        for (int i = 0; i < alphabet[0].size(); i++) {
+            Arrays.fill(this.typeTopicSimilarity[0][i], 1);
+            if (MatrixOps.absNorm(typeVectors[i]) == 0.0) {
+                System.out.println("The word \"" + alphabet[0].lookupObject(i)
                         + "\" doesn't have a corresponding vector!!!");
                 throw new Exception();
             }
@@ -356,8 +357,8 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public void readWordVectorsDB(String SQLLitedb, int[] vectorSize) //word vectors for text modality
     {
 
-        this.typeVectors = new double[numModalities][][]; // Vector representations for tokens per modality <modality, token, vector>
-        this.topicVectors = new double[numModalities][][];
+        //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
+        //this.topicVectors = new double[][];
         this.typeTopicSimilarity = new double[numModalities][][];
 
         for (int m = 0; m < numModalities; m++) {
@@ -398,7 +399,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     }
 
                 } catch (SQLException e) {
-                // if the error message is "out of memory", 
+                    // if the error message is "out of memory", 
                     // it probably means no database file is found
                     System.err.println(e.getMessage());
                 } finally {
@@ -1207,13 +1208,24 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 modalities.add((byte) 0);
 
                 if (iteration >= burninPeriod + optimizeInterval) {
-                    mergeSimilarTopics(40, modalities, 0.85, 0);
+                    //mergeSimilarTopics(40, modalities, 0.85, 0); TODO: implement topic similarity based on Word Vectors
                 }
 
                 optimizeDP();
                 optimizeGamma();
                 optimizeBeta();
                 if (useTypeVectors) {
+                    int numColumns = 200;
+                    int windowSizeOption = 5;
+                    int numSamples = 5;
+                    WordTopicEmbeddings matrix = new WordTopicEmbeddings(alphabet[0], numColumns, windowSizeOption, numTopics);
+                    matrix.queryWord = "mining";
+                    matrix.countWords(data);
+                    matrix.train(data, numThreads, numSamples);
+                    
+                    topicVectors[0] = matrix.getTopicVectors();
+                    typeVectors[0] = matrix.getWordVectors();
+                    
                     CalcTopicTypeVectorSimilarities(40, 0.3);
                 }
                 recalcTrees(false);

@@ -137,6 +137,54 @@ public class WordTopicEmbeddings {
         System.out.println("done counting");
     }
 
+    public void countWords(ArrayList<MixTopicModelTopicAssignment> data) {
+        int numDocuments = data.size();
+
+        for (int docID = 0; docID < numDocuments; docID++) {
+
+            Instance instance = data.get(docID).Assignments[0].instance;
+            FeatureSequence tokens = (FeatureSequence) instance.getData();
+            int length = tokens.getLength();
+
+            int[] oneDocTopics = null;
+            if (numTopics > 0) {
+                LabelSequence topicSequence = (LabelSequence) data.get(docID).Assignments[0].topicSequence;
+                oneDocTopics = topicSequence.getFeatures();
+
+            }
+
+            for (int position = 0; position < length; position++) {
+                int type = tokens.getIndexAtPosition(position);
+                wordCounts[type]++;
+
+                if (numTopics > 0) {
+                    int topic = oneDocTopics[position];
+                    wordCounts[numWords + topic]++;
+                }
+            }
+
+            totalWords += length;
+        }
+
+        double normalizer = 1.0f / totalWords;
+
+        samplingDistribution[0] = Math.pow(normalizer * wordCounts[0], 0.75);
+        for (int word = 1; word < numVectors; word++) {
+            samplingDistribution[word] = samplingDistribution[word - 1] + Math.pow(normalizer * wordCounts[word], 0.75);
+        }
+        samplingSum = samplingDistribution[numVectors - 1];
+
+        int word = 0;
+        for (int i = 0; i < samplingTableSize; i++) {
+            while (samplingSum * i / samplingTableSize > samplingDistribution[word]) {
+                word++;
+            }
+            samplingTable[i] = word;
+        }
+
+        System.out.println("done counting");
+    }
+
     public void addInstances(InstanceList training) { //No Topics.. Standard WVs
 
         for (Instance instance : training) {
@@ -376,8 +424,8 @@ public class WordTopicEmbeddings {
 
         return result;
     }
-    
-      public double[][] getTopicVectors() {
+
+    public double[][] getTopicVectors() {
         double[][] result = new double[numTopics][numColumns];
         for (int word = 0; word < numTopics; word++) {
             for (int col = 0; col < numColumns; col++) {
@@ -387,7 +435,6 @@ public class WordTopicEmbeddings {
 
         return result;
     }
-
 
     public double[] add(double[] result, String word) {
         return add(result, vocabulary.lookupIndex(word));
