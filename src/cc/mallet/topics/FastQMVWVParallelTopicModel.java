@@ -17,6 +17,7 @@ import java.io.*;
 import java.text.NumberFormat;
 
 import cc.mallet.types.*;
+import cc.mallet.util.ArrayUtils;
 import cc.mallet.util.Randoms;
 import cc.mallet.util.MalletLogger;
 import gnu.trove.TByteArrayList;
@@ -129,10 +130,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     public String batchId = "";
 
-    public double[][] typeVectors; // Vector representations for tokens per modality <modality, token, vector>
-    public double[][] topicVectors;// Vector representations for topics <modality, topic, vector>
+    public double[][] typeVectors; // Vector representations for tokens per modality < token, vector>
+    public double[][] topicVectors;// Vector representations for topics < topic, vector>
     public int vectorSize; // Number of vector dimensions per modality
-    public double[][][] typeTopicSimilarity; //<token, topic, topic>;
+    public short[][][] typeTopicSimilarity; //<token, topic, topic>; * 10.000 (similarity: [0,1] * 10000)
     public boolean useTypeVectors;
     public boolean trainTypeVectors;
 
@@ -315,10 +316,12 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
             this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
-            this.typeTopicSimilarity = new double[numModalities][][];
-            this.typeTopicSimilarity[0] = new double[alphabet[0].size()][numTopics];
+            this.typeTopicSimilarity = new short[alphabet[0].size()][numTopics][numTopics];
+
             for (int i = 0; i < alphabet[0].size(); i++) {
-                Arrays.fill(this.typeTopicSimilarity[0][i], 1);
+                for (int j = 0; j < numTopics; j++) {
+                    Arrays.fill(this.typeTopicSimilarity[i][j], (short) 1);
+                }
             }
 
             String word = elements[0];
@@ -345,29 +348,31 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
 
         for (int i = 0; i < alphabet[0].size(); i++) {
-            Arrays.fill(this.typeTopicSimilarity[0][i], 1);
-            if (MatrixOps.absNorm(typeVectors[i]) == 0.0) {
-                System.out.println("The word \"" + alphabet[0].lookupObject(i)
-                        + "\" doesn't have a corresponding vector!!!");
-                throw new Exception();
+            for (int j = 0; j < numTopics; j++) {
+                Arrays.fill(this.typeTopicSimilarity[i][j], (short) 1);
+                if (MatrixOps.absNorm(typeVectors[i]) == 0.0) {
+                    System.out.println("The word \"" + alphabet[0].lookupObject(i)
+                            + "\" doesn't have a corresponding vector!!!");
+                    throw new Exception();
+                }
             }
         }
     }
 
-    public void readWordVectorsDB(String SQLLitedb, int[] vectorSize) //word vectors for text modality
+    public void readWordVectorsDB(String SQLLitedb, int vectorSize) //word vectors for text modality
     {
 
         //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
         //this.topicVectors = new double[][];
-        this.typeTopicSimilarity = new double[numModalities][][];
+        this.vectorSize = vectorSize;
+        this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
+        this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
-        for (int m = 0; m < numModalities; m++) {
-            typeVectors[m] = new double[alphabet[m].size()][vectorSize[m]];
-            this.topicVectors[m] = new double[numTopics][vectorSize[m]];// Vector representations for topics <topic, vector>
-            this.typeTopicSimilarity[m] = new double[alphabet[m].size()][numTopics];
+        this.typeTopicSimilarity = new short[alphabet[0].size()][numTopics][numTopics];
 
-            for (int i = 0; i < alphabet[m].size(); i++) {
-                Arrays.fill(this.typeTopicSimilarity[m][i], 1);
+        for (int i = 0; i < alphabet[0].size(); i++) {
+            for (int j = 0; j < numTopics; j++) {
+                Arrays.fill(this.typeTopicSimilarity[i][j], (short) 1);
             }
         }
 
@@ -389,11 +394,16 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     while (rs.next()) {
 
                         int m = rs.getInt("modality");
-                        int w = alphabet[m].lookupIndex(rs.getString("word"), false);
+                        int w = m == 0 ? alphabet[m].lookupIndex(rs.getString("word"), false) : Integer.parseInt(rs.getString("word"));
                         int c = rs.getInt("ColumnId");
                         double weight = rs.getDouble("weight");
                         if (w != -1) {
-                            this.typeVectors[m][w][c] = weight;
+                            if (m == 0) {
+                                this.typeVectors[w][c] = weight;
+                            } else if (m == -1) {
+                                this.topicVectors[w][c] = weight;
+
+                            }
                         }
 
                     }
@@ -415,14 +425,15 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
                 for (int m = 0; m < numModalities; m++) {
                     for (int i = 0; i < alphabet[m].size(); i++) {
-                        Arrays.fill(this.typeTopicSimilarity[m][i], 1);
-
-                        if (MatrixOps.absNorm(typeVectors[m][i]) == 0.0) {
-                            logger.warning("The word \"" + alphabet[m].lookupObject(i)
-                                    + "\" doesn't have a corresponding vector!!! Word to Topic Similarity will be set to 1");
-
-                            //throw new Exception();
+                        for (int j = 0; j < numTopics; j++) {
+                            Arrays.fill(this.typeTopicSimilarity[i][j], (short) 1);
+                            if (MatrixOps.absNorm(typeVectors[i]) == 0.0) {
+                                System.out.println("The word \"" + alphabet[0].lookupObject(i)
+                                        + "\" doesn't have a corresponding vector!!!");
+                                //       throw new Exception();
+                            }
                         }
+
                     }
                 }
             }
@@ -431,28 +442,29 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     private void CalcTopicTypeVectorSimilarities(int maxNumWords, double weight) {
 
-        CalcTopicVectors(maxNumWords);
+        double[][] topiVectorsW = CalcTopicVectorBasedOnWords(maxNumWords);
 
-        double[][] typeSumSimilarities = new double[numModalities][];
+        double[] typeSumSimilarities = new double[alphabet[0].size()];
 
-        for (int m = 0; m < numModalities; m++) {
-            typeSumSimilarities[m] = new double[alphabet[m].size()];
-            Arrays.fill(typeSumSimilarities[m], 0);
-            double similarity = 0;
-            for (int w = 0; w < alphabet[m].size(); w++) {
-                if (MatrixOps.absNorm(typeVectors[m][w]) != 0.0) // meaning that word vector exists
-                {
+        Arrays.fill(typeSumSimilarities, 0);
+        double similarity = 0;
+        for (int w = 0; w < alphabet[0].size(); w++) {
+            if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
+            {
+                for (int t1 = 0; t1 < numTopics; t1++) {
                     for (int t = 0; t < numTopics; t++) {
-                        similarity = weight * Math.max(MatrixOps.cosineSimilarity(topicVectors[m][t], typeVectors[m][w]), 0);
-                        typeTopicSimilarity[m][w][t] = similarity;
-                        typeSumSimilarities[m][w] += similarity;
+                        double[]totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[t1]);
+                        double[]totalTopicVector = ArrayUtils.append(topiVectorsW[t], topicVectors[t]);
+                        similarity = weight * Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
+                        typeTopicSimilarity[w][t1][t] = (short) Math.round(similarity * 10000);
+                        typeSumSimilarities[w] += similarity;
                     }
                 }
             }
-
-            for (int w = 0; w < alphabet[m].size(); w++) {
-                double avgSimilarity = typeSumSimilarities[m][w] / numTopics;
-                if (MatrixOps.absNorm(typeVectors[m][w]) != 0.0) // meaning that word vector exists
+        }
+            for (int w = 0; w < alphabet[0].size(); w++) {
+                double avgSimilarity = typeSumSimilarities[w] / numTopics;
+                if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
                 {
                     for (int t = 0; t < numTopics; t++) {
 
@@ -461,40 +473,68 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     }
                 }
             }
-        }
+        
 
     }
 
-    private void CalcTopicVectors(int maxNumWords) {
-        ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
-
-        for (Byte m = 0; m < numModalities; m++) {
-            topicSortedWords.add(getSortedWords(m));
-        }
+//    private void CalcTopicVectors(int maxNumWords) {
+//        ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
+//
+//        for (Byte m = 0; m < numModalities; m++) {
+//            topicSortedWords.add(getSortedWords(m));
+//        }
+//
+//        //int[][] topicTypeCounts = new int[numModalities][numTopics];
+//        double[][] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true);
+//
+//        for (Byte m = 0; m < numModalities; m++) {
+//            for (int topic = 0; topic < numTopics; topic++) {
+//
+//                int topicTypeCount = topicSortedWords.get(m).get(topic).size();
+//                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
+//
+//                //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
+//                TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
+//                Iterator<IDSorter> iterator = sortedWords.iterator();
+//
+//                int wordCnt = 0;
+//                while (iterator.hasNext() && wordCnt < activeNumWords) {
+//                    IDSorter info = iterator.next();
+//                    MatrixOps.plusEquals(topicVectors[m][topic], typeVectors[m][info.getID()], info.getWeight() / tokensPerTopic[m][topic]);
+//                    wordCnt++;
+//                }
+//
+//            }
+//
+//        }
+//    }
+    private double[][] CalcTopicVectorBasedOnWords(int maxNumWords) {
+        //ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>();
+        double[][] TopicVectorsW = new double[numTopics][vectorSize];
+        ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
 
         //int[][] topicTypeCounts = new int[numModalities][numTopics];
-        double[][] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true);
+        double[] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true, 0);
 
-        for (Byte m = 0; m < numModalities; m++) {
-            for (int topic = 0; topic < numTopics; topic++) {
+        for (int topic = 0; topic < numTopics; topic++) {
 
-                int topicTypeCount = topicSortedWords.get(m).get(topic).size();
-                int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
+            int topicTypeCount = topicSortedWords.get(topic).size();
+            int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[topic] * topicTypeCount));
 
-                //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
-                TreeSet<IDSorter> sortedWords = topicSortedWords.get(m).get(topic);
-                Iterator<IDSorter> iterator = sortedWords.iterator();
+            //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            Iterator<IDSorter> iterator = sortedWords.iterator();
 
-                int wordCnt = 0;
-                while (iterator.hasNext() && wordCnt < activeNumWords) {
-                    IDSorter info = iterator.next();
-                    MatrixOps.plusEquals(topicVectors[m][topic], typeVectors[m][info.getID()], info.getWeight() / tokensPerTopic[m][topic]);
-                    wordCnt++;
-                }
-
+            int wordCnt = 0;
+            while (iterator.hasNext() && wordCnt < activeNumWords) {
+                IDSorter info = iterator.next();
+                MatrixOps.plusEquals(TopicVectorsW[topic], typeVectors[info.getID()], info.getWeight() / tokensPerTopic[0][topic]);
+                wordCnt++;
             }
 
         }
+
+        return TopicVectorsW;
     }
 
     public void addInstances(InstanceList[] training, String batchId, int[] vectorSize) {
@@ -1222,10 +1262,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     matrix.queryWord = "mining";
                     matrix.countWords(data);
                     matrix.train(data, numThreads, numSamples);
-                    
+
                     topicVectors[0] = matrix.getTopicVectors();
                     typeVectors[0] = matrix.getWordVectors();
-                    
+
                     CalcTopicTypeVectorSimilarities(40, 0.3);
                 }
                 recalcTrees(false);
@@ -2089,41 +2129,51 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     }
 //
 
-    public double[][] calcDiscrWeightWithinTopics(ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
+    public double[] calcDiscrWeightWithinTopics(ArrayList<TreeSet<IDSorter>> topicSortedWords, boolean onDicrWeightTokens, int modality) {
 
         if (onDicrWeightTokens) {
             calcDiscrWeightAcrossTopicsPerModality(typeDiscrWeight);
 
         }
 
-        double[][] topicsSkewWeight = new double[numModalities][numTopics];
+        double[] topicsSkewWeight = new double[numTopics];
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
-        for (Byte i = 0; i < numModalities; i++) {
-            for (int topic = 0; topic < numTopics; topic++) {
 
-                topicsSkewWeight[i][topic] = 0.0;
-                TreeSet<IDSorter> sortedWords = topicSortedWords.get(i).get(topic);
-                double totalTopicCnts = tokensPerTopic[i][topic];
+        for (int topic = 0; topic < numTopics; topic++) {
 
-                if (onDicrWeightTokens) {
-                    totalTopicCnts = 0;
-                    for (IDSorter info : sortedWords) {
-                        double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1);
-                        double normCounts = tokenWeight * info.getWeight();
-                        totalTopicCnts += normCounts;
-                    }
-                }
+            topicsSkewWeight[topic] = 0.0;
+            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+            double totalTopicCnts = tokensPerTopic[modality][topic];
 
+            if (onDicrWeightTokens) {
+                totalTopicCnts = 0;
                 for (IDSorter info : sortedWords) {
-                    double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[i][info.getID()] : 1);
-                    double probability = tokenWeight * info.getWeight() / totalTopicCnts;
-                    topicsSkewWeight[i][topic] += probability * probability;
+                    double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[modality][info.getID()] : 1);
+                    double normCounts = tokenWeight * info.getWeight();
+                    totalTopicCnts += normCounts;
                 }
+            }
+
+            for (IDSorter info : sortedWords) {
+                double tokenWeight = (onDicrWeightTokens ? typeDiscrWeight[modality][info.getID()] : 1);
+                double probability = tokenWeight * info.getWeight() / totalTopicCnts;
+                topicsSkewWeight[topic] += probability * probability;
+            }
 //                if (topicsSkewWeight[i][topic] == 0)
 //                {
 //                    logger.warning("calcDiscrWeightWithinTopics: zero weight for topic:"+topic);
 //                }
-            }
+        }
+
+        return topicsSkewWeight;
+    }
+
+    public double[][] calcDiscrWeightWithinTopics(ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords, boolean onDicrWeightTokens) {
+
+        double[][] topicsSkewWeight = new double[numModalities][];
+        //ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
+        for (Byte i = 0; i < numModalities; i++) {
+            topicsSkewWeight[i] = calcDiscrWeightWithinTopics(topicSortedWords.get(i), onDicrWeightTokens, i);
         }
 
         return topicsSkewWeight;
