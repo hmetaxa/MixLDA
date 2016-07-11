@@ -90,8 +90,8 @@ public class PTMExperiment {
         boolean useTypeVectors = false;
         boolean PPRenabled = true;
 
-        int[] vectorSize = new int[numModalities];
-        vectorSize[0] = 200;
+        int vectorSize = 200;
+        //vectorSize[0] = 200;
 //boolean runParametric = true;
 //
 //        try {
@@ -195,7 +195,7 @@ public class PTMExperiment {
                 //int numDimensions = 50;
                 int windowSizeOption = 5;
                 int numSamples = 5;
-                WordEmbeddings matrix = new WordEmbeddings(instances[0].getDataAlphabet(), vectorSize[0], windowSizeOption);
+                WordEmbeddings matrix = new WordEmbeddings(instances[0].getDataAlphabet(), vectorSize, windowSizeOption);
                 matrix.queryWord = "mining";
                 matrix.countWords(instances[0]);
                 matrix.train(instances[0], numOfThreads, numSamples);

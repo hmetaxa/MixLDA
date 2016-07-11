@@ -53,7 +53,7 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
     protected double[] docSmoothingOnlyMass;
     protected double[][] docSmoothingOnlyCumValues;
     
-    protected double[][][] typeTopicSimilarity; //<modality, token, topic>;
+    //protected short[][][] typeTopicSimilarity; //<modality, token, topic>;
 
     //protected FTree betaSmoothingTree;
     private final CyclicBarrier cyclicBarrier;
@@ -87,8 +87,8 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
             int[] numTypes,
             int[] maxTypeCount,
             Randoms random,
-            List<Integer> inActiveTopicIndex,
-            double[][][] typeTopicSimilarity
+            List<Integer> inActiveTopicIndex
+            //short[][][] typeTopicSimilarity
     //        , FTree betaSmoothingTree
     ) {
 
@@ -113,7 +113,7 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
 
         this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
         this.docSmoothingOnlyMass = docSmoothingOnlyMass;
-        this.typeTopicSimilarity = typeTopicSimilarity;
+        //this.typeTopicSimilarity = typeTopicSimilarity;
 
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
@@ -217,9 +217,9 @@ public class FastQMVWVUpdaterRunnable implements Runnable {
 //                            //betaSmoothingTree.update(delta.NewTopic, ( beta[0] / (tokensPerTopic[delta.NewTopic] + betaSum[0])));
 //                        } else {
                             if (delta.OldTopic != FastQMVWVParallelTopicModel.UNASSIGNED_TOPIC) {
-                                trees[delta.Modality][delta.Type].update(delta.OldTopic, (typeTopicSimilarity[delta.Modality][delta.Type][delta.OldTopic] * gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
+                                trees[delta.Modality][delta.Type].update(delta.OldTopic, ( gamma[delta.Modality] * alpha[delta.Modality][delta.OldTopic] * (currentTypeTopicCounts[delta.OldTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.OldTopic] + betaSum[delta.Modality])));
                             }
-                            trees[delta.Modality][delta.Type].update(delta.NewTopic, (typeTopicSimilarity[delta.Modality][delta.Type][delta.NewTopic] * gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
+                            trees[delta.Modality][delta.Type].update(delta.NewTopic, ( gamma[delta.Modality] * alpha[delta.Modality][delta.NewTopic] * (currentTypeTopicCounts[delta.NewTopic] + beta[delta.Modality]) / (tokensPerTopic[delta.Modality][delta.NewTopic] + betaSum[delta.Modality])));
                         //}
 
                         if (inActiveTopicIndex.contains(delta.NewTopic)) //new topic

@@ -58,7 +58,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
     protected int[][][] typeTopicCounts; // indexed by  [modality][tokentype][topic]
     protected int[][] tokensPerTopic; // indexed by <topic index>
 
-    protected double[][][] typeTopicSimilarity; //<modality, token, topic>;
+    protected short[][][] typeTopicSimilarity; //<modality, token, topic>;
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
     //protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -96,7 +96,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             //            ConcurrentLinkedQueue<FastQDelta> queue, 
             CyclicBarrier cyclicBarrier,
             List<Integer> inActiveTopicIndex,
-            double[][][] typeTopicSimilarity
+            short[][][] typeTopicSimilarity
     //, FTree betaSmoothingTree
     ) {
 
@@ -417,11 +417,15 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
                     //		compute word / doc mass for binary search
                     double topicDocWordMass = 0.0;
+                    
+                    //TODO: 1) based on weight select to sample either based on counts or typeTopicSimilarity --> select p(w|t)
+                    //      2) p(w|t) based on vectors --> either based on softmax or cosine similarity 
+                    //   we need a mass per typeTopicSimilarity[type][oldTopic] and binary search on it (?) (double) typeTopicSimilarity[type][oldTopic][topic] / 10000 * 
 
                     for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
                         int topic = localTopicIndex[denseIndex];
                         int n = localTopicCounts[m][topic];
-                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * typeTopicSimilarity[m][type][topic] * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
+                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
                         //topicDocWordMass +=  n * trees[type].getComponent(topic);
                         topicDocWordMasses[denseIndex] = topicDocWordMass;
 
@@ -445,7 +449,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                         if (sample < topicDocWordMass) {
                             topicDocMassCnt.getAndIncrement();
                             newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
-                        } else {
+                        } else { 
                             wordFTreeMassCnt.getAndIncrement();
                             double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
                             newTopic = currentTree.sample(nextUniform2);
