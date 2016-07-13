@@ -58,7 +58,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
     protected int[][][] typeTopicCounts; // indexed by  [modality][tokentype][topic]
     protected int[][] tokensPerTopic; // indexed by <topic index>
 
-    protected short[][][] typeTopicSimilarity; //<modality, token, topic>;
+    protected int[][][] typeTopicSimilarity; //<modality, token, topic>;
     // for dirichlet estimation
     //protected int[] docLengthCounts; // histogram of document sizes
     //protected int[][] topicDocCounts; // histogram of document/topic counts, indexed by <topic index, sequence position index>
@@ -96,7 +96,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             //            ConcurrentLinkedQueue<FastQDelta> queue, 
             CyclicBarrier cyclicBarrier,
             List<Integer> inActiveTopicIndex,
-            short[][][] typeTopicSimilarity
+            int[][][] typeTopicSimilarity
     //, FTree betaSmoothingTree
     ) {
 
