@@ -155,11 +155,12 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, String SQLLiteDB, boolean useTypeVectors, double useTypeVectorsProb) {
+    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, String SQLLiteDB, boolean useTypeVectors, double useTypeVectorsProb, boolean trainTypeVectors) {
 
         this.SQLLiteDB = SQLLiteDB;
         this.useTypeVectors = useTypeVectors;
         this.useTypeVectorsProb = useTypeVectorsProb;
+        this.trainTypeVectors= trainTypeVectors;
         this.numModalities = numModalities;
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
@@ -318,7 +319,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
             this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
-            this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics+1];
+            this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics + 1];
 
             for (int i = 0; i < alphabet[0].size(); i++) {
                 for (int j = 0; j < numTopics; j++) {
@@ -370,7 +371,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
         this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
-        this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics+1];
+        this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics];
 
         for (int i = 0; i < alphabet[0].size(); i++) {
             for (int j = 0; j < numTopics; j++) {
@@ -442,7 +443,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         }
     }
 
-    private void CalcTopicTypeVectorSimilarities(int maxNumWords, double weight) {
+    private void CalcTopicTypeVectorSimilarities(int maxNumWords) {
 
         double[][] topiVectorsW = CalcTopicVectorBasedOnWords(maxNumWords);
 
@@ -459,8 +460,8 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     for (int t = 0; t < numTopics; t++) {
                         double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[t1]);
                         double[] totalTopicVector = ArrayUtils.append(topiVectorsW[t], topicVectors[t]);
-                        similarity = weight * Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
-                        typeTopicSimilarity[w][t1][t] +=  Math.round(similarity * 1000); //cumulative similarities 
+                        similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
+                        typeTopicSimilarity[w][t1][t] += Math.round(similarity * 1000); //cumulative similarities 
                         //typeSumSimilarities[w] += similarity;
                     }
                 }
@@ -1202,7 +1203,6 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 maxTypeCount,
                 randomUpd,
                 inActiveTopicIndex
-                
         //        , betaSmoothingTree
         );
 
@@ -1261,18 +1261,19 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeGamma();
                 optimizeBeta();
                 if (useTypeVectors) {
-                    int numColumns = 200;
-                    int windowSizeOption = 5;
-                    int numSamples = 5;
-                    WordTopicEmbeddings matrix = new WordTopicEmbeddings(alphabet[0], numColumns, windowSizeOption, numTopics);
-                    matrix.queryWord = "mining";
-                    matrix.countWords(data);
-                    matrix.train(data, numThreads, numSamples);
+                    if (trainTypeVectors) {
+                        int numColumns = 200;
+                        int windowSizeOption = 5;
+                        int numSamples = 5;
+                        WordTopicEmbeddings matrix = new WordTopicEmbeddings(alphabet[0], numColumns, windowSizeOption, numTopics);
+                        matrix.queryWord = "mining";
+                        matrix.countWords(data);
+                        matrix.train(data, numThreads, numSamples);
 
-                    topicVectors = matrix.getTopicVectors();
-                    typeVectors = matrix.getWordVectors();
-
-                    CalcTopicTypeVectorSimilarities(40, 0.3);
+                        topicVectors = matrix.getTopicVectors();
+                        typeVectors = matrix.getWordVectors();
+                    }
+                    CalcTopicTypeVectorSimilarities(40);
                 }
                 recalcTrees(false);
             }
@@ -3477,7 +3478,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
             byte mod = 1;
-            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true, 0.6);
+            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true, 0.6, true);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training, "", 1);
