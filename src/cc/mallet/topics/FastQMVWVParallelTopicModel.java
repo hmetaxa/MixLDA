@@ -136,6 +136,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
     public int[][][] typeTopicSimilarity; //<token, topic, topic>; * 10.000 (similarity: [0,1] * 10000)
     public boolean useTypeVectors;
     public boolean trainTypeVectors;
+    public double useTypeVectorsProb;
 
     public String SQLLiteDB;
 
@@ -154,10 +155,11 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         return ret;
     }
 
-    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, String SQLLiteDB, boolean useTypeVectors) {
+    public FastQMVWVParallelTopicModel(int numberOfTopics, byte numModalities, double alpha, double beta, boolean useCycleProposals, String SQLLiteDB, boolean useTypeVectors, double useTypeVectorsProb) {
 
         this.SQLLiteDB = SQLLiteDB;
         this.useTypeVectors = useTypeVectors;
+        this.useTypeVectorsProb = useTypeVectorsProb;
         this.numModalities = numModalities;
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
@@ -1163,7 +1165,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     //queues.get(thread), 
                     barrier,
                     inActiveTopicIndex,
-                    typeTopicSimilarity
+                    typeTopicSimilarity,
+                    useTypeVectors,
+                    useTypeVectorsProb
             //,betaSmoothingTree
             );
 
@@ -3473,7 +3477,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             int numTopics = args.length > 1 ? Integer.parseInt(args[1]) : 200;
 
             byte mod = 1;
-            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true);
+            FastQMVWVParallelTopicModel lda = new FastQMVWVParallelTopicModel(numTopics, mod, 0.1, 0.01, true, "", true, 0.6);
             lda.printLogLikelihood = true;
             lda.setTopicDisplay(50, 7);
             lda.addInstances(training, "", 1);

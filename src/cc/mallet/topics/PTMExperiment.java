@@ -88,6 +88,7 @@ public class PTMExperiment {
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = false;
+        double useTypeVectorsProb = 0.6;
         boolean PPRenabled = true;
 
         int vectorSize = 200;
@@ -239,7 +240,7 @@ public class PTMExperiment {
                 Arrays.fill(gamma, 1);
 
                 //double gammaRoot = 4;
-                FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb, useTypeVectors);
+                FastQMVWVParallelTopicModel model = new FastQMVWVParallelTopicModel(numTopics, numModalities, alpha, beta, useCycleProposals, SQLLitedb, useTypeVectors, useTypeVectorsProb);
 
                 model.CreateTables(SQLLitedb, experimentId);
 

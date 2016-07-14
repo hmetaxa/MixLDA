@@ -69,8 +69,11 @@ public class FastQMVWVWorkerRunnable implements Runnable {
     protected Queue<FastQDelta> queue;
     private final CyclicBarrier cyclicBarrier;
     protected int MHsteps = 1;
-    protected boolean useCycleProposals = false;
+    //protected boolean useCycleProposals = false;
     protected List<Integer> inActiveTopicIndex;
+    
+    protected boolean useTypeVectors = false;
+    protected double useTypeVectorsProb = 0.6;
     //static double[] samplingWeights = new double[101]; //for debugging
 
     public FastQMVWVWorkerRunnable(
@@ -96,7 +99,9 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             //            ConcurrentLinkedQueue<FastQDelta> queue, 
             CyclicBarrier cyclicBarrier,
             List<Integer> inActiveTopicIndex,
-            int[][][] typeTopicSimilarity
+            int[][][] typeTopicSimilarity,
+            boolean useTypeVectors,
+            double useTypeVectorsProb
     //, FTree betaSmoothingTree
     ) {
 
@@ -122,7 +127,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
         this.startDoc = startDoc;
         this.numDocs = numDocs;
-        this.useCycleProposals = useCycleProposals;
+        //this.useCycleProposals = useCycleProposals;
         this.typeTopicSimilarity = typeTopicSimilarity;
 
         this.docSmoothingOnlyCumValues = docSmoothingOnlyCumValues;
@@ -130,6 +135,8 @@ public class FastQMVWVWorkerRunnable implements Runnable {
         this.p_a = p_a;
         this.p_b = p_b;
         this.inActiveTopicIndex = inActiveTopicIndex;
+        this.useTypeVectors = useTypeVectors;
+        this.useTypeVectorsProb = useTypeVectorsProb;
 
         //System.err.println("WorkerRunnable Thread: " + numTopics + " topics, " + topicBits + " topic bits, " + 
         //				   Integer.toBinaryString(topicMask) + " topic mask");
@@ -176,7 +183,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     doc < data.size() && doc < startDoc + numDocs;
                     doc++) {
 
-				  //if (doc % 50000 == 0) {
+                //if (doc % 50000 == 0) {
                 //  logger.info("Worker["+ threadId+"] processing doc " + doc);
                 //System.out.println("processing doc " + doc);
                 //}
@@ -210,6 +217,28 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public static int lower_bound(int[] arr, double key, int len) {
+        //int len = arr.length;
+        int lo = 0;
+        int hi = len - 1;
+        int mid = (lo + hi) / 2;
+        while (true) {
+            //int cmp = arr[mid].compareTo(key);
+            if (arr[mid] >= key) {
+                hi = mid - 1;
+                if (hi < lo) {
+                    return mid;
+                }
+            } else {
+                lo = mid + 1;
+                if (hi < lo) {
+                    return mid < len - 1 ? mid + 1 : -1;
+                }
+            }
+            mid = (lo + hi) / 2; //(hi-lo)/2+lo in order not to overflow?  or  (lo + hi) >>> 1
         }
     }
 
@@ -415,47 +444,65 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 //                        int test = 1;
 //                    }
 
-                    //		compute word / doc mass for binary search
-                    double topicDocWordMass = 0.0;
+                    //If WordVect
                     
-                    //TODO: 1) based on weight select to sample either based on counts or typeTopicSimilarity --> select p(w|t)
-                    //      2) p(w|t) based on vectors --> either based on softmax or cosine similarity 
-                    //   we need a mass per typeTopicSimilarity[type][oldTopic] and binary search on it (?) (double) typeTopicSimilarity[type][oldTopic][topic] / 10000 * 
-
-                    for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
-                        int topic = localTopicIndex[denseIndex];
-                        int n = localTopicCounts[m][topic];
-                        topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
-                        //topicDocWordMass +=  n * trees[type].getComponent(topic);
-                        topicDocWordMasses[denseIndex] = topicDocWordMass;
-
-                    }
-
-                    double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : newTopicMassAllModalities / currentTypeTopicCounts.length;//check this
-
-                    double nextUniform = ThreadLocalRandom.current().nextDouble();
-                    //samplingWeights[(int) Math.round(nextUniform * 100)] += 1;
-                    double sample = nextUniform * (newTopicMass + topicDocWordMass + currentTree.tree[1]);
                     newTopic = -1;
+                    if (useTypeVectors) {
+                        double nextUniform = ThreadLocalRandom.current().nextDouble();
+                        if (nextUniform > useTypeVectorsProb) {
+                            double sample = ThreadLocalRandom.current().nextDouble() * typeTopicSimilarity[type][oldTopic][numTopics];
 
-                    //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
-                    if (sample < newTopicMass) {
-                        newMassCnt.getAndIncrement();
+                            newTopic = lower_bound(typeTopicSimilarity[type][oldTopic], sample, numTopics);
 
-                        newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
-                        System.out.println("Sample new topic: " + newTopic);
-                    } else {
-                        sample -= newTopicMass;
-                        if (sample < topicDocWordMass) {
-                            topicDocMassCnt.getAndIncrement();
-                            newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
-                        } else { 
-                            wordFTreeMassCnt.getAndIncrement();
-                            double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
-                            newTopic = currentTree.sample(nextUniform2);
+                            if (newTopic == -1) {
+                                System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[m][type].tree[1]);
+                                //newTopic = numTopics - 1; // sample using topicMasses regular process 
+                                //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                            }
+                        }
+                    }
+                    //public boolean trainTypeVectors;
+
+                    //		compute word / doc mass for binary search
+                    if (newTopic == -1) {
+                        double topicDocWordMass = 0.0;
+
+                    //TODO: 1) based on weight select to sample either based on counts or typeTopicSimilarity --> select p(w|t)
+                        //      2) p(w|t) based on vectors --> either based on softmax or cosine similarity 
+                        //   we need a mass per typeTopicSimilarity[type][oldTopic] and binary search on it (?) (double) typeTopicSimilarity[type][oldTopic][topic] / 10000 * 
+                        for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
+                            int topic = localTopicIndex[denseIndex];
+                            int n = localTopicCounts[m][topic];
+                            topicDocWordMass += (p[m][m] * n + totalMassOtherModalities[topic]) * (currentTypeTopicCounts[topic] + beta[m]) / (tokensPerTopic[m][topic] + betaSum[m]);
+                            //topicDocWordMass +=  n * trees[type].getComponent(topic);
+                            topicDocWordMasses[denseIndex] = topicDocWordMass;
+
                         }
 
-                    }
+                        double newTopicMass = inActiveTopicIndex.isEmpty() ? 0 : newTopicMassAllModalities / currentTypeTopicCounts.length;//check this
+
+                        double nextUniform = ThreadLocalRandom.current().nextDouble();
+                        //samplingWeights[(int) Math.round(nextUniform * 100)] += 1;
+                        double sample = nextUniform * (newTopicMass + topicDocWordMass + currentTree.tree[1]);
+
+                        //double sample = ThreadLocalRandom.current().nextDouble() * (topicDocWordMass + trees[type].tree[1]);
+                        if (sample < newTopicMass) {
+                            newMassCnt.getAndIncrement();
+
+                            newTopic = inActiveTopicIndex.get(0);//ThreadLocalRandom.current().nextInt(inActiveTopicIndex.size()));
+                            System.out.println("Sample new topic: " + newTopic);
+                        } else {
+                            sample -= newTopicMass;
+                            if (sample < topicDocWordMass) {
+                                topicDocMassCnt.getAndIncrement();
+                                newTopic = localTopicIndex[lower_bound(topicDocWordMasses, sample, nonZeroTopics)];
+                            } else {
+                                wordFTreeMassCnt.getAndIncrement();
+                                double nextUniform2 = ThreadLocalRandom.current().nextDouble(); //if we use nextUniform we are biased towards large numbers as small ones will lead to newTopicMass + topicDocWordMass
+                                newTopic = currentTree.sample(nextUniform2);
+                            }
+
+                        }
 //            if (sample < topicDocWordMass) {
 //
 //                //int tmp = lower_bound(topicDocWordMasses, sample, nonZeroTopics);
@@ -466,12 +513,12 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 //                newTopic = currentTree.sample(nextUniform);
 //            }
 
-                    if (newTopic == -1) {
-                        System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[m][type].tree[1]);
-                        newTopic = numTopics - 1; // TODO is this appropriate
-                        //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                        if (newTopic == -1) {
+                            System.err.println("WorkerRunnable sampling error on word topic mass: " + sample + " " + trees[m][type].tree[1]);
+                            newTopic = numTopics - 1; // TODO is this appropriate
+                            //throw new IllegalStateException ("WorkerRunnable: New topic not sampled.");
+                        }
                     }
-
                     //assert(newTopic != -1);
                     //			Put that new topic into the counts
                     oneDocTopics[m][position] = newTopic;
