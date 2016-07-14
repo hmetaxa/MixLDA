@@ -87,10 +87,10 @@ public class PTMExperiment {
         boolean ACMAuthorSimilarity = true;
         boolean ubuntu = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = false;
+        boolean useTypeVectors = true;
         boolean trainTypeVectors = true;
         double useTypeVectorsProb = 0.6;
-        boolean PPRenabled = true;
+        boolean PPRenabled = false;
 
         int vectorSize = 200;
         //vectorSize[0] = 200;
@@ -1304,7 +1304,7 @@ public class PTMExperiment {
                 if (PPRenabled) {
                     sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
                 } else {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewNoPPR ";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewNoPPR LIMIT 10000";
                 }
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
