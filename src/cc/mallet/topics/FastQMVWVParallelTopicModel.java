@@ -160,7 +160,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         this.SQLLiteDB = SQLLiteDB;
         this.useTypeVectors = useTypeVectors;
         this.useTypeVectorsProb = useTypeVectorsProb;
-        this.trainTypeVectors= trainTypeVectors;
+        this.trainTypeVectors = trainTypeVectors;
         this.numModalities = numModalities;
         this.useCycleProposals = useCycleProposals;
         this.data = new ArrayList<MixTopicModelTopicAssignment>();
@@ -367,19 +367,19 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
         //this.typeVectors = new double[][]; // Vector representations for tokens per modality <modality, token, vector>
         //this.topicVectors = new double[][];
-        this.vectorSize = vectorSize;
-        this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
-        this.typeVectors = new double[alphabet[0].size()][vectorSize];
-
-        this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics];
-
-        for (int i = 0; i < alphabet[0].size(); i++) {
-            for (int j = 0; j < numTopics; j++) {
-                Arrays.fill(this.typeTopicSimilarity[i][j], 0);
-            }
-        }
-
         if (useTypeVectors) {
+            this.vectorSize = vectorSize;
+            this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
+            this.typeVectors = new double[alphabet[0].size()][vectorSize];
+
+            this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics];
+
+            for (int i = 0; i < alphabet[0].size(); i++) {
+                for (int j = 0; j < numTopics; j++) {
+                    Arrays.fill(this.typeTopicSimilarity[i][j], 0);
+                }
+            }
+
             if (trainTypeVectors) {
 
             } else {
@@ -576,19 +576,19 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 //docLengthCounts[m][tokens.getLength()]++;
                 LabelSequence topicSequence
                         = new LabelSequence(topicAlphabet, new int[tokens.size()]);
-                int size = tokens.size();
-                int[] topics = new int[size]; //topicSequence.getFeatures();
-                for (int position = 0; position < topics.length; position++) {
-                    int type = tokens.getIndexAtPosition(position);
-                    //int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
-                    int topic = random.nextInt(numTopics);
-                    topics[position] = topic;
-                    typeTotals[m][type]++;
-
-                }
+//                int size = tokens.size();
+//                int[] topics = new int[size]; //topicSequence.getFeatures();
+//                for (int position = 0; position < topics.length; position++) {
+//                    int type = tokens.getIndexAtPosition(position);
+//                    //int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
+//                    int topic = random.nextInt(numTopics);
+//                    topics[position] = topic;
+//                    typeTotals[m][type]++;
+//
+//                }
 
                 //TopicAssignment t = new TopicAssignment(instance, topicSequence);
-                TopicAssignment t = new TopicAssignment(instance, new LabelSequence(topicAlphabet, topics));
+                TopicAssignment t = new TopicAssignment(instance, topicSequence);
 
                 //data.add(t);
                 MixTopicModelTopicAssignment mt;
@@ -620,7 +620,47 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             }
         }
 
-        readWordVectorsDB(SQLLiteDB, vectorSize);
+        List<Integer> activeTopics = new LinkedList<Integer>();
+        for (MixTopicModelTopicAssignment entity : data) {
+
+            for (byte m = 0; m < numModalities; m++) {
+
+                if (m == 0) {
+                    activeTopics.clear();
+                }
+
+                TopicAssignment document = entity.Assignments[m];
+                if (document != null) {
+
+                    FeatureSequence tokens = (FeatureSequence) document.instance.getData();
+
+                    FeatureSequence topicSequence = (FeatureSequence) document.topicSequence;
+
+                    int[] topics = topicSequence.getFeatures();
+                    for (int position = 0; position < tokens.size(); position++) {
+
+                        int type = tokens.getIndexAtPosition(position);
+                        //int topic = ThreadLocalRandom.current().nextInt(numTopics); //random.nextInt(numTopics);
+                        int topic = -1;
+                        if (m == 0) {
+                            topic = random.nextInt(numTopics);
+                            activeTopics.add(topic);
+                        } else if (activeTopics.size() > 0) {
+                            int ind = random.nextInt(activeTopics.size()); //use only topics that are active on modality 0 for each document to avoid local minima and misplaced topc ids
+                            topic = activeTopics.get(ind);
+                        } else {
+                            topic = random.nextInt(numTopics);
+                        }
+                        topics[position] = topic;
+                        typeTotals[m][type]++;
+                    }
+                }
+            }
+        }
+
+        if (useTypeVectors) {
+            readWordVectorsDB(SQLLiteDB, vectorSize);
+        }
         initializeHistograms();
         initSpace();
         buildInitialTypeTopicCounts();
@@ -946,18 +986,21 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         int maxTotalAllModalities = 0;
         //int[] maxTokens = new int[numModalities];
         histogramSize = new int[numModalities];
+        //double[] avgSize = new double[numModalities];
 
         Arrays.fill(totalTokens, 0);
         // Arrays.fill(maxTokens, 0);
         Arrays.fill(histogramSize, 0);
 
         for (MixTopicModelTopicAssignment entity : data) {
+
             for (Byte i = 0; i < numModalities; i++) {
                 int seqLen;
                 TopicAssignment document = entity.Assignments[i];
                 if (document != null) {
                     FeatureSequence fs = (FeatureSequence) document.instance.getData();
                     seqLen = fs.getLength();
+
                     if (seqLen > histogramSize[i]) {
                         histogramSize[i] = seqLen;
                     }
@@ -1253,10 +1296,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 TByteArrayList modalities = new TByteArrayList();
                 modalities.add((byte) 0);
 
-                if (iteration >= burninPeriod + optimizeInterval) {
-                    //mergeSimilarTopics(40, modalities, 0.85, 0); TODO: implement topic similarity based on Word Vectors
-                }
-
+                //if (iteration >= burninPeriod + optimizeInterval) {
+//                    mergeSimilarTopics(40, modalities, 0.8, 0); //TODO: implement additional topic similarity based on Word Vectors
+                //              }
                 optimizeDP();
                 optimizeGamma();
                 optimizeBeta();
@@ -1459,15 +1501,14 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     boost = rs.getFloat("boost");
                 }
 
-                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n"
-                        + "from( \n"
-                        + "select experimentid, avg(similarity) as avgent, count(similarity) as counts\n"
-                        + "from entitysimilarity\n"
-                        + "where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n"
-                        + "group by experimentid", experimentId);
-
+//                String similaritySelect = String.format("select experimentid, avg(avgent) as avgSimilarity, avg(counts) as avgLinks, count(*) as EntitiesCnt\n"
+//                        + "from( \n"
+//                        + "select experimentid, avg(similarity) as avgent, count(similarity) as counts\n"
+//                        + "from entitysimilarity\n"
+//                        + "where similarity>0.65 and ExperimentId = '%s' group by experimentid, entityid1)\n"
+//                        + "group by experimentid", experimentId);
                 PreparedStatement bulkInsert = null;
-                String sql = "insert into Experiment values(?,?,?, ?, ? );";
+                String sql = "insert into Experiment (ExperimentId  ,    Description,    Metadata  ,    InitialSimilarity,    PhraseBoost) values(?,?,?, ?, ? );";
 
                 try {
                     connection.setAutoCommit(false);
@@ -1478,14 +1519,17 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     bulkInsert.setString(3, expMetadata.toString());
                     bulkInsert.setDouble(4, 0.6);
                     bulkInsert.setInt(5, Math.round(boost));
+
                     bulkInsert.executeUpdate();
 
                     connection.commit();
 
                 } catch (SQLException e) {
 
+                    System.err.println(e.getMessage());
                     if (connection != null) {
                         try {
+
                             System.err.print("Transaction is being rolled back");
                             connection.rollback();
                         } catch (SQLException excep) {
@@ -1555,6 +1599,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                     connection.commit();
 
                 } catch (SQLException e) {
+                    System.err.println(e.getMessage());
 
                     if (connection != null) {
                         try {
@@ -1599,7 +1644,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                             Iterator<IDSorter> iterator = sortedWords.iterator();
 
                             //int activeNumWords = Math.min(40, 7 * (int) Math.round(topicsDiscrWeight[m][topic] * topicTypeCount));
-                            while (iterator.hasNext() && word < 40) {
+                            while (iterator.hasNext() && word < 50) {
                                 IDSorter info = iterator.next();
                                 bulkInsert.setInt(1, topic);
                                 bulkInsert.setInt(2, m);
@@ -1660,6 +1705,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 //                    }
                 } catch (SQLException e) {
 
+                    System.err.print(e.getMessage());
                     if (connection != null) {
                         try {
                             System.err.print("Transaction is being rolled back");
@@ -2665,7 +2711,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 pMean[i][m] = pMean[m][i];
 
                 //double var = 2 * (1 - mean);
-                double a = -1.0 / Math.log(pMean[m][i]);
+                double a = pMean[m][i] == 1 ? 5000 : -1.0 / Math.log(pMean[m][i]);
                 double b = 1;
 
                 logger.info("[p:" + m + "_" + i + " mean:" + pMean[m][i] + " a:" + a + " b:" + b + "] ");

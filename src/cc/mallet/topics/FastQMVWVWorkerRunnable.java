@@ -71,7 +71,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
     protected int MHsteps = 1;
     //protected boolean useCycleProposals = false;
     protected List<Integer> inActiveTopicIndex;
-    
+
     protected boolean useTypeVectors = false;
     protected double useTypeVectorsProb = 0.6;
     //static double[] samplingWeights = new double[101]; //for debugging
@@ -302,6 +302,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             int type, oldTopic, newTopic;
             FTree currentTree;
 
+            //int totalLength = 0;
             int[] docLength = new int[numModalities];
             int[][] localTopicCounts = new int[numModalities][numTopics];
 
@@ -313,6 +314,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
             for (byte m = 0; m < numModalities; m++) {
 
                 for (byte j = m; j < numModalities; j++) {
+
                     double pRand
                             = m == j ? 1.0 : p_a[m][j] == 0 ? 0
                                             : ((double) Math.round(1000 * random.nextBeta(p_a[m][j], p_b[m][j])) / (double) 1000);
@@ -331,6 +333,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     tokenSequence[m] = ((FeatureSequence) doc.Assignments[m].instance.getData());
 
                     docLength[m] = tokenSequence[m].getLength(); //size is the same??
+                    //totalLength += docLength[m];
 
                     //		populate topic counts
                     for (int position = 0; position < docLength[m]; position++) {
@@ -343,6 +346,18 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     }
                 }
             }
+
+            //Share the same distribution proportianl to the length of each modality
+//            for (byte m = 0; m < numModalities; m++) {
+//
+//                for (byte j = 0; j < numModalities; j++) {
+//
+//                   
+//
+//                    p[m][j] = (double) docLength[j] / (double)totalLength; //too sparse modality --> ignore its doc /topic distribution
+//                    p[j][m] = (double)docLength[j] / (double)totalLength;  //too sparse modality --> ignore its doc /topic distribution
+//                }
+//            }
 
             // Build an array that densely lists the topics that
             //  have non-zero counts.
@@ -445,7 +460,6 @@ public class FastQMVWVWorkerRunnable implements Runnable {
 //                    }
 
                     //If WordVect
-                    
                     newTopic = -1;
                     if (useTypeVectors) {
                         double nextUniform = ThreadLocalRandom.current().nextDouble();
@@ -467,7 +481,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     if (newTopic == -1) {
                         double topicDocWordMass = 0.0;
 
-                    //TODO: 1) based on weight select to sample either based on counts or typeTopicSimilarity --> select p(w|t)
+                        //TODO: 1) based on weight select to sample either based on counts or typeTopicSimilarity --> select p(w|t)
                         //      2) p(w|t) based on vectors --> either based on softmax or cosine similarity 
                         //   we need a mass per typeTopicSimilarity[type][oldTopic] and binary search on it (?) (double) typeTopicSimilarity[type][oldTopic][topic] / 10000 * 
                         for (denseIndex = 0; denseIndex < nonZeroTopics; denseIndex++) {
