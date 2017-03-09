@@ -48,7 +48,9 @@ public final class MatrixOps {
     /* Calculates the Schur/Hadamard product */ // JJW
     public static void timesEquals(double[] m1, double[] m2) {
 
-        assert (m1.length == m2.length) : "unequal lengths\n";
+        if (m1.length != m2.length) {
+            throw new AssertionError("unequal lengths\n");
+        }
         for (int i = 0; i < m1.length; i++) {
             m1[i] *= m2[i];
         }
@@ -67,7 +69,9 @@ public final class MatrixOps {
     }
 
     public static void plusEquals(double[] m1, double[] m2) {
-        assert (m1.length == m2.length) : "unequal lengths\n";
+        if (m1.length != m2.length) {
+            throw new AssertionError("unequal lengths\n");
+        }
         for (int i = 0; i < m1.length; i++) {
             if (Double.isInfinite(m1[i]) && Double.isInfinite(m2[i]) && (m1[i] * m2[i] < 0)) {
                 m1[i] = 0.0;
@@ -78,7 +82,9 @@ public final class MatrixOps {
     }
 
     public static void plusEquals(double[] m1, double[] m2, double factor) {
-        assert (m1.length == m2.length) : "unequal lengths\n";
+        if (m1.length != m2.length) {
+            throw new AssertionError("unequal lengths\n");
+        }
         for (int i = 0; i < m1.length; i++) {
             double m1i = m1[i];
             double m2i = m2[i];
@@ -109,7 +115,9 @@ public final class MatrixOps {
      * @deprecated Use dotProduct()
      */
     public static double dot(double[] m1, double[] m2) {
-        assert (m1.length == m2.length) : "m1.length != m2.length\n";
+        if (m1.length != m2.length) {
+            throw new AssertionError("unequal lengths\n");
+        }
         double ret = 0.0;
         for (int i = 0; i < m1.length; i++) {
             ret += m1[i] * m2[i];
@@ -124,7 +132,9 @@ public final class MatrixOps {
     }
 
     public static double dotProduct(double[] m1, double[] m2) {
-        assert (m1.length == m2.length) : "m1.length != m2.length\n";
+        if (m1.length != m2.length) {
+            throw new AssertionError("unequal lengths\n");
+        }
         double ret = 0.0;
         for (int i = 0; i < m1.length; i++) {
             ret += m1[i] * m2[i];

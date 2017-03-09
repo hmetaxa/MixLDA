@@ -145,7 +145,7 @@ public class WordTopicEmbeddingRunnable implements Runnable {
 
         while (shouldRun) {
             Instance instance = data.get(docID).Assignments[0].instance;
-            docID++;
+            
 
             if (docID == maxDocID) {
                 // start over at the beginning
@@ -216,6 +216,7 @@ public class WordTopicEmbeddingRunnable implements Runnable {
 
                 }
             }
+            docID++;
         }
     }
 }

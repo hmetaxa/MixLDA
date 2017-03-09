@@ -2,8 +2,10 @@ Non-parametric Multi-View Topic Model (MV-HDP) that extends well-established Hie
 Our implementation is based on MALLET toolkit. We consider that estimating the right number of topics is not our primary goal especially in collections of that size. So, we have implemented a truncated version of the proposed model where the goal is to better estimate priors and model parameters given a maximum number of topics. Although initially we extended MALLET’s efficient parallel topic model with Sparse LDA sampling, we end up implementing a very different parallel implementation based on F+Trees that: 1) it is more readable and extensible, 2) it is usually faster in real world big datasets especially in multi-view settings 3) shares model related data structures across threads (contrary to MALLET where each thread retains each own model copy). We update the model using background threads based on a lock free, queue based scheme minimizing staleness. Our implementation can scale to massive datasets (over one million documents with meta-data and links) on a single computer.
 
 Related classes in package cc.mallet.topics:
-FastQMVParallelTopicModel: Main class
-FastQMVUpdaterRunnable: Model updating
-FastQMVWorkerRunnable: Gibbs Sampling
-FastQMVTopicModelDiagnostics: Related diagnostics 
+FastQMVWVParallelTopicModel: Main class
+FastQMVWVUpdaterRunnable: Model updating
+FastQMVWVWorkerRunnable: Gibbs Sampling
+FastQMVWVTopicModelDiagnostics: Related diagnostics 
 PTMExperiment: Example of how we can load data from SQLite, run MV-Topic Models, calc similarities etc
+
+

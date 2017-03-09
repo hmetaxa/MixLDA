@@ -132,7 +132,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     public double[][] typeVectors; // Vector representations for tokens per modality < token, vector>
     public double[][] topicVectors;// Vector representations for topics < topic, vector>
-    public int vectorSize; // Number of vector dimensions per modality
+    public int vectorSize = 200; // Number of vector dimensions per modality
     public int[][][] typeTopicSimilarity; //<token, topic, topic>; * 10.000 (similarity: [0,1] * 10000)
     public boolean useTypeVectors;
     public boolean trainTypeVectors;
@@ -369,10 +369,8 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         //this.topicVectors = new double[][];
         if (useTypeVectors) {
             this.vectorSize = vectorSize;
-            this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
-            this.typeVectors = new double[alphabet[0].size()][vectorSize];
 
-            this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics];
+            this.typeTopicSimilarity = new int[alphabet[0].size()][numTopics][numTopics + 1];
 
             for (int i = 0; i < alphabet[0].size(); i++) {
                 for (int j = 0; j < numTopics; j++) {
@@ -383,6 +381,9 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             if (trainTypeVectors) {
 
             } else {
+                this.topicVectors = new double[numTopics][vectorSize];// Vector representations for topics <topic, vector>
+                this.typeVectors = new double[alphabet[0].size()][vectorSize];
+
                 Connection connection = null;
                 try {
                     connection = DriverManager.getConnection(SQLLitedb);
@@ -1304,10 +1305,10 @@ public class FastQMVWVParallelTopicModel implements Serializable {
                 optimizeBeta();
                 if (useTypeVectors) {
                     if (trainTypeVectors) {
-                        int numColumns = 200;
+
                         int windowSizeOption = 5;
                         int numSamples = 5;
-                        WordTopicEmbeddings matrix = new WordTopicEmbeddings(alphabet[0], numColumns, windowSizeOption, numTopics);
+                        WordTopicEmbeddings matrix = new WordTopicEmbeddings(alphabet[0], vectorSize, windowSizeOption, numTopics);
                         matrix.queryWord = "mining";
                         matrix.countWords(data);
                         matrix.train(data, numThreads, numSamples);

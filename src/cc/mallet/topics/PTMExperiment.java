@@ -68,7 +68,7 @@ public class PTMExperiment {
         //boolean runOnLine = false;
 
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 4;
+        int numOfThreads = 1;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 400;
@@ -76,7 +76,7 @@ public class PTMExperiment {
         int numIterations = 700; //Max 2000
         int numChars = 4000;
         //int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         String experimentSubType = "";
