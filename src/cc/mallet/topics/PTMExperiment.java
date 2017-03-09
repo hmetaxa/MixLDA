@@ -59,7 +59,7 @@ public class PTMExperiment {
         int topWords = 20;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 4;
+        byte numModalities = 6;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -73,7 +73,7 @@ public class PTMExperiment {
         //boolean ignoreSkewness = true;
         int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 630; //Max 2000
+        int numIterations = 700; //Max 2000
         int numChars = 4000;
         //int independentIterations = 0;
         int burnIn = 100;
@@ -93,11 +93,11 @@ public class PTMExperiment {
         boolean calcPPRSimilarities = false;
         boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
-        boolean runWordEmbeddings = false;
-        boolean useTypeVectors = false;
-        boolean trainTypeVectors = false;
+        boolean runWordEmbeddings = true;
+        boolean useTypeVectors = true;
+        boolean trainTypeVectors = true;
         double useTypeVectorsProb = 0.6;
-        Net2BoWType PPRenabled = Net2BoWType.OneWay;
+        Net2BoWType PPRenabled = Net2BoWType.PPR;
 
         int vectorSize = 300;
         //vectorSize[0] = 200;
@@ -1484,11 +1484,11 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 if (PPRenabled == Net2BoWType.PPR) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView ";
                 } else if (PPRenabled == Net2BoWType.OneWay) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewOneWay";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubViewOneWay";
                 } else if (PPRenabled == Net2BoWType.TwoWay) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewTwoWay";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubViewTwoWay";
                 }
 
             } else if (experimentType == ExperimentType.HEALTHTender) {
@@ -1604,20 +1604,29 @@ public class PTMExperiment {
                         }
 
                       
-
+//DBPediaResources
+                        
                         if (numModalities > 5) {
+                            String DBPediaResourcesStr = rs.getString("DBPediaResources");//.replace("\t", ",");
+                            if (DBPediaResourcesStr != null && !DBPediaResourcesStr.equals("")) {
+
+                                instanceBuffer.get(5).add(new Instance(DBPediaResourcesStr, null, rs.getString("pubId"), "DBPediaResource"));
+                            }
+                        }
+                        
+                        if (numModalities > 6) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                             if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
 
-                                instanceBuffer.get(5).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
+                                instanceBuffer.get(6).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "author"));
                             }
                         }
 
-                        if (numModalities > 6) {
+                        if (numModalities > 7) {
                             String tmpPeriod = rs.getString("Period");//.replace("\t", ",");
                             if (tmpPeriod != null && !tmpPeriod.equals("")) {
 
-                                instanceBuffer.get(6).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
+                                instanceBuffer.get(7).add(new Instance(tmpPeriod, null, rs.getString("pubId"), "period"));
                             }
                         }
 
