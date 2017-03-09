@@ -59,7 +59,7 @@ public class PTMExperiment {
         int topWords = 20;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 4;
+        byte numModalities = 1;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -68,7 +68,7 @@ public class PTMExperiment {
         //boolean runOnLine = false;
 
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 4;
+        int numOfThreads = 1;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 400;
@@ -76,7 +76,7 @@ public class PTMExperiment {
         int numIterations = 630; //Max 2000
         int numChars = 4000;
         //int independentIterations = 0;
-        int burnIn = 100;
+        int burnIn = 50;
         int optimizeInterval = 20;
         ExperimentType experimentType = ExperimentType.ACM;
         String experimentSubType = "";
@@ -94,10 +94,10 @@ public class PTMExperiment {
         boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = false;
-        boolean trainTypeVectors = false;
+        boolean useTypeVectors = true;
+        boolean trainTypeVectors = true;
         double useTypeVectorsProb = 0.6;
-        Net2BoWType PPRenabled = Net2BoWType.OneWay;
+        Net2BoWType PPRenabled = Net2BoWType.PPR;
 
         int vectorSize = 300;
         //vectorSize[0] = 200;
@@ -1484,7 +1484,7 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 if (PPRenabled == Net2BoWType.PPR) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView ";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubView LIMIT 10000";
                 } else if (PPRenabled == Net2BoWType.OneWay) {
                     sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue from ACMPubViewOneWay";
                 } else if (PPRenabled == Net2BoWType.TwoWay) {

@@ -271,7 +271,7 @@ public class WordTopicEmbeddings {
     }
 
     public void findClosest(double[] targetVector) {
-        IDSorter[] sortedWords = new IDSorter[numVectors];
+        IDSorter[] sortedWords = new IDSorter[numVectors-numTopics];
 
         double targetSquaredSum = 0.0;
         for (int col = 0; col < numColumns; col++) {
@@ -281,7 +281,7 @@ public class WordTopicEmbeddings {
 
         System.out.println(targetSquaredSum);
 
-        for (int word = 0; word < numVectors; word++) {
+        for (int word = 0; word < numVectors-numTopics; word++) {
 
             double innerProduct = 0.0;
 
