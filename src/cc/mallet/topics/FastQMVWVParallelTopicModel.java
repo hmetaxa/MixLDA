@@ -446,27 +446,27 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     private void CalcTopicTypeVectorSimilarities(int maxNumWords) {
 
-        double[][] topiVectorsW = CalcTopicVectorBasedOnWords(maxNumWords);
+        for (int topic = 0; topic < numTopics; topic++) {
+            double[] topicVectorsW = CalcTopicVectorBasedOnWords(maxNumWords, topic);
+        //double[] typeSumSimilarities = new double[alphabet[0].size()];
 
-        double[] typeSumSimilarities = new double[alphabet[0].size()];
+            //Arrays.fill(typeSumSimilarities, 0);
+            double similarity = 0;
 
-        Arrays.fill(typeSumSimilarities, 0);
-        double similarity = 0;
-        for (int t1 = 0; t1 < numTopics; t1++) {
             for (int w = 0; w < alphabet[0].size(); w++) {
 
                 if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
                 {
 
                     for (int t = 0; t < numTopics; t++) {
-                        double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[t1]);
-                        double[] totalTopicVector = ArrayUtils.append(topiVectorsW[t], topicVectors[t]);
+                        double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[topic]);
+                        double[] totalTopicVector = ArrayUtils.append(topicVectorsW, topicVectors[t]);
                         similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
-                        typeTopicSimilarity[w][t1][t] += Math.round(similarity * 1000); //cumulative similarities 
+                        typeTopicSimilarity[w][topic][t] += Math.round(similarity * 1000); //cumulative similarities 
                         //typeSumSimilarities[w] += similarity;
                     }
                 }
-            }
+
 //  Normalization is not needed 
 //            for (int w = 0; w < alphabet[0].size(); w++) {
 //                double avgSimilarity = typeSumSimilarities[w] / numTopics;
@@ -480,6 +480,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 //                }
 //
 //            }
+            }
         }
     }
 
@@ -514,32 +515,30 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 //
 //        }
 //    }
-    private double[][] CalcTopicVectorBasedOnWords(int maxNumWords) {
+    private double[] CalcTopicVectorBasedOnWords(int maxNumWords, int topic) {
         //ArrayList<TreeSet<IDSorter>> topicSortedWords = new ArrayList<TreeSet<IDSorter>>();
-        double[][] TopicVectorsW = new double[numTopics][vectorSize];
+        double[] TopicVectorsW = new double[vectorSize];
         ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(0);
 
         //int[][] topicTypeCounts = new int[numModalities][numTopics];
         double[] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true, 0);
 
-        for (int topic = 0; topic < numTopics; topic++) {
+       // for (int topic = 0; topic < numTopics; topic++) {
+        int topicTypeCount = topicSortedWords.get(topic).size();
+        int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[topic] * topicTypeCount));
 
-            int topicTypeCount = topicSortedWords.get(topic).size();
-            int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[topic] * topicTypeCount));
+        //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
+        TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+        Iterator<IDSorter> iterator = sortedWords.iterator();
 
-            //logger.info("Active NumWords: " + topic + " : " + activeNumWords);
-            TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
-            Iterator<IDSorter> iterator = sortedWords.iterator();
-
-            int wordCnt = 0;
-            while (iterator.hasNext() && wordCnt < activeNumWords) {
-                IDSorter info = iterator.next();
-                MatrixOps.plusEquals(TopicVectorsW[topic], typeVectors[info.getID()], info.getWeight() / tokensPerTopic[0][topic]);
-                wordCnt++;
-            }
-
+        int wordCnt = 0;
+        while (iterator.hasNext() && wordCnt < activeNumWords) {
+            IDSorter info = iterator.next();
+            MatrixOps.plusEquals(TopicVectorsW, typeVectors[info.getID()], info.getWeight() / tokensPerTopic[0][topic]);
+            wordCnt++;
         }
 
+       // }
         return TopicVectorsW;
     }
 

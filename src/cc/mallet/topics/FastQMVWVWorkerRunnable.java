@@ -463,7 +463,7 @@ public class FastQMVWVWorkerRunnable implements Runnable {
                     newTopic = -1;
                     if (useTypeVectors) {
                         double nextUniform = ThreadLocalRandom.current().nextDouble();
-                        if (nextUniform > useTypeVectorsProb) {
+                        if (nextUniform > useTypeVectorsProb) { //TODO: Use MH instead (or additionaly)
                             double sample = ThreadLocalRandom.current().nextDouble() * typeTopicSimilarity[type][oldTopic][numTopics];
 
                             newTopic = lower_bound(typeTopicSimilarity[type][oldTopic], sample, numTopics);

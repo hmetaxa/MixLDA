@@ -59,7 +59,7 @@ public class PTMExperiment {
         int topWords = 20;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 6;
+        byte numModalities = 1;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -93,13 +93,13 @@ public class PTMExperiment {
         boolean calcPPRSimilarities = false;
         boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
-        boolean runWordEmbeddings = true;
+        boolean runWordEmbeddings = false;
         boolean useTypeVectors = true;
         boolean trainTypeVectors = true;
         double useTypeVectorsProb = 0.6;
         Net2BoWType PPRenabled = Net2BoWType.PPR;
 
-        int vectorSize = 300;
+        int vectorSize = 200;
         //vectorSize[0] = 200;
 //boolean runParametric = true;
 //
@@ -1484,7 +1484,7 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 if (PPRenabled == Net2BoWType.PPR) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView ";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView LIMIT 10000";
                 } else if (PPRenabled == Net2BoWType.OneWay) {
                     sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubViewOneWay";
                 } else if (PPRenabled == Net2BoWType.TwoWay) {
