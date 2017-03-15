@@ -448,40 +448,33 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
         for (int topic = 0; topic < numTopics; topic++) {
             double[] topicVectorsW = CalcTopicVectorBasedOnWords(maxNumWords, topic);
-        //double[] typeSumSimilarities = new double[alphabet[0].size()];
-
-            //Arrays.fill(typeSumSimilarities, 0);
-            double similarity = 0;
 
             for (int w = 0; w < alphabet[0].size(); w++) {
+                for (int t = 0; t < numTopics; t++) {
 
-                if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
-                {
+                    typeTopicSimilarity[w][topic][t] += CalcTopicTypeVectorSimilarity(topic, t, w, topicVectorsW); //cumulative similarities 
 
-                    for (int t = 0; t < numTopics; t++) {
-                        double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[topic]);
-                        double[] totalTopicVector = ArrayUtils.append(topicVectorsW, topicVectors[t]);
-                        similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
-                        typeTopicSimilarity[w][topic][t] += Math.round(similarity * 1000); //cumulative similarities 
-                        //typeSumSimilarities[w] += similarity;
-                    }
                 }
-
-//  Normalization is not needed 
-//            for (int w = 0; w < alphabet[0].size(); w++) {
-//                double avgSimilarity = typeSumSimilarities[w] / numTopics;
-//                if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
-//                {
-//                    for (int t = 0; t < numTopics; t++) {
-//
-//                        typeTopicSimilarity[w][t1][t] = (short) Math.round(typeTopicSimilarity[w][t1][t] / avgSimilarity * 10000);
-//
-//                    }
-//                }
-//
-//            }
             }
         }
+    }
+
+    private double CalcTopicTypeVectorSimilarity(int topic, int t, int w, double[] topicVectorsW) {
+
+        double ret = 0;
+        if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
+        {
+
+            double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[topic]);
+
+            double[] totalTopicVector = ArrayUtils.append(topicVectorsW, topicVectors[t]);
+            double similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
+            ret = Math.round(similarity * 1000); //cumulative similarities 
+            //totalTypeVector = null;
+            //totalTopicVector = null;
+
+        }
+        return ret;
     }
 
 //    private void CalcTopicVectors(int maxNumWords) {
@@ -523,7 +516,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
         //int[][] topicTypeCounts = new int[numModalities][numTopics];
         double[] topicsDiscrWeight = calcDiscrWeightWithinTopics(topicSortedWords, true, 0);
 
-       // for (int topic = 0; topic < numTopics; topic++) {
+        // for (int topic = 0; topic < numTopics; topic++) {
         int topicTypeCount = topicSortedWords.get(topic).size();
         int activeNumWords = Math.min(maxNumWords, 7 * (int) Math.round(topicsDiscrWeight[topic] * topicTypeCount));
 
@@ -538,7 +531,7 @@ public class FastQMVWVParallelTopicModel implements Serializable {
             wordCnt++;
         }
 
-       // }
+        // }
         return TopicVectorsW;
     }
 
