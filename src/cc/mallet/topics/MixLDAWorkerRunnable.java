@@ -19,8 +19,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * A parallel semi supervised topic model runnable task.
  *
- * @author Omiros Metaxas extending MALLET Parallel topic model of David Mimno,
- * Andrew McCallum
+ * @author Omiros Metaxas 
  *
  */
 public class MixLDAWorkerRunnable implements Runnable {

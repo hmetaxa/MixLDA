@@ -446,37 +446,40 @@ public class FastQMVWVParallelTopicModel implements Serializable {
 
     private void CalcTopicTypeVectorSimilarities(int maxNumWords) {
 
+        double[] totalTopicVector = new double[2 * vectorSize];
+        double[] totalTypeVector = new double[2 * vectorSize]; //
+
         for (int topic = 0; topic < numTopics; topic++) {
             double[] topicVectorsW = CalcTopicVectorBasedOnWords(maxNumWords, topic);
 
             for (int w = 0; w < alphabet[0].size(); w++) {
                 for (int t = 0; t < numTopics; t++) {
 
-                    typeTopicSimilarity[w][topic][t] += CalcTopicTypeVectorSimilarity(topic, t, w, topicVectorsW); //cumulative similarities 
+                    if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
+                    {
+                         
+                        System.arraycopy(typeVectors[w], 0, totalTypeVector, 0, vectorSize);
+                        System.arraycopy(topicVectors[topic], 0, totalTypeVector, vectorSize, vectorSize);
 
+                        System.arraycopy(topicVectorsW, 0, totalTopicVector, 0, vectorSize);
+                        System.arraycopy(topicVectors[t], 0, totalTopicVector, vectorSize, vectorSize);
+
+                        //ArrayUtils.append(topicVectorsW, topicVectors[t]);
+                        double similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
+                        typeTopicSimilarity[w][topic][t] += Math.round(similarity * 1000); //cumulative similarities 
+                        //totalTypeVector = null;
+                        //totalTopicVector = null;
+
+                    }
+                    
+
+                    
                 }
             }
         }
     }
 
-    private double CalcTopicTypeVectorSimilarity(int topic, int t, int w, double[] topicVectorsW) {
-
-        double ret = 0;
-        if (MatrixOps.absNorm(typeVectors[w]) != 0.0) // meaning that word vector exists
-        {
-
-            double[] totalTypeVector = ArrayUtils.append(typeVectors[w], topicVectors[topic]);
-
-            double[] totalTopicVector = ArrayUtils.append(topicVectorsW, topicVectors[t]);
-            double similarity = Math.max(MatrixOps.cosineSimilarity(totalTopicVector, totalTypeVector), 0);
-            ret = Math.round(similarity * 1000); //cumulative similarities 
-            //totalTypeVector = null;
-            //totalTopicVector = null;
-
-        }
-        return ret;
-    }
-
+   
 //    private void CalcTopicVectors(int maxNumWords) {
 //        ArrayList<ArrayList<TreeSet<IDSorter>>> topicSortedWords = new ArrayList<ArrayList<TreeSet<IDSorter>>>(numModalities);
 //

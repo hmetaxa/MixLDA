@@ -289,6 +289,9 @@ public class FastQMVWVWorkerRunnable implements Runnable {
     protected void sampleTopicsForOneDoc(int docCnt) {
 
         try {
+            
+            
+                    
             MixTopicModelTopicAssignment doc = data.get(docCnt);
 
             //double[][] totalMassPerModalityAndTopic = new double[numModalities][];

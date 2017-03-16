@@ -182,7 +182,7 @@ public class WordTopicEmbeddings {
             samplingTable[i] = word;
         }
 
-        System.out.println("done counting");
+        System.out.println("done counting: " + totalWords);
     }
 
     public void addInstances(InstanceList training) { //No Topics.. Standard WVs
@@ -238,7 +238,7 @@ public class WordTopicEmbeddings {
         while (!finished) {
 
             try {
-                Thread.sleep(5000);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
 
             }
@@ -248,7 +248,7 @@ public class WordTopicEmbeddings {
             // Are all the threads done?
             for (int thread = 0; thread < numThreads; thread++) {
                 wordsSoFar += runnables[thread].wordsSoFar;
-                System.out.format("%.3f ", runnables[thread].getMeanError());
+                System.out.format("%.3f \n", runnables[thread].getMeanError());
             }
 
             long runningMillis = System.currentTimeMillis() - startTime;
