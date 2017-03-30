@@ -7,6 +7,9 @@ import cc.mallet.types.*;
 import cc.mallet.pipe.*;
 import static cc.mallet.topics.FastQMVParallelTopicModel.logger;
 import static cc.mallet.topics.WordEmbeddings.numDimensions;
+import com.sree.textbytes.jtopia.Configuration;
+import com.sree.textbytes.jtopia.TermDocument;
+import com.sree.textbytes.jtopia.TermsExtractor;
 //import cc.mallet.pipe.iterator.*;
 //import cc.mallet.topics.*;
 //import cc.mallet.util.Maths;
@@ -68,12 +71,12 @@ public class PTMExperiment {
         //boolean runOnLine = false;
 
         //boolean calcTokensPerEntity = true;
-        int numOfThreads = 1;
+        int numOfThreads = 4;
         //iMixParallelTopicModel.SkewType skewOn = iMixParallelTopicModel.SkewType.None;
         //boolean ignoreSkewness = true;
         int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 700; //Max 2000
+        int numIterations = 100; //Max 2000
         int numChars = 4000;
         //int independentIterations = 0;
         int burnIn = 50;
@@ -91,11 +94,12 @@ public class PTMExperiment {
         boolean calcEntitySimilarities = false;
         boolean calcTopicSimilarities = false;
         boolean calcPPRSimilarities = false;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean runOrigParallelModel = false;
         boolean runWordEmbeddings = false;
-        boolean useTypeVectors = true;
-        boolean trainTypeVectors = true;
+        boolean useTypeVectors = false;
+        boolean trainTypeVectors = false;
+        boolean findKeyPhrases = true;
         double useTypeVectorsProb = 0.6;
         Net2BoWType PPRenabled = Net2BoWType.PPR;
 
@@ -175,7 +179,7 @@ public class PTMExperiment {
             }
         }
 
-        SQLLitedb = "jdbc:sqlite:" + dictDir + dbFilename;
+        SQLLitedb = "jdbc:sqlite:" + dictDir + dbFilename + "?journal_mode=WAL&synchronous=OFF";
 
 //        if (dictDir != "") {
 //            dictPath = new File(dictDir);
@@ -193,6 +197,10 @@ public class PTMExperiment {
         //Reader fileReader = new InputStreamReader(new FileInputStream(new File(args[0])), "UTF-8");
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
         //3, 2, 1)); // data, label, name fields
+        if (findKeyPhrases) {
+            FindKeyPhrasesPerTopic(SQLLitedb, "ACM_400T_800IT_4000CHRs_300_25PRN100B_6M_4TH_cosPPR_", "openNLP");
+        }
+
         if (runWordEmbeddings) {
             logger.info(" calc word embeddings starting");
             InstanceList[] instances = GenerateAlphabets(SQLLitedb, experimentType, dictDir, numModalities, pruneCnt,
@@ -463,6 +471,142 @@ public class PTMExperiment {
     }
 
     private void SaveTopKTokensPerEntity(int K, boolean TfIDFweighting, InstanceList instances) {
+
+    }
+
+    private void FindKeyPhrasesPerTopic(String SQLLiteDB, String experimentId, String tagger) {
+        //for default lexicon POS tags
+        //Configuration.setTaggerType("default"); 
+        if (tagger == "openNLP") {
+            // for openNLP POS tagger
+            Configuration.setTaggerType(tagger);
+            //for Stanford POS tagger
+            // if tagger type is "openNLP" then give the openNLP POS tagger path
+            Configuration.setModelFileLocation("model/openNLP/en-pos-maxent.bin");
+        } else if (tagger == "stanford") {
+            Configuration.setTaggerType("stanford");
+            Configuration.setModelFileLocation("model/stanford/english-left3words-distsim.tagger");
+
+        }
+
+        Configuration.setSingleStrength(5);
+        Configuration.setNoLimitStrength(3);
+        // if tagger type is "default" then give the default POS lexicon file
+        //Configuration.setModelFileLocation("model/default/english-lexicon.txt");
+        // if tagger type is "stanford "
+        //Configuration.setModelFileLocation("model/stanford/english-left3words-distsim.tagger");
+
+        TermsExtractor termExtractor = new TermsExtractor();
+        TermDocument topiaDoc = new TermDocument();
+
+        StringBuffer stringBuffer = new StringBuffer();
+
+        Connection connection = null;
+        try {
+            // create a database connection
+            //connection = DriverManager.getConnection(SQLLitedb);
+            connection = DriverManager.getConnection(SQLLiteDB);
+            Statement statement = connection.createStatement();
+            statement.setQueryTimeout(30);  // set timeout to 30 sec.
+
+            logger.info("PPRSimilarities calculation Started");
+
+            String sql = "select pubtopic.TopicId, publication.title, publication.abstract from \n"
+                    + "PubTopic\n"
+                    + "inner join publication on PubTopic.pubId= publication.PubId and pubTOpic.Weight>0.7\n"
+                    + "where experimentId='" + experimentId + "' \n"
+                    + "order by pubtopic.topicid, weight desc";
+
+            ResultSet rs = statement.executeQuery(sql);
+
+            HashMap<Integer, Map<String, ArrayList<Integer>>> topicTitles = null;
+
+            topicTitles = new HashMap<Integer, Map<String, ArrayList<Integer>>>();
+
+            Integer topicId = -1;
+
+            while (rs.next()) {
+
+                Integer newTopicId = rs.getInt("TopicId");
+
+                if (newTopicId != topicId && topicId != -1) {
+
+                    topiaDoc = termExtractor.extractTerms(stringBuffer.toString());
+                    topicTitles.put(topicId, topiaDoc.getFinalFilteredTerms());
+                    stringBuffer = new StringBuffer();
+
+                }
+                stringBuffer.append(rs.getString("title").replace('-', ' ').toLowerCase() + "\n");
+                topicId = newTopicId;
+
+            }
+
+            statement.executeUpdate("create table if not exists TopicKeyPhrase ( TopicId Integer, Tagger TEXT, Phrase Text, Count Integer, WordsNum Integer, Weight double, ExperimentId TEXT) ");
+            String deleteSQL = String.format("Delete from TopicKeyPhrase WHERE ExperimentId='" + experimentId + "' AND Tagger ='" + tagger + "'");
+            statement.executeUpdate(deleteSQL);
+
+            PreparedStatement bulkInsert = null;
+            sql = "insert into TopicKeyPhrase values(?,?,?,?,?,?,?);";
+
+            try {
+
+                connection.setAutoCommit(false);
+                bulkInsert = connection.prepareStatement(sql);
+
+                for (Integer tmpTopicId : topicTitles.keySet()) {
+                    //boolean startComparison = false;fuyhgjlkfdytrdfuikol
+                    Map<String, ArrayList<Integer>> extractedPhrases = topicTitles.get(tmpTopicId);
+                    for (String phrase : extractedPhrases.keySet()) {
+
+                        bulkInsert.setInt(1, tmpTopicId);
+                        bulkInsert.setString(2, tagger);
+                        bulkInsert.setString(3, phrase);
+                        bulkInsert.setInt(4, extractedPhrases.get(phrase).get(0));
+                        bulkInsert.setInt(5, extractedPhrases.get(phrase).get(1));
+                        bulkInsert.setDouble(6, 0);
+                        bulkInsert.setString(7, experimentId);
+
+                        bulkInsert.executeUpdate();
+                    }
+
+                }
+
+                connection.commit();
+
+            } catch (SQLException e) {
+
+                if (connection != null) {
+                    try {
+                        System.err.print("Transaction is being rolled back");
+                        connection.rollback();
+                    } catch (SQLException excep) {
+                        System.err.print("Error in insert topicPhrases");
+                    }
+                }
+            } finally {
+
+                if (bulkInsert != null) {
+                    bulkInsert.close();
+                }
+                connection.setAutoCommit(true);
+            }
+
+        } catch (SQLException e) {
+            // if the error message is "out of memory", 
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null) {
+                    connection.close();
+                }
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e);
+            }
+        }
+
+        logger.info("Finding Key phrases finished");
 
     }
 
@@ -1484,7 +1628,7 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 if (PPRenabled == Net2BoWType.PPR) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView LIMIT 10000";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView ";
                 } else if (PPRenabled == Net2BoWType.OneWay) {
                     sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubViewOneWay";
                 } else if (PPRenabled == Net2BoWType.TwoWay) {
@@ -1574,14 +1718,14 @@ public class PTMExperiment {
                             }
                         }
 
-                          if (numModalities > 3) {
+                        if (numModalities > 3) {
                             String tmpAuthorsStr = rs.getString("Venue");//.replace("\t", ",");
                             if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
 
                                 instanceBuffer.get(3).add(new Instance(tmpAuthorsStr, null, rs.getString("pubId"), "Venue"));
                             }
                         }
-                          
+
                         if (numModalities > 4) {
                             String tmpStr = rs.getString("Citations");//.replace("\t", ",");
                             String citationStr = "";
@@ -1603,9 +1747,7 @@ public class PTMExperiment {
                             }
                         }
 
-                      
 //DBPediaResources
-                        
                         if (numModalities > 5) {
                             String DBPediaResourcesStr = rs.getString("DBPediaResources");//.replace("\t", ",");
                             if (DBPediaResourcesStr != null && !DBPediaResourcesStr.equals("")) {
@@ -1613,7 +1755,7 @@ public class PTMExperiment {
                                 instanceBuffer.get(5).add(new Instance(DBPediaResourcesStr, null, rs.getString("pubId"), "DBPediaResource"));
                             }
                         }
-                        
+
                         if (numModalities > 6) {
                             String tmpAuthorsStr = rs.getString("Authors");//.replace("\t", ",");
                             if (tmpAuthorsStr != null && !tmpAuthorsStr.equals("")) {
