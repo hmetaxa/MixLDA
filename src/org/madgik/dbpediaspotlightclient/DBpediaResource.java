@@ -12,57 +12,115 @@ import java.util.Set;
  *
  * @author omiros
  */
+class DBpediaLink {
+
+    public String label;
+    public String uri;
+
+    public DBpediaLink(String uri,String label)
+    {
+        this.label = label;
+        this.uri = uri;
+    }
+            
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (obj == null || obj.getClass() != this.getClass()) {
+            return false;
+        }
+        DBpediaLink guest = (DBpediaLink) obj;
+        return uri.equals(guest.uri);
+    }
+
+    @Override
+    public int hashCode() {
+        return uri.hashCode();
+    }
+
+}
+
 public class DBpediaResource {
 
+    private DBpediaLink link;
     private DBpediaResourceType type;
-    private String uri;
+    //private String uri;
     private int support;
     private String mention;
-    private String title;
+    //private String title;
+    private Set<DBpediaLink> abreviations;
     private double similarity;
     private double confidence;
     private String wikiAbstract;
     private String wikiId;
-    private Set<String> categories;
+    private Set<DBpediaLink> categories;
 
-    public DBpediaResource(DBpediaResourceType type, String URI, String title, int support,  double Similarity, double confidence, String mention, Set<String> categories, String wikiAbstract, String wikiId) {
-        this.uri = URI;
+     @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+        if (obj == null || obj.getClass() != this.getClass()) {
+            return false;
+        }
+        DBpediaResource guest = (DBpediaResource) obj;
+        return link.equals(guest.link);
+    }
+
+    @Override
+    public int hashCode() {
+        return link.hashCode();
+    }
+    
+    public DBpediaResource(DBpediaResourceType type, String URI, String label, int support, double Similarity, double confidence, String mention, Set<DBpediaLink> categories, String wikiAbstract, String wikiId, Set<DBpediaLink> abreviations) {
+        this.link.uri = URI;
         this.support = support;
         this.type = type;
         this.mention = mention;
         this.similarity = Similarity;
         this.confidence = confidence;
-        this.title = title;
+        this.link.label = label;
         this.categories = categories;
+        this.abreviations = abreviations;
         this.wikiAbstract = wikiAbstract;
         this.wikiId = wikiId;
     }
 
-     public Set<String> getCategories() {
+    public Set<DBpediaLink> getCategories() {
         return categories;
     }
 
-    public void setCategories(Set<String> categories) {
+    public void setCategories(Set<DBpediaLink> categories) {
         this.categories = categories;
     }
-    
-    public String getURI() {
-        return uri;
+
+    public Set<DBpediaLink> getAbreviations() {
+        return abreviations;
     }
 
-    public void setURI(String URI) {
-        this.uri = URI;
+    public void setAbreviations(Set<DBpediaLink> abreviations) {
+        this.abreviations = abreviations;
     }
 
-      public String getWikiId() {
+    public DBpediaLink getLink() {
+        return link;
+    }
+
+    public void setURI(DBpediaLink Link) {
+        this.link = Link;
+    }
+
+    public String getWikiId() {
         return wikiId;
     }
 
     public void setWikiId(String wikiId) {
         this.wikiId = wikiId;
     }
-    
- public String getWikiAbstract() {
+
+    public String getWikiAbstract() {
         return wikiAbstract;
     }
 
@@ -70,7 +128,6 @@ public class DBpediaResource {
         this.wikiAbstract = wikiAbstract;
     }
 
-    
     public void setSimilarity(Double Similarity) {
         this.similarity = Similarity;
     }
@@ -78,8 +135,8 @@ public class DBpediaResource {
     public double getSimilarity() {
         return similarity;
     }
-    
-     public void setConfidence(Double Confidence) {
+
+    public void setConfidence(Double Confidence) {
         this.confidence = Confidence;
     }
 
@@ -95,15 +152,6 @@ public class DBpediaResource {
         return mention;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    
     public void setType(DBpediaResourceType Type) {
         this.type = Type;
     }
