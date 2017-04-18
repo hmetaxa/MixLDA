@@ -106,24 +106,7 @@ public class DBpediaAnnotatorRunnable implements Runnable {
                 + "                   \n"
                 + "                 }";
         
-        String query2 = "prefix dbpedia-owl: <http://dbpedia.org/ontology/>\n"
-                + "PREFIX dcterms: <http://purl.org/dc/terms/>                              \n"
-                + "                \n"
-                + "                 SELECT  ?name ?cat ?abstract ?redirect ?redirectTitle ?disambiguates ?abrev\n"
-                + "                 WHERE {\n"
-                + "                     ?uri dbpedia-owl:abstract ?abstract .\n"
-                + "                     ?disambiguates  dbpedia-owl:wikiPageDisambiguates  ?uri .\n"
-                + "                     ?disambiguates rdfs:label ?abrev.\n"
-                + "                     ?uri rdfs:label ?name .\n"
-                + "                     ?uri dcterms:subject ?cat .\n"
-                + "                     ?redirect dbpedia-owl:wikiPageRedirects ?uri .                    \n"
-                + "                     ?redirect rdfs:label ?redirectTitle .\n"
-                + "                     FILTER (?uri = <" + resourceURI + "> && langMatches(lang(?name),\"en\")  && langMatches(lang(?abstract),\"en\") && langMatches(lang(?abrev),\"en\")\n"
-                + "                     && langMatches(lang(?redirectTitle ),\"en\"))          \n"
-                + "                     \n"
-                + "                 }\n"
-                + "Limit 100";
-        
+      
         try {
             String searchUrl = "http://dbpedia.org/sparql?"
                     + "query=" + URLEncoder.encode(query, "utf-8")
@@ -164,12 +147,12 @@ public class DBpediaAnnotatorRunnable implements Runnable {
                     JSONObject entity = entities.getJSONObject(i);
                     categories.add(new DBpediaLink(entity.getJSONObject("subject").getString("value"), entity.getJSONObject("subjectLabel").getString("value")));
                     String redirectLabel = entity.getJSONObject("redirectLabel").getString("value");
-                    String disambiguatesLabel = entity.getJSONObject("redirectLabel").getString("value").replace("(disambiguation)", "").trim();
+                    String disambiguatesLabel = entity.getJSONObject("disambiguatesLabel").getString("value").replace("(disambiguation)", "").trim();
                     if (redirectLabel.toUpperCase().equals(redirectLabel)) {
                         abreviations.add(new DBpediaLink(entity.getJSONObject("redirect").getString("value"), redirectLabel));
                     }
-                    if (disambiguatesLabel.toUpperCase().equals(redirectLabel)) {
-                        abreviations.add(new DBpediaLink(entity.getJSONObject("disambiguates").getString("value"), redirectLabel));
+                    if (disambiguatesLabel.toUpperCase().equals(disambiguatesLabel)) {
+                        abreviations.add(new DBpediaLink(entity.getJSONObject("disambiguates").getString("value"), disambiguatesLabel));
                     }
                     if (i == 0) {
                         resourceAbstract = entity.getJSONObject("abstract").getString("value");
@@ -498,12 +481,12 @@ public class DBpediaAnnotatorRunnable implements Runnable {
             int result = statement.executeUpdate();
             
             if (result > 0) {
-                PreparedStatement deletestatement = connection.prepareStatement("Delete from DBpediaResourceCategory where Resource=?");
+                PreparedStatement deletestatement = connection.prepareStatement("Delete from DBpediaResourceCategory where ResourceId=?");
                 deletestatement.setQueryTimeout(30);  // set timeout to 30 sec.        
                 deletestatement.setString(1, id);
                 deletestatement.executeUpdate();
                 
-                deletestatement = connection.prepareStatement("Delete from DBpediaResourceAcronym where Resource=?");
+                deletestatement = connection.prepareStatement("Delete from DBpediaResourceAcronym where ResourceId=?");
                 deletestatement.setQueryTimeout(30);  // set timeout to 30 sec.        
                 deletestatement.setString(1, id);
                 deletestatement.executeUpdate();

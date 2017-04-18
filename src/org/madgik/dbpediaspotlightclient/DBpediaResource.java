@@ -75,13 +75,14 @@ public class DBpediaResource {
     }
     
     public DBpediaResource(DBpediaResourceType type, String URI, String label, int support, double Similarity, double confidence, String mention, Set<DBpediaLink> categories, String wikiAbstract, String wikiId, Set<DBpediaLink> abreviations) {
-        this.link.uri = URI;
+        this.link = new DBpediaLink(URI, label);
+        
         this.support = support;
         this.type = type;
         this.mention = mention;
         this.similarity = Similarity;
         this.confidence = confidence;
-        this.link.label = label;
+        
         this.categories = categories;
         this.abreviations = abreviations;
         this.wikiAbstract = wikiAbstract;

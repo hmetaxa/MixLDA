@@ -141,6 +141,8 @@ public class DBpediaAnnotator {
         String SQLLitedb = getSQLLitedb(experimentType, false);
 
         List<String> newURIs = getNewResources(experimentType, SQLLitedb);
+        //List<String> newURIs = new ArrayList<String>(); // getNewResources(experimentType, SQLLitedb);
+        //newURIs.add("http://dbpedia.org/resource/Artificial_intelligence");
 
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
 
@@ -275,7 +277,7 @@ public class DBpediaAnnotator {
         Class.forName("org.sqlite.JDBC");
         DBpediaAnnotator c = new DBpediaAnnotator();
         //c.annotatePubs(ExperimentType.ACM, AnnotatorType.spotlight, 5);
-        c.updateResourceDetails(ExperimentType.ACM, 5);
+        c.updateResourceDetails(ExperimentType.ACM, 4);
 
     }
 }
