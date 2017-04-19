@@ -1594,6 +1594,7 @@ public class PTMExperiment {
 
         Alphabet alphabet = new Alphabet();
         pipeListText.add(new StringList2FeatureSequence(alphabet));
+        pipeListText.add(new FeatureSequenceRemovePlural(alphabet));
 
         ArrayList<ArrayList<Instance>> instanceBuffer = new ArrayList<ArrayList<Instance>>(numModalities);
         InstanceList[] instances = new InstanceList[numModalities];
