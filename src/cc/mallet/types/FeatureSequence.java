@@ -79,6 +79,10 @@ public class FeatureSequence implements Sequence, Serializable, AlphabetCarrying
         return length;
     }
 
+     public void setIndexAtPosition(int pos, int newIndex) {
+        features[pos] = newIndex;
+    }
+     
     public final int getIndexAtPosition(int pos) {
         return features[pos];
     }
