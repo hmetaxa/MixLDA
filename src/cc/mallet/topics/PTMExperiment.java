@@ -1704,7 +1704,7 @@ public class PTMExperiment {
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
-                            String tmpJournalStr = rs.getString("Keywords");//.replace("\t", ",");
+                            String tmpJournalStr = rs.getString("Keywords").replace('-', ' ').toLowerCase();//.replace("\t", ",");
                             if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
                                 instanceBuffer.get(1).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "Keywords"));
                             }
