@@ -62,7 +62,7 @@ public class PTMExperiment {
         int topWords = 20;
         int showTopicsInterval = 50;
         //int topLabels = 10;p
-        byte numModalities = 1;
+        byte numModalities = 6;
 
         //int numIndependentTopics = 0;
         double docTopicsThreshold = 0.03;
@@ -76,7 +76,7 @@ public class PTMExperiment {
         //boolean ignoreSkewness = true;
         int numTopics = 400;
         //int maxNumTopics = 500;
-        int numIterations = 100; //Max 2000
+        int numIterations = 900; //Max 2000
         int numChars = 4000;
         //int independentIterations = 0;
         int burnIn = 50;
@@ -94,12 +94,12 @@ public class PTMExperiment {
         boolean calcEntitySimilarities = false;
         boolean calcTopicSimilarities = false;
         boolean calcPPRSimilarities = false;
-        boolean runTopicModelling = false;
+        boolean runTopicModelling = true;
         boolean runOrigParallelModel = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = false;
         boolean trainTypeVectors = false;
-        boolean findKeyPhrases = true;
+        boolean findKeyPhrases = false;
         double useTypeVectorsProb = 0.6;
         Net2BoWType PPRenabled = Net2BoWType.PPR;
 
@@ -1629,7 +1629,7 @@ public class PTMExperiment {
             if (experimentType == ExperimentType.ACM) {
 
                 if (PPRenabled == Net2BoWType.PPR) {
-                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView ";
+                    sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubView";
                 } else if (PPRenabled == Net2BoWType.OneWay) {
                     sql = " select  pubId, text, fulltext, authors, citations, categories, period, keywords, venue, DBPediaResources from ACMPubViewOneWay";
                 } else if (PPRenabled == Net2BoWType.TwoWay) {
@@ -1705,9 +1705,9 @@ public class PTMExperiment {
                         instanceBuffer.get(0).add(new Instance(txt.substring(0, Math.min(txt.length() - 1, numChars)), null, rs.getString("pubId"), "text"));
 
                         if (numModalities > 1) {
-                            String tmpJournalStr = rs.getString("Keywords").replace('-', ' ').toLowerCase();//.replace("\t", ",");
+                            String tmpJournalStr = rs.getString("Keywords");//.replace("\t", ",");
                             if (tmpJournalStr != null && !tmpJournalStr.equals("")) {
-                                instanceBuffer.get(1).add(new Instance(tmpJournalStr, null, rs.getString("pubId"), "Keywords"));
+                                instanceBuffer.get(1).add(new Instance(tmpJournalStr.replace('-', ' ').toLowerCase(), null, rs.getString("pubId"), "Keywords"));
                             }
                         }
 

@@ -52,7 +52,7 @@ public class FeatureSequenceRemovePlural extends Pipe {
 
         }
 
-        return ret;
+        return -1;
     }
 
     public Instance pipe(Instance instance) {
