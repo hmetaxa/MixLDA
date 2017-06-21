@@ -94,12 +94,12 @@ public class PTMExperiment {
         boolean calcEntitySimilarities = false;
         boolean calcTopicSimilarities = false;
         boolean calcPPRSimilarities = false;
-        boolean runTopicModelling = true;
+        boolean runTopicModelling = false;
         boolean runOrigParallelModel = false;
         boolean runWordEmbeddings = false;
         boolean useTypeVectors = false;
         boolean trainTypeVectors = false;
-        boolean findKeyPhrases = false;
+        boolean findKeyPhrases = true;
         double useTypeVectorsProb = 0.6;
         Net2BoWType PPRenabled = Net2BoWType.PPR;
 
@@ -198,7 +198,7 @@ public class PTMExperiment {
         //instances.addThruPipe(new CsvIterator (fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"),
         //3, 2, 1)); // data, label, name fields
         if (findKeyPhrases) {
-            FindKeyPhrasesPerTopic(SQLLitedb, "ACM_400T_800IT_4000CHRs_300_25PRN100B_6M_4TH_cosPPR_", "openNLP");
+            FindKeyPhrasesPerTopic(SQLLitedb, experimentId, "openNLP");
         }
 
         if (runWordEmbeddings) {
@@ -489,8 +489,8 @@ public class PTMExperiment {
 
         }
 
-        Configuration.setSingleStrength(5);
-        Configuration.setNoLimitStrength(3);
+        Configuration.setSingleStrength(4);
+        Configuration.setNoLimitStrength(2);
         // if tagger type is "default" then give the default POS lexicon file
         //Configuration.setModelFileLocation("model/default/english-lexicon.txt");
         // if tagger type is "stanford "
@@ -509,11 +509,11 @@ public class PTMExperiment {
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(30);  // set timeout to 30 sec.
 
-            logger.info("PPRSimilarities calculation Started");
+            logger.info("Finding key phrases calculation started");
 
             String sql = "select pubtopic.TopicId, publication.title, publication.abstract from \n"
                     + "PubTopic\n"
-                    + "inner join publication on PubTopic.pubId= publication.PubId and pubTOpic.Weight>0.7\n"
+                    + "inner join publication on PubTopic.pubId= publication.PubId and pubTOpic.Weight>0.55 \n"
                     + "where experimentId='" + experimentId + "' \n"
                     + "order by pubtopic.topicid, weight desc";
 
@@ -527,19 +527,23 @@ public class PTMExperiment {
 
             while (rs.next()) {
 
-                Integer newTopicId = rs.getInt("TopicId");
+                int newTopicId = rs.getInt("TopicId");
 
                 if (newTopicId != topicId && topicId != -1) {
-
+                    logger.info("Finding key phrases for topic " + topicId);
                     topiaDoc = termExtractor.extractTerms(stringBuffer.toString());
                     topicTitles.put(topicId, topiaDoc.getFinalFilteredTerms());
                     stringBuffer = new StringBuffer();
-
                 }
                 stringBuffer.append(rs.getString("title").replace('-', ' ').toLowerCase() + "\n");
+                //stringBuffer.append(rs.getString("abstract").replace('-', ' ').toLowerCase() + "\n");
                 topicId = newTopicId;
 
             }
+
+            logger.info("Finding key phrases for topic " + topicId);
+            topiaDoc = termExtractor.extractTerms(stringBuffer.toString());
+            topicTitles.put(topicId, topiaDoc.getFinalFilteredTerms());
 
             statement.executeUpdate("create table if not exists TopicKeyPhrase ( TopicId Integer, Tagger TEXT, Phrase Text, Count Integer, WordsNum Integer, Weight double, ExperimentId TEXT) ");
             String deleteSQL = String.format("Delete from TopicKeyPhrase WHERE ExperimentId='" + experimentId + "' AND Tagger ='" + tagger + "'");
@@ -548,6 +552,7 @@ public class PTMExperiment {
             PreparedStatement bulkInsert = null;
             sql = "insert into TopicKeyPhrase values(?,?,?,?,?,?,?);";
 
+            logger.info("Saving key phrases....");
             try {
 
                 connection.setAutoCommit(false);

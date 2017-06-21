@@ -97,8 +97,9 @@ public class DBpediaAnnotator {
         Connection connection = null;
         try {
             connection = DriverManager.getConnection(SQLLitedb);
-            String sql = "select distinct Resource from pubDBpediaResource\n"
-                    + "where Resource not in (select URI from DBpediaResource) ";
+            String sql = 
+                    //"select  URI as Resource from DBpediaResource where Label=''";
+                    "select distinct Resource from pubDBpediaResource where Resource not in (select URI from DBpediaResource) ";
 
             Statement statement = connection.createStatement();
             statement.setQueryTimeout(60);  // set timeout to 30 sec.
