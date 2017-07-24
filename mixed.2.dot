@@ -1,237 +1,237 @@
 graph model {
-PTL0 -- VAR58710;
+PTL0 -- VAR48442;
 
-PTL0 -- VAR58715;
+PTL0 -- VAR48447;
 
-PTL1 -- VAR58710;
+PTL1 -- VAR48442;
 
-PTL1 -- VAR58711;
+PTL1 -- VAR48443;
 
-PTL2 -- VAR58711;
+PTL2 -- VAR48443;
 
-PTL2 -- VAR58716;
+PTL2 -- VAR48448;
 
-PTL3 -- VAR58711;
+PTL3 -- VAR48443;
 
-PTL3 -- VAR58712;
+PTL3 -- VAR48444;
 
-PTL4 -- VAR58712;
+PTL4 -- VAR48444;
 
-PTL4 -- VAR58717;
+PTL4 -- VAR48449;
 
-PTL5 -- VAR58712;
+PTL5 -- VAR48444;
 
-PTL5 -- VAR58713;
+PTL5 -- VAR48445;
 
-PTL6 -- VAR58713;
+PTL6 -- VAR48445;
 
-PTL6 -- VAR58718;
+PTL6 -- VAR48450;
 
-PTL7 -- VAR58713;
+PTL7 -- VAR48445;
 
-PTL7 -- VAR58714;
+PTL7 -- VAR48446;
 
-PTL8 -- VAR58715;
+PTL8 -- VAR48447;
 
-PTL8 -- VAR58720;
+PTL8 -- VAR48452;
 
-PTL9 -- VAR58715;
+PTL9 -- VAR48447;
 
-PTL9 -- VAR58716;
+PTL9 -- VAR48448;
 
-PTL10 -- VAR58716;
+PTL10 -- VAR48448;
 
-PTL10 -- VAR58721;
+PTL10 -- VAR48453;
 
-PTL11 -- VAR58716;
+PTL11 -- VAR48448;
 
-PTL11 -- VAR58717;
+PTL11 -- VAR48449;
 
-PTL12 -- VAR58717;
+PTL12 -- VAR48449;
 
-PTL12 -- VAR58722;
+PTL12 -- VAR48454;
 
-PTL13 -- VAR58717;
+PTL13 -- VAR48449;
 
-PTL13 -- VAR58718;
+PTL13 -- VAR48450;
 
-PTL14 -- VAR58718;
+PTL14 -- VAR48450;
 
-PTL14 -- VAR58723;
+PTL14 -- VAR48455;
 
-PTL15 -- VAR58718;
+PTL15 -- VAR48450;
 
-PTL15 -- VAR58719;
+PTL15 -- VAR48451;
 
-PTL16 -- VAR58720;
+PTL16 -- VAR48452;
 
-PTL16 -- VAR58725;
+PTL16 -- VAR48457;
 
-PTL17 -- VAR58720;
+PTL17 -- VAR48452;
 
-PTL17 -- VAR58721;
+PTL17 -- VAR48453;
 
-PTL18 -- VAR58721;
+PTL18 -- VAR48453;
 
-PTL18 -- VAR58726;
+PTL18 -- VAR48458;
 
-PTL19 -- VAR58721;
+PTL19 -- VAR48453;
 
-PTL19 -- VAR58722;
+PTL19 -- VAR48454;
 
-PTL20 -- VAR58722;
+PTL20 -- VAR48454;
 
-PTL20 -- VAR58727;
+PTL20 -- VAR48459;
 
-PTL21 -- VAR58722;
+PTL21 -- VAR48454;
 
-PTL21 -- VAR58723;
+PTL21 -- VAR48455;
 
-PTL22 -- VAR58723;
+PTL22 -- VAR48455;
 
-PTL22 -- VAR58728;
+PTL22 -- VAR48460;
 
-PTL23 -- VAR58723;
+PTL23 -- VAR48455;
 
-PTL23 -- VAR58724;
+PTL23 -- VAR48456;
 
-PTL24 -- VAR58725;
+PTL24 -- VAR48457;
 
-PTL24 -- VAR58730;
+PTL24 -- VAR48462;
 
-PTL25 -- VAR58725;
+PTL25 -- VAR48457;
 
-PTL25 -- VAR58726;
+PTL25 -- VAR48458;
 
-PTL26 -- VAR58726;
+PTL26 -- VAR48458;
 
-PTL26 -- VAR58731;
+PTL26 -- VAR48463;
 
-PTL27 -- VAR58726;
+PTL27 -- VAR48458;
 
-PTL27 -- VAR58727;
+PTL27 -- VAR48459;
 
-PTL28 -- VAR58727;
+PTL28 -- VAR48459;
 
-PTL28 -- VAR58732;
+PTL28 -- VAR48464;
 
-PTL29 -- VAR58727;
+PTL29 -- VAR48459;
 
-PTL29 -- VAR58728;
+PTL29 -- VAR48460;
 
-PTL30 -- VAR58728;
+PTL30 -- VAR48460;
 
-PTL30 -- VAR58733;
+PTL30 -- VAR48465;
 
-PTL31 -- VAR58728;
+PTL31 -- VAR48460;
 
-PTL31 -- VAR58729;
+PTL31 -- VAR48461;
 
-PTL32 -- VAR58714;
+PTL32 -- VAR48446;
 
-PTL32 -- VAR58719;
+PTL32 -- VAR48451;
 
-PTL33 -- VAR58719;
+PTL33 -- VAR48451;
 
-PTL33 -- VAR58724;
+PTL33 -- VAR48456;
 
-PTL34 -- VAR58724;
+PTL34 -- VAR48456;
 
-PTL34 -- VAR58729;
+PTL34 -- VAR48461;
 
-PTL35 -- VAR58729;
+PTL35 -- VAR48461;
 
-PTL35 -- VAR58734;
+PTL35 -- VAR48466;
 
-PTL36 -- VAR58730;
+PTL36 -- VAR48462;
 
-PTL36 -- VAR58731;
+PTL36 -- VAR48463;
 
-PTL37 -- VAR58731;
+PTL37 -- VAR48463;
 
-PTL37 -- VAR58732;
+PTL37 -- VAR48464;
 
-PTL38 -- VAR58732;
+PTL38 -- VAR48464;
 
-PTL38 -- VAR58733;
+PTL38 -- VAR48465;
 
-PTL39 -- VAR58733;
+PTL39 -- VAR48465;
 
-PTL39 -- VAR58734;
+PTL39 -- VAR48466;
 
-PTL40 -- VAR58710;
+PTL40 -- VAR48442;
 
-PTL41 -- VAR58715;
+PTL41 -- VAR48447;
 
-PTL42 -- VAR58711;
+PTL42 -- VAR48443;
 
-PTL43 -- VAR58716;
+PTL43 -- VAR48448;
 
-PTL44 -- VAR58712;
+PTL44 -- VAR48444;
 
-PTL45 -- VAR58717;
+PTL45 -- VAR48449;
 
-PTL46 -- VAR58713;
+PTL46 -- VAR48445;
 
-PTL47 -- VAR58718;
+PTL47 -- VAR48450;
 
-PTL48 -- VAR58714;
+PTL48 -- VAR48446;
 
-PTL49 -- VAR58720;
+PTL49 -- VAR48452;
 
-PTL50 -- VAR58721;
+PTL50 -- VAR48453;
 
-PTL51 -- VAR58722;
+PTL51 -- VAR48454;
 
-PTL52 -- VAR58723;
+PTL52 -- VAR48455;
 
-PTL53 -- VAR58719;
+PTL53 -- VAR48451;
 
-PTL54 -- VAR58725;
+PTL54 -- VAR48457;
 
-PTL55 -- VAR58726;
+PTL55 -- VAR48458;
 
-PTL56 -- VAR58727;
+PTL56 -- VAR48459;
 
-PTL57 -- VAR58728;
+PTL57 -- VAR48460;
 
-PTL58 -- VAR58724;
+PTL58 -- VAR48456;
 
-PTL59 -- VAR58730;
+PTL59 -- VAR48462;
 
-PTL60 -- VAR58731;
+PTL60 -- VAR48463;
 
-PTL61 -- VAR58732;
+PTL61 -- VAR48464;
 
-PTL62 -- VAR58733;
+PTL62 -- VAR48465;
 
-PTL63 -- VAR58729;
+PTL63 -- VAR48461;
 
-PTL64 -- VAR58734;
+PTL64 -- VAR48466;
 
-VAR58710 [style=filled fillcolor=red];
-VAR58715 [style=filled fillcolor=green];
-VAR58711 [style=filled fillcolor=red];
-VAR58716 [style=filled fillcolor=red];
-VAR58712 [style=filled fillcolor=red];
-VAR58717 [style=filled fillcolor=green];
-VAR58713 [style=filled fillcolor=green];
-VAR58718 [style=filled fillcolor=red];
-VAR58714 [style=filled fillcolor=red];
-VAR58720 [style=filled fillcolor=red];
-VAR58721 [style=filled fillcolor=red];
-VAR58722 [style=filled fillcolor=red];
-VAR58723 [style=filled fillcolor=red];
-VAR58719 [style=filled fillcolor=green];
-VAR58725 [style=filled fillcolor=red];
-VAR58726 [style=filled fillcolor=red];
-VAR58727 [style=filled fillcolor=red];
-VAR58728 [style=filled fillcolor=green];
-VAR58724 [style=filled fillcolor=green];
-VAR58730 [style=filled fillcolor=green];
-VAR58731 [style=filled fillcolor=green];
-VAR58732 [style=filled fillcolor=red];
-VAR58733 [style=filled fillcolor=green];
-VAR58729 [style=filled fillcolor=green];
-VAR58734 [style=filled fillcolor=red];
+VAR48442 [style=filled fillcolor=red];
+VAR48447 [style=filled fillcolor=green];
+VAR48443 [style=filled fillcolor=red];
+VAR48448 [style=filled fillcolor=red];
+VAR48444 [style=filled fillcolor=red];
+VAR48449 [style=filled fillcolor=green];
+VAR48445 [style=filled fillcolor=green];
+VAR48450 [style=filled fillcolor=red];
+VAR48446 [style=filled fillcolor=red];
+VAR48452 [style=filled fillcolor=red];
+VAR48453 [style=filled fillcolor=red];
+VAR48454 [style=filled fillcolor=red];
+VAR48455 [style=filled fillcolor=red];
+VAR48451 [style=filled fillcolor=green];
+VAR48457 [style=filled fillcolor=red];
+VAR48458 [style=filled fillcolor=red];
+VAR48459 [style=filled fillcolor=red];
+VAR48460 [style=filled fillcolor=green];
+VAR48456 [style=filled fillcolor=green];
+VAR48462 [style=filled fillcolor=green];
+VAR48463 [style=filled fillcolor=green];
+VAR48464 [style=filled fillcolor=red];
+VAR48465 [style=filled fillcolor=green];
+VAR48461 [style=filled fillcolor=green];
+VAR48466 [style=filled fillcolor=red];
 }
